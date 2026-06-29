@@ -2337,6 +2337,7 @@ tr.table__row--selected .table__actions {
 
 /* Required field marker */
 .field__req { color: var(--danger); font-weight: 700; margin-left: 2px; font-size: 14px; line-height: 1; }
+.field__err { font-family: var(--font-sans); font-size: 11px; color: var(--danger); margin-top: 4px; display: block; }
 
 /* Error state on a field */
 .field--error .field__label { color: var(--danger); }
@@ -2600,6 +2601,16 @@ tr.table__row--selected .table__actions {
   background: var(--ink-800) !important; color: #fff !important;
   font-weight: 700; box-shadow: 0 2px 8px rgba(26,31,58,.25);
 }
+.dp-cal__day--used {
+  color: var(--danger) !important; opacity: 0.45;
+  text-decoration: line-through; cursor: not-allowed !important;
+  pointer-events: none;
+}
+.dp-cal__day--used:hover { background: none !important; }
+.dp-cal__day--disabled {
+  opacity: 0.25; cursor: not-allowed !important; pointer-events: none;
+}
+.dp-cal__day--disabled:hover { background: none !important; }
 
 .dp-cal__manual {
   width: 100%; padding: 7px 10px; border: 1px solid var(--ink-100); border-radius: 8px;

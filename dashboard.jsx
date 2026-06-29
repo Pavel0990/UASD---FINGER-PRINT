@@ -1,5 +1,7 @@
 /* dashboard.jsx — employee directory */
 
+const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
 /* ── ComboBoxField ───────────────────────────────────────────── */
 // requireSelection=true: only select/Agregar commit the value; typing alone does not
 function ComboBoxField({ value, onChange, options, maxLength, placeholder, requireSelection }) {
@@ -207,7 +209,7 @@ function EmailField({ value, onChange }) {
 }
 
 /* ── DatePickerField ─────────────────────────────────────────── */
-function DatePickerField({ value, onChange, minAge = 0, maxAge = 0 }) {
+function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDates = null }) {
   const [open,     setOpen    ] = React.useState(false);
   const [manual,   setManual  ] = React.useState(value || '');
   const [ageError, setAgeError] = React.useState(false);
@@ -276,7 +278,6 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0 }) {
     };
   }, [open]);
 
-  const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const DOW = ['L','M','X','J','V','S','D'];
   const firstDow   = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -287,6 +288,8 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0 }) {
   const nextYear = () => setYear(y => y + 1);
 
   const pick = (d) => {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if (disabledDates && disabledDates.has(dateStr)) return;
     const candidate = new Date(year, month, d);
     if (maxAllowed && candidate > maxAllowed) { setAgeError('min'); return; }
     if (minAllowed && candidate < minAllowed) { setAgeError('max'); return; }
@@ -362,10 +365,13 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0 }) {
               const isNow = now.getDate()===d && now.getMonth()===month && now.getFullYear()===year;
               const dayDate = new Date(year, month, d);
               const isDisabled = (maxAllowed && dayDate > maxAllowed) || (minAllowed && dayDate < minAllowed);
+              const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+              const isUsed = disabledDates && disabledDates.has(dateStr);
               return (
-                <button type="button" key={d} disabled={isDisabled}
-                  className={`dp-cal__day${isSel?' dp-cal__day--sel':''}${isNow&&!isSel?' dp-cal__day--today':''}`}
-                  style={isDisabled ? {opacity:0.25,cursor:'not-allowed',pointerEvents:'none'} : {}}
+                <button type="button" key={d}
+                  disabled={isUsed || isDisabled}
+                  className={`dp-cal__day${isSel?' dp-cal__day--sel':''}${isNow&&!isSel?' dp-cal__day--today':''}${isUsed?' dp-cal__day--used':''}${isDisabled?' dp-cal__day--disabled':''}`}
+                  title={isUsed ? 'Fecha ya registrada' : undefined}
                   onClick={() => pick(d)}>{d}</button>
               );
             })}
@@ -434,29 +440,59 @@ function TimePickerField({ value, onChange }) {
     }
   };
 
-  const handleManual = (e) => {
-    const digits = e.target.value.replace(/\D/g, '');
-    // Determinar si la hora es de 1 o 2 dígitos (10, 11, 12 = dos dígitos)
-    const twoDigitHour = digits.length >= 2 && digits[0] === '1' && '012'.includes(digits[1]);
-    const hourLen  = twoDigitHour ? 2 : 1;
-    const maxDigits = hourLen + 2;
-    const d = digits.slice(0, maxDigits);
+  const handleManual = (ev) => {
+    const raw = ev.target.value.toUpperCase();
+    const filtered = raw.replace(/[^0-9:AMP ]/g, '').slice(0, 8);
 
-    const hPart = d.slice(0, hourLen);
-    const mPart = d.slice(hourLen, hourLen + 2);
+    // BORRAR — mostrar exactamente lo que queda
+    if (filtered.length < manual.length) {
+      setManual(filtered);
+      const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(filtered.trim());
+      if (m) {
+        const h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase();
+        if (h >= 1 && h <= 12 && min >= 0 && min <= 59) {
+          if (tab==='start') { const s={h,min,ampm}; setStart(s); emit(s,end); }
+          else               { const e={h,min,ampm};  setEnd(e);  emit(start,e); }
+        }
+      }
+      return;
+    }
+
+    // ESCRIBIR — validar dígito por dígito
+    const digits = filtered.replace(/\D/g, '');
+    let v = '';
+    for (let i = 0; i < digits.length; i++) {
+      const d = parseInt(digits[i]);
+      if (i === 0) { if (d < 1) break; v += digits[i]; }
+      else if (i === 1) {
+        if (v[0] === '1') { if (d <= 5) v += digits[i]; else break; }
+        else              { if (d <= 5) v += digits[i]; else break; }
+      }
+      else if (i === 2) {
+        const dblH = v[0] === '1' && '012'.includes(v[1]);
+        if (dblH) { if (d <= 5) v += digits[i]; else break; }
+        else      { v += digits[i]; break; }
+      }
+      else if (i === 3) { v += digits[i]; break; }
+    }
+
+    const dblH = v.length >= 2 && v[0] === '1' && '012'.includes(v[1]);
+    const hLen = dblH ? 2 : 1;
+    const hPart = v.slice(0, Math.min(hLen, v.length));
+    const mPart = v.slice(hLen);
+    const typedAP = /P/.test(filtered) ? 'PM' : /A/.test(filtered) ? 'AM' : null;
 
     let display = hPart;
     if (mPart.length > 0) display += ':' + mPart;
-    if (mPart.length === 2) display += ' ' + cur.ampm;
-
+    if (typedAP) display += ' ' + typedAP;
     setManual(display);
 
     if (mPart.length === 2) {
-      const h = parseInt(hPart) % 12 || 12;
-      const min = parseInt(mPart);
+      const h = parseInt(hPart), min = parseInt(mPart);
+      const ampm = typedAP || cur.ampm;
       if (h >= 1 && h <= 12 && min >= 0 && min <= 59) {
-        if (tab==='start') { const s={h,min,ampm:cur.ampm}; setStart(s); emit(s,end); }
-        else               { const ev={h,min,ampm:cur.ampm}; setEnd(ev);  emit(start,ev); }
+        if (tab==='start') { const s={h,min,ampm}; setStart(s); emit(s,end); }
+        else               { const e={h,min,ampm};  setEnd(e);  emit(start,e); }
       }
     }
   };
@@ -476,7 +512,21 @@ function TimePickerField({ value, onChange }) {
   const handX = CX + 38 * Math.cos(ang(cur.h));
   const handY = CY + 38 * Math.sin(ang(cur.h));
   const MINS  = [0, 15, 30, 45];
-  const popStyle = { position:'absolute', top:'calc(100% + 6px)', left:0, zIndex:1000 };
+  const [popPos, setPopPos] = React.useState({ top:0, left:0, minWidth:0 });
+  React.useEffect(() => {
+    if (!open || !trigRef.current) return;
+    const update = () => {
+      const r = trigRef.current.getBoundingClientRect();
+      const popH = popRef.current?.offsetHeight || 320;
+      const top = window.innerHeight - r.bottom >= popH + 8 ? r.bottom + 6 : r.top - popH - 6;
+      setPopPos({ top, left: r.left });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
+  }, [open]);
+  const popStyle = { position:'fixed', top: popPos.top, left: popPos.left, zIndex:2000 };
 
   return (
     <div className="tp-wrap" ref={trigRef}>
@@ -504,7 +554,7 @@ function TimePickerField({ value, onChange }) {
             </button>
           </div>
           <input ref={manualRef} className="tp-manual" value={manual}
-            onChange={handleManual} placeholder="8:00 AM" maxLength={8} />
+            onChange={handleManual} placeholder="8:00 AM" />
           <div className="tp-clock">
             <svg width="140" height="140">
               <circle cx={CX} cy={CY} r={66} fill="var(--cream-50)" stroke="var(--ink-100)" strokeWidth="1.5"/>
@@ -576,15 +626,31 @@ function SimpleTimePicker({ value, onChange }) {
   const [parts, setParts] = React.useState(() => parseTime(value));
   const [open, setOpen] = React.useState(false);
   const [manual, setManual] = React.useState('');
+  const [popPos, setPopPos] = React.useState({ top: 0, left: 0, minWidth: 0 });
   const trigRef = React.useRef(null);
   const popRef = React.useRef(null);
   const manualRef = React.useRef(null);
 
   React.useEffect(() => {
     if (!open) return;
+    const update = () => {
+      const r = trigRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const popH = popRef.current?.offsetHeight || 320;
+      const spaceBelow = window.innerHeight - r.bottom;
+      const top = spaceBelow >= popH + 8 ? r.bottom + 6 : r.top - popH - 6;
+      setPopPos({ top, left: r.left, minWidth: r.width });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
     const h = (e) => { if (!trigRef.current?.contains(e.target) && !popRef.current?.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
+    return () => {
+      document.removeEventListener('mousedown', h);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
   }, [open]);
 
   React.useEffect(() => {
@@ -613,26 +679,59 @@ function SimpleTimePicker({ value, onChange }) {
         </svg>
       </button>
       {open && (
-        <div className="tp-popup" ref={popRef} style={{ position:'absolute', top:'calc(100% + 6px)', left:0, zIndex:1000 }}>
+        <div className="tp-popup" ref={popRef} style={{ position:'fixed', top: popPos.top, left: popPos.left, minWidth: popPos.minWidth, zIndex:2000 }}>
           <input ref={manualRef} className="tp-manual" value={manual}
             onChange={(e) => {
-              const digits = e.target.value.replace(/\D/g, '');
-              const twoDigitHour = digits.length >= 2 && digits[0] === '1' && '012'.includes(digits[1]);
-              const hourLen = twoDigitHour ? 2 : 1;
-              const d = digits.slice(0, hourLen + 2);
-              const hPart = d.slice(0, hourLen);
-              const mPart = d.slice(hourLen, hourLen + 2);
+              const raw = e.target.value.toUpperCase();
+              const filtered = raw.replace(/[^0-9:AMP ]/g, '').slice(0, 8);
+
+              // BORRAR — mostrar exactamente lo que queda, sin reconstruir
+              if (filtered.length < manual.length) {
+                setManual(filtered);
+                const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(filtered.trim());
+                if (m) {
+                  const h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase();
+                  if (h >= 1 && h <= 12 && min >= 0 && min <= 59) emit({ h, min, ampm });
+                }
+                return;
+              }
+
+              // ESCRIBIR — validar dígito por dígito y reconstruir display
+              const digits = filtered.replace(/\D/g, '');
+              let v = '';
+              for (let i = 0; i < digits.length; i++) {
+                const d = parseInt(digits[i]);
+                if (i === 0) { if (d < 1) break; v += digits[i]; }
+                else if (i === 1) {
+                  if (v[0] === '1') { if (d <= 5) v += digits[i]; else break; }
+                  else              { if (d <= 5) v += digits[i]; else break; }
+                }
+                else if (i === 2) {
+                  const dblH = v[0] === '1' && '012'.includes(v[1]);
+                  if (dblH) { if (d <= 5) v += digits[i]; else break; }
+                  else      { v += digits[i]; break; }
+                }
+                else if (i === 3) { v += digits[i]; break; }
+              }
+
+              const dblH = v.length >= 2 && v[0] === '1' && '012'.includes(v[1]);
+              const hLen = dblH ? 2 : 1;
+              const hPart = v.slice(0, Math.min(hLen, v.length));
+              const mPart = v.slice(hLen);
+              const typedAP = /P/.test(filtered) ? 'PM' : /A/.test(filtered) ? 'AM' : null;
+
               let display = hPart;
               if (mPart.length > 0) display += ':' + mPart;
-              if (mPart.length === 2) display += ' ' + parts.ampm;
+              if (typedAP) display += ' ' + typedAP;
               setManual(display);
+
               if (mPart.length === 2) {
-                const h = parseInt(hPart) % 12 || 12;
-                const min = parseInt(mPart);
-                if (h >= 1 && h <= 12 && min >= 0 && min <= 59) emit({ h, min, ampm: parts.ampm });
+                const h = parseInt(hPart), min = parseInt(mPart);
+                const ampm = typedAP || parts.ampm;
+                if (h >= 1 && h <= 12 && min >= 0 && min <= 59) emit({ h, min, ampm });
               }
             }}
-            placeholder="8:00 AM" maxLength={8} />
+            placeholder="8:00 AM" />
           <div className="tp-clock">
             <svg width="140" height="140">
               <circle cx={CX} cy={CY} r={66} fill="var(--cream-50)" stroke="var(--ink-100)" strokeWidth="1.5"/>
@@ -996,7 +1095,7 @@ function MonthGroup({ label, unjust, total, defaultOpen, children }) {
   );
 }
 
-function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onRemove }) {
+function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onUnjustify, onRemove }) {
   const [open,         setOpen        ] = React.useState(false);
   const [date,         setDate        ] = React.useState(''); // DD/MM/YYYY
   const [isJustified,  setIsJustified ] = React.useState(false);
@@ -1006,29 +1105,22 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onRemove 
   const [laterNote,    setLaterNote   ] = React.useState('');
   const [laterErr,     setLaterErr    ] = React.useState(false);
   const [deletingAbsId, setDeletingAbsId] = React.useState(null);
+  const [hoveredAbsId,  setHoveredAbsId ] = React.useState(null);
   const unjustified = absences.filter(a => !a.justified).length;
   const isOut = unjustified >= 3;
 
-  const toStorageDate = (v) => {
-    if (!v) return '';
-    const [d, m, y] = v.split('/');
-    if (!d || !m || !y || y.length < 4) return '';
-    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-  };
-  const toDisplayDate = (v) => {
-    if (!v) return v;
-    const [y, m, d] = v.split('-');
-    return (!y || !m || !d) ? v : `${d}/${m}/${y}`;
-  };
-
   const resetForm = () => { setDate(''); setIsJustified(false); setJustifyNote(''); setFormErrors({}); };
+
+  const usedAbsDates = React.useMemo(() => new Set(absences.map(a => a.date)), [absences]);
 
   const submit = () => {
     const errs = {};
-    if (!toStorageDate(date)) errs.date = true;
+    const sd = toStorageDate(date);
+    if (!sd) errs.date = true;
+    if (sd && usedAbsDates.has(sd)) errs.date = 'dup';
     if (isJustified && !justifyNote.trim()) errs.note = true;
     if (Object.keys(errs).length) { setFormErrors(errs); return; }
-    onAdd(empId, toStorageDate(date), isJustified, isJustified ? justifyNote.trim() : '');
+    onAdd(empId, sd, isJustified, isJustified ? justifyNote.trim() : '');
     resetForm(); setOpen(false);
   };
 
@@ -1057,7 +1149,8 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onRemove 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'end' }}>
             <div className={`field${formErrors.date ? ' field--error' : ''}`}>
               <span className="field__label">Fecha <span className="field__req">*</span></span>
-              <DatePickerField value={date} onChange={v => { setDate(v); setFormErrors(p => ({ ...p, date: false })); }} />
+              <DatePickerField value={date} onChange={v => { setDate(v); setFormErrors(p => ({ ...p, date: false })); }} disabledDates={usedAbsDates} />
+              {formErrors.date === 'dup' && <span className="field__err">Ya existe una ausencia en esta fecha.</span>}
             </div>
             <div className="field">
               <span className="field__label">¿Tiene justificación?</span>
@@ -1106,7 +1199,6 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onRemove 
       {absences.length === 0 ? (
         <p style={{ fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)', margin:0 }}>Sin ausencias registradas.</p>
       ) : (() => {
-        const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
         const currentYear = String(new Date().getFullYear());
         const sorted = [...absences]
           .filter(a => a.date.startsWith(currentYear))
@@ -1125,53 +1217,48 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onRemove 
           <div style={{ display:'flex', flexDirection:'column' }}>
             {groups.map((g, gi) => {
               const [y, m] = g.key.split('-');
-              const label = `${MONTHS[+m-1]} ${y}`;
+              const label = `${MONTHS_ES[+m-1]} ${y}`;
               const unjust = g.items.filter(a => !a.justified).length;
               return (
                 <MonthGroup key={g.key} label={label} unjust={unjust} total={g.items.length} defaultOpen={gi === 0}>
                   {g.items.map((a, ai) => (
                     <div key={a.id}>
-                      {/* fila — patrón tabla: hover + divisor interno */}
-                      <div style={{
-                        display:'flex', alignItems:'center', gap:10,
-                        padding:'8px 2px',
-                        borderBottom: ai < g.items.length - 1 ? '1px solid var(--ink-100)' : 'none',
-                        background: justifyingId === a.id ? 'rgba(26,31,58,0.03)' : 'transparent',
-                        transition:'background .12s',
-                        cursor: 'default',
-                      }}
-                        onMouseEnter={e => { if (justifyingId !== a.id) e.currentTarget.style.background = 'var(--cream-50,#fbfaf5)'; }}
-                        onMouseLeave={e => { if (justifyingId !== a.id) e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        {/* fecha → JetBrains Mono, dato */}
-                        <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0, minWidth:76 }}>{toDisplayDate(a.date)}</span>
-
-                        {/* texto — Manrope, jerarquía secundaria */}
-                        <span style={{
-                          fontFamily:'var(--font-sans)', fontSize:13,
-                          color: a.justified ? 'var(--ink-700)' : 'var(--ink-500)',
-                          flex:1,
-                          fontStyle: !a.justified && a.auto ? 'italic' : 'normal',
-                        }}>
-                          {a.justified ? (a.justifyNote || 'Justificada') : (a.auto ? 'Sin marcaje' : 'Sin justificación')}
+                      <div
+                        onMouseEnter={e => { setHoveredAbsId(a.id); e.currentTarget.style.background='var(--cream-100)'; }}
+                        onMouseLeave={e => { setHoveredAbsId(null); e.currentTarget.style.background='transparent'; }}
+                        style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 10px', borderRadius:8, background:'transparent', transition:'background .12s' }}>
+                        <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0 }}>{toDisplayDate(a.date)}</span>
+                        <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-300)', flexShrink:0 }}>
+                          {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(a.date).getDay()]}
                         </span>
-
-                        {/* estado / acción */}
-                        {a.justified ? (
-                          <span className="badge badge--ok" style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>Justificada</span>
-                        ) : (
-                          <button className="btn btn--ghost" style={{ fontSize:11, padding:'3px 10px', flexShrink:0 }}
-                            onClick={() => { setJustifyingId(justifyingId === a.id ? null : a.id); setLaterNote(''); setLaterErr(false); }}>
-                            Justificar
-                          </button>
+                        {a.justified
+                          ? <span className="badge badge--ok"  style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>Justificada</span>
+                          : <span className="badge badge--err" style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>No Justificada</span>
+                        }
+                        {a.justified && a.justifyNote && (
+                          <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {a.justifyNote}
+                          </span>
                         )}
-
-                        <button onClick={() => { setDeletingAbsId(deletingAbsId === a.id ? null : a.id); setJustifyingId(null); }}
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-300)', display:'flex', alignItems:'center', padding:4, flexShrink:0, borderRadius:'50%', transition:'background .12s, color .12s' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.1)'; e.currentTarget.style.color = 'var(--danger)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--ink-300)'; }}>
-                          <Icon name="x" size={12} stroke={2}/>
-                        </button>
+                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: hoveredAbsId === a.id || justifyingId === a.id || deletingAbsId === a.id ? 1 : 0, transition:'opacity .15s' }}>
+                          <button
+                            title={a.justified ? 'Quitar justificación' : 'Justificar'}
+                            onClick={() => {
+                              if (a.justified) { onUnjustify(empId, a.id); }
+                              else { setJustifyingId(justifyingId === a.id ? null : a.id); setLaterNote(''); setLaterErr(false); setDeletingAbsId(null); }
+                            }}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.color = a.justified ? 'var(--danger)' : 'var(--ink-700)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
+                            <Icon name="edit" size={12} stroke={1.8}/>
+                          </button>
+                          <button onClick={() => { setDeletingAbsId(deletingAbsId === a.id ? null : a.id); setJustifyingId(null); }}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
+                            <Icon name="trash" size={12} stroke={1.8}/>
+                          </button>
+                        </div>
                       </div>
 
                       {/* confirmación eliminar — animada */}
@@ -1254,8 +1341,8 @@ function toStorageDate(v) {
 }
 
 const EVENT_TYPE = {
-  eventualidad: { label_es: 'Trabajo en día libre', label_en: 'Work on day off', cls: 'badge--ok' },
-  dia_libre:    { label_es: 'Día libre emitido',   label_en: 'Issued day off',   cls: 'badge--warn' },
+  eventualidad: { label_es: 'Trabajo extra',      label_en: 'Extra work',        cls: 'badge--ok' },
+  dia_libre:    { label_es: 'Día compensatorio',  label_en: 'Compensatory day',  cls: 'badge--warn' },
 };
 
 function EventualidadSection({ empId, lang }) {
@@ -1266,24 +1353,22 @@ function EventualidadSection({ empId, lang }) {
   const [motivo, setMotivo] = React.useState('');
   const [err, setErr]     = React.useState({});
   const [deletingEvId, setDeletingEvId] = React.useState(null);
+  const [hoveredEvId,  setHoveredEvId ] = React.useState(null);
 
   const items = (map[empId] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
 
-  const toStorageDate = (v) => {
-    if (!v) return '';
-    const [d, m, y] = v.split('/');
-    if (!d || !m || !y || y.length < 4) return '';
-    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-  };
+  const usedEvDates = React.useMemo(() => new Set(items.map(x => x.date)), [items]);
 
   const reset = () => { setDate(''); setType('eventualidad'); setMotivo(''); setErr({}); };
 
   const submit = () => {
     const e = {};
-    if (!toStorageDate(date)) e.date = true;
+    const sd = toStorageDate(date);
+    if (!sd) e.date = true;
+    if (sd && usedEvDates.has(sd)) e.date = 'dup';
     if (!motivo.trim()) e.motivo = true;
     if (Object.keys(e).length) { setErr(e); return; }
-    const entry = { id: Date.now() + Math.random(), date: toStorageDate(date), type, motivo: motivo.trim() };
+    const entry = { id: Date.now() + Math.random(), date: sd, type, motivo: motivo.trim() };
     const next = { ...map, [empId]: [...(map[empId] || []), entry] };
     setMap(next); saveEventualidades(next);
     reset(); setOpen(false);
@@ -1317,7 +1402,8 @@ function EventualidadSection({ empId, lang }) {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'end' }}>
             <div className={`field${err.date ? ' field--error' : ''}`}>
               <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'} <span className="field__req">*</span></span>
-              <DatePickerField value={date} onChange={v => { setDate(v); setErr(p => ({...p, date: false})); }} />
+              <DatePickerField value={date} onChange={v => { setDate(v); setErr(p => ({...p, date: false})); }} disabledDates={usedEvDates} />
+              {err.date === 'dup' && <span className="field__err">{lang === 'es' ? 'Ya existe una eventualidad en esta fecha.' : 'A record already exists for this date.'}</span>}
             </div>
             <div className="field">
               <span className="field__label">{lang === 'es' ? 'Tipo' : 'Type'} <span className="field__req">*</span></span>
@@ -1355,14 +1441,16 @@ function EventualidadSection({ empId, lang }) {
         </div>
       </div></div>
 
-      {items.length === 0 ? (
-        <p style={{ fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)', margin:0 }}>
-          {lang === 'es' ? 'Sin eventualidades registradas.' : 'No eventualities recorded.'}
-        </p>
-      ) : (() => {
-        const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      {(() => {
+        const currentYear = String(new Date().getFullYear());
+        const yearItems = items.filter(ev => ev.date.startsWith(currentYear));
+        if (yearItems.length === 0) return (
+          <p style={{ fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)', margin:0 }}>
+            {lang === 'es' ? `Sin eventualidades en ${currentYear}.` : `No eventualities in ${currentYear}.`}
+          </p>
+        );
         const groups = [];
-        items.forEach(ev => {
+        yearItems.forEach(ev => {
           const key = ev.date.slice(0, 7);
           let g = groups.find(g => g.key === key);
           if (!g) { groups.push({ key, items: [] }); g = groups[groups.length - 1]; }
@@ -1372,27 +1460,35 @@ function EventualidadSection({ empId, lang }) {
           <div style={{ display:'flex', flexDirection:'column' }}>
             {groups.map((g, gi) => {
               const [y, m] = g.key.split('-');
-              const label = `${MONTHS[+m - 1]} ${y}`;
+              const label = `${MONTHS_ES[+m - 1]} ${y}`;
               return (
                 <MonthGroup key={g.key} label={label} total={g.items.length} defaultOpen={gi === 0}>
                   {g.items.map(ev => (
                     <div key={ev.id}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 2px' }}>
-                        <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0, minWidth:76 }}>
+                      <div
+                        onMouseEnter={e => { setHoveredEvId(ev.id); e.currentTarget.style.background='var(--cream-100)'; }}
+                        onMouseLeave={e => { setHoveredEvId(null); e.currentTarget.style.background='transparent'; }}
+                        style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 10px', borderRadius:8, background:'transparent', transition:'background .12s' }}>
+                        <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0 }}>
                           {toDisplayDate(ev.date)}
+                        </span>
+                        <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-300)', flexShrink:0 }}>
+                          {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(ev.date).getDay()]}
                         </span>
                         <span className={`badge ${EVENT_TYPE[ev.type]?.cls || 'badge--neutral'}`} style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>
                           {tLabel(ev.type)}
                         </span>
-                        <span style={{ fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-700)', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                           {ev.motivo}
                         </span>
-                        <button onClick={() => setDeletingEvId(deletingEvId === ev.id ? null : ev.id)}
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-300)', display:'flex', alignItems:'center', padding:4, flexShrink:0, borderRadius:'50%', transition:'background .12s, color .12s' }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,0.1)'; e.currentTarget.style.color = 'var(--danger)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--ink-300)'; }}>
-                          <Icon name="x" size={12} stroke={2}/>
-                        </button>
+                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: hoveredEvId === ev.id || deletingEvId === ev.id ? 1 : 0, transition:'opacity .15s' }}>
+                          <button onClick={() => setDeletingEvId(deletingEvId === ev.id ? null : ev.id)}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
+                            <Icon name="trash" size={12} stroke={1.8}/>
+                          </button>
+                        </div>
                       </div>
                       <div style={{ display:'grid', gridTemplateRows: deletingEvId === ev.id ? '1fr' : '0fr', transition:'grid-template-rows 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)', overflow:'hidden' }}>
                         <div style={{ minHeight:0, opacity: deletingEvId === ev.id ? 1 : 0, transform: deletingEvId === ev.id ? 'translateY(0)' : 'translateY(-4px)', transition:'opacity 0.18s ease, transform 0.18s ease' }}>
@@ -1477,14 +1573,18 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const justifyAbsence = (empId, absId, note) => {
     saveAbsences({ ...absencesMap, [empId]: (absencesMap[empId] || []).map(a => a.id === absId ? { ...a, justified: true, justifyNote: note || '' } : a) });
   };
+  const unjustifyAbsence = (empId, absId) => {
+    saveAbsences({ ...absencesMap, [empId]: (absencesMap[empId] || []).map(a => a.id === absId ? { ...a, justified: false, justifyNote: '' } : a) });
+  };
   const removeAbsence = (empId, absId) => {
     saveAbsences({ ...absencesMap, [empId]: (absencesMap[empId] || []).filter(a => a.id !== absId) });
   };
   const unjustifiedCount = (empId) => (absencesMap[empId] || []).filter(a => !a.justified).length;
-  // Solo el mes en curso — para visualización en la tabla principal
-  const currentMonth = new Date().toLocaleDateString('en-CA').slice(0, 7); // YYYY-MM
-  const unjustifiedThisMonth = (empId) => (absencesMap[empId] || [])
-    .filter(a => !a.justified && a.date.startsWith(currentMonth)).length;
+  const currentMonth = React.useMemo(() => new Date().toLocaleDateString('en-CA').slice(0, 7), []);
+  const unjustifiedThisMonth = React.useCallback(
+    (empId) => (absencesMap[empId] || []).filter(a => !a.justified && a.date.startsWith(currentMonth)).length,
+    [absencesMap, currentMonth]
+  );
 
   // Lock background scroll when any modal is open
   React.useEffect(() => {
@@ -1549,7 +1649,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     { key: 'email',    label: 'Correo' },
     { key: 'phone',    label: 'Teléfono' },
     { key: 'dob',      label: 'Fecha de nacimiento' },
-    { key: 'schedule',  label: 'Horario' },
+    { key: 'schedule',  label: 'Jornada' },
     { key: 'workDays',  label: 'Jornada laboral' },
   ];
 
@@ -2243,10 +2343,12 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'end' }}>
                         <div className={`field${tardRegErrors.date ? ' field--error' : ''}`}>
                           <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'} <span className="field__req">*</span></span>
-                          <DatePickerField value={tardRegDate} onChange={v => { setTardRegDate(v); setTardRegErrors(p => ({ ...p, date: false })); }} />
+                          <DatePickerField value={tardRegDate} onChange={v => { setTardRegDate(v); setTardRegErrors(p => ({ ...p, date: false })); }}
+                            disabledDates={editTarget ? new Set(getTardanzas(editTarget.id).map(t => t.date)) : null} />
+                          {tardRegErrors.date === 'dup' && <span className="field__err">{lang === 'es' ? 'Ya existe una tardanza en esta fecha.' : 'A record already exists for this date.'}</span>}
                         </div>
                         <div className={`field${tardRegErrors.time ? ' field--error' : ''}`}>
-                          <span className="field__label">{lang === 'es' ? 'Hora de marcaje' : 'Clock-in time'} <span className="field__req">*</span></span>
+                          <span className="field__label">{lang === 'es' ? 'Hora de entrada' : 'Clock-in time'} <span className="field__req">*</span></span>
                           <SimpleTimePicker value={tardRegTime}
                             onChange={v => { setTardRegTime(v); setTardRegErrors(p => ({ ...p, time: false })); }} />
                         </div>
@@ -2291,6 +2393,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                           const errs = {};
                           const sd = toStorageDate(tardRegDate);
                           if (!sd) errs.date = true;
+                          if (sd && editTarget && getTardanzas(editTarget.id).some(t => t.date === sd)) errs.date = 'dup';
                           if (!tardRegTime.trim()) errs.time = true;
                           if (tardRegJustified && !tardRegNote.trim()) errs.note = true;
                           if (Object.keys(errs).length) { setTardRegErrors(errs); return; }
@@ -2316,8 +2419,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                       <div>
                         <div style={{ display:'flex', flexDirection:'column' }}>
                           {(() => {
-                            const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-                            const groups = [];
+                                                const groups = [];
                             yearTardanzas.forEach(t => {
                               const key = t.date.slice(0,7);
                               let g = groups.find(g => g.key === key);
@@ -2326,35 +2428,52 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                             });
                             return groups.map((g, gi) => {
                               const [y, m] = g.key.split('-');
-                              const label = `${MONTHS[+m-1]} ${y}`;
+                              const label = `${MONTHS_ES[+m-1]} ${y}`;
                               const unjust = g.items.filter(t => !t.justified).length;
                               return (
                                 <MonthGroup key={g.key} label={label} total={g.items.length} defaultOpen={gi === 0}>
                                   {g.items.map(t => (
                                     <div key={t.date}>
                                       <div
-                                        onMouseEnter={() => setHoveredTardDate(t.date)}
-                                        onMouseLeave={() => setHoveredTardDate(null)}
-                                        style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 2px' }}>
-                                        <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0, minWidth:76 }}>
+                                        onMouseEnter={e => { setHoveredTardDate(t.date); e.currentTarget.style.background='var(--cream-100)'; }}
+                                        onMouseLeave={e => { setHoveredTardDate(null); e.currentTarget.style.background='transparent'; }}
+                                        style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 10px', borderRadius:8, background:'transparent', transition:'background .12s' }}>
+                                        <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0 }}>
                                           {toDisplayDate(t.date)}
                                         </span>
+                                        <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-300)', flexShrink:0 }}>
+                                          {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(t.date).getDay()]}
+                                        </span>
                                         <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-400)', flexShrink:0 }}>
-                                          {t.time?.slice(0, 5)}
+                                          {t.time?.slice(0, 5)} <span style={{ fontSize:10 }}>{t.time?.slice(-2)}</span>
                                         </span>
                                         {t.justified
-                                          ? <span className="badge badge--ok"  style={{ fontSize:10, padding:'2px 8px', flexShrink:0, marginLeft:'auto' }}>Justificada</span>
-                                          : <span className="badge badge--err" style={{ fontSize:10, padding:'2px 8px', flexShrink:0, marginLeft:'auto' }}>No Justificada</span>
+                                          ? <span className="badge badge--ok"  style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>Justificada</span>
+                                          : <span className="badge badge--err" style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>No Justificada</span>
                                         }
-                                        <div style={{ marginLeft:4, display:'flex', gap:2, opacity: hoveredTardDate === t.date || justifyingTard === t.date || deletingTardDate === t.date ? 1 : 0, transition:'opacity .15s' }}>
-                                          <button onClick={() => { setJustifyingTard(justifyingTard === t.date ? null : t.date); setTardNote(''); setTardErr(false); setDeletingTardDate(null); }}
-                                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, flexShrink:0, borderRadius:4, transition:'color .12s' }}
-                                            onMouseEnter={e => e.currentTarget.style.color = 'var(--ink-700)'}
+                                        {t.justified && t.justifyNote && (
+                                          <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                            {t.justifyNote}
+                                          </span>
+                                        )}
+                                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: hoveredTardDate === t.date || justifyingTard === t.date || deletingTardDate === t.date ? 1 : 0, transition:'opacity .15s' }}>
+                                          <button
+                                            title={t.justified ? 'Quitar justificación' : 'Justificar'}
+                                            onClick={() => {
+                                              if (t.justified) {
+                                                unjustifyTardanza(editTarget.id, t.date);
+                                              } else {
+                                                setJustifyingTard(justifyingTard === t.date ? null : t.date);
+                                                setTardNote(''); setTardErr(false); setDeletingTardDate(null);
+                                              }
+                                            }}
+                                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
+                                            onMouseEnter={e => e.currentTarget.style.color = t.justified ? 'var(--danger)' : 'var(--ink-700)'}
                                             onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
                                             <Icon name="edit" size={12} stroke={1.8}/>
                                           </button>
                                           <button onClick={() => { setDeletingTardDate(deletingTardDate === t.date ? null : t.date); setJustifyingTard(null); }}
-                                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, flexShrink:0, borderRadius:4, transition:'color .12s' }}
+                                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
                                             onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
                                             onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
                                             <Icon name="trash" size={12} stroke={1.8}/>
@@ -2422,6 +2541,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                     workDays={editTarget?.workDays}
                     onAdd={addAbsence}
                     onJustify={justifyAbsence}
+                    onUnjustify={unjustifyAbsence}
                     onRemove={removeAbsence}
                   />
               </div></div>

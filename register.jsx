@@ -273,6 +273,7 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
     if (!form.name?.trim()) errs.name = true;
     if (!form.cedula?.trim()) errs.cedula = true;
     if (!form.code?.trim()) errs.code = true;
+    else if (EMPLOYEES.some(e => e.id === form.code.trim())) errs.code = 'dup';
     if (!form.dept?.trim()) errs.dept = true;
     if (!form.role?.trim()) errs.role = true;
     if (!form.email?.trim()) errs.email = true;
@@ -423,11 +424,17 @@ function Step1({ t, form, update, setForm, allDepts, allRoles, errors, clearErro
                      }}/>
             </div>
 
-            {/* Código — auto-generado, solo lectura */}
-            <div className="field">
-              <label className="field__label">{t.reg_fld_code}</label>
-              <input className="field__input mono" value={form.code} readOnly
-                     style={{background:'var(--cream-50)',color:'var(--ink-500)',cursor:'default'}}/>
+            {/* Código — auto-generado, editable */}
+            <div className={`field${errors.code ? ' field--error' : ''}`}>
+              <label className="field__label">{t.reg_fld_code} <span className="field__req">*</span></label>
+              <input className="field__input mono" value={form.code}
+                onChange={e => {
+                  const v = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12);
+                  clearError('code');
+                  update('code', v);
+                }}
+                placeholder="EMP-00001" maxLength={12} />
+              {errors.code === 'dup' && <span className="field__err">Este código ya está en uso.</span>}
             </div>
 
             {/* Departamento — solo via selección o "Agregar" */}

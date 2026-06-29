@@ -1,5 +1,7 @@
 /* reports.jsx — attendance analytics */
 
+const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
 const ATTEND_DAYS = [
   { day: 'Lun', valid: 287, late: 22 },
   { day: 'Mar', valid: 294, late: 18 },
@@ -10,23 +12,31 @@ const ATTEND_DAYS = [
   { day: 'Dom', valid: 41,  late: 2  },
 ];
 
+const ATTEND_TOTALS = ATTEND_DAYS.map(d => d.valid + d.late);
+const ATTEND_MAX    = Math.max(...ATTEND_TOTALS);
+const ATTEND_PEAK   = ATTEND_TOTALS.indexOf(Math.max(...ATTEND_TOTALS));
+const ATTEND_LOW    = ATTEND_TOTALS.indexOf(Math.min(...ATTEND_TOTALS));
+
+function todayKey() { return new Date().toLocaleDateString('en-CA').slice(0, 7); }
+
 function ReportsView({ t, lang, setRoute }) {
-  const max  = Math.max(...ATTEND_DAYS.map(d => d.valid + d.late));
-  const days = t.rep_days;
-
-  const totals  = ATTEND_DAYS.map(d => d.valid + d.late);
-  const peakIdx = totals.indexOf(Math.max(...totals));
-  const lowIdx  = totals.indexOf(Math.min(...totals));
-
   const [hoveredIdx, setHoveredIdx] = React.useState(null);
 
-  const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const [filterMonth, setFilterMonth] = React.useState(new Date().toLocaleDateString('en-CA').slice(0, 7));
-  const [fy, fm] = filterMonth.split('-');
-  const monthLabel = `${MONTHS_ES[+fm - 1]} ${fy}`;
-  const isCurrentMonth = filterMonth === new Date().toLocaleDateString('en-CA').slice(0, 7);
-  const prevMonth = () => { const d = new Date(+fy, +fm - 2, 1); setFilterMonth(d.toLocaleDateString('en-CA').slice(0, 7)); };
-  const nextMonth = () => { const d = new Date(+fy, +fm, 1); const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; if (key <= new Date().toLocaleDateString('en-CA').slice(0, 7)) setFilterMonth(key); };
+  const [filterMonth, setFilterMonth] = React.useState(todayKey);
+  const [fy, fm]    = filterMonth.split('-');
+  const monthLabel  = `${MONTHS_ES[+fm - 1]} ${fy}`;
+  const isCurrentMonth = filterMonth === todayKey();
+
+  const prevMonth = React.useCallback(() => {
+    const d = new Date(+fy, +fm - 2, 1);
+    setFilterMonth(d.toLocaleDateString('en-CA').slice(0, 7));
+  }, [fy, fm]);
+
+  const nextMonth = React.useCallback(() => {
+    const d   = new Date(+fy, +fm, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (key <= todayKey()) setFilterMonth(key);
+  }, [fy, fm]);
 
   return (
     <div className="page">
@@ -116,8 +126,8 @@ function ReportsView({ t, lang, setRoute }) {
           {/* dots de datos encima de las barras */}
           <div className="rep-hero-chart__dots">
             {ATTEND_DAYS.map((d, i) => {
-              const isHigh = i === peakIdx;
-              const isLow  = i === lowIdx;
+              const isHigh = i === ATTEND_PEAK;
+              const isLow  = i === ATTEND_LOW;
               return (
                 <div key={i} className="rep-hero-chart__dot-col">
                   <span className="rep-hero-chart__dot" style={{
@@ -133,10 +143,10 @@ function ReportsView({ t, lang, setRoute }) {
           <div className="rep-hero-chart__bars">
             {ATTEND_DAYS.map((d, i) => {
               const total   = d.valid + d.late;
-              const totalH  = (total / max) * 100;
+              const totalH  = (total / ATTEND_MAX) * 100;
               const lateH   = (d.late / total) * 100;
-              const isHigh  = i === peakIdx;
-              const isLow   = i === lowIdx;
+              const isHigh  = i === ATTEND_PEAK;
+              const isLow   = i === ATTEND_LOW;
               const isHover = hoveredIdx === i;
               const isActive = isHigh || isLow;
 
@@ -171,7 +181,7 @@ function ReportsView({ t, lang, setRoute }) {
 
                   {/* etiqueta día + valor */}
                   <div className="rep-bar-col__foot">
-                    <div className="rep-bar-col__day">{days[i]}</div>
+                    <div className="rep-bar-col__day">{d.day}</div>
                     {isActive && (
                       <div className="rep-bar-col__val" style={{ color: isHigh ? 'var(--gold-500)' : 'var(--ink-400)' }}>
                         {total}

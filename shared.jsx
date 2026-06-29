@@ -162,7 +162,7 @@ const I18N = {
     dash_col_employee: 'Empleado',
     dash_col_dept: 'Departamento',
     dash_col_role: 'Cargo',
-    dash_col_schedule: 'Horario',
+    dash_col_schedule: 'Jornada',
     dash_col_status: 'Estados',
     dash_col_last: 'Último marcaje',
     dash_col_dob: 'Fecha nac.',
@@ -208,7 +208,7 @@ const I18N = {
     reg_fld_role: 'Cargo',
     reg_fld_email: 'Correo institucional',
     reg_fld_phone: 'Teléfono',
-    reg_fld_schedule: 'Horario laboral',
+    reg_fld_schedule: 'Jornada laboral',
     reg_fld_photo: 'Foto de perfil',
     reg_photo_upload: 'Subir foto',
     reg_capture_title: 'Captura de huella',
@@ -990,6 +990,11 @@ function AccountModal({ t, lang, setLang, setRoute, close }) {
   const [conf, setConf] = React.useState('');
   const [msg, setMsg] = React.useState(null); // {type, text}
   const [reenroll, setReenroll] = React.useState(false);
+
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
   const account = getAccountContext();
   const emp = account.employee || {};
   const role = account.role;
@@ -1035,74 +1040,6 @@ function AccountModal({ t, lang, setLang, setRoute, close }) {
         </div>
 
         <div className="acc-modal__body">
-          <section className="acc-sec">
-            <div className="acc-sec__title"><Icon name="user" size={15} /> {t.acc_profile_title}</div>
-            <div className="acc-profile">
-              <div className="acc-profile__hero">
-                <div className="acc-profile__avatar">{initials(emp.name || 'Usuario')}</div>
-                <div className="acc-profile__body">
-                  <div className="acc-profile__name">{emp.name || 'Usuario'}</div>
-                  <div className="acc-profile__meta mono">{emp.email || 'usuario@uasd.edu.do'}</div>
-                </div>
-              </div>
-              <div className="acc-profile__grid">
-                <div className="acc-profile__item">
-                  <span>{t.um_id}</span>
-                  <strong className="mono">{emp.id || '—'}</strong>
-                </div>
-                <div className="acc-profile__item">
-                  <span>{t.um_dept}</span>
-                  <strong>{emp.dept || '—'}</strong>
-                </div>
-                <div className="acc-profile__item">
-                  <span>{t.dash_col_role}</span>
-                  <strong>{emp.role || '—'}</strong>
-                </div>
-                <div className="acc-profile__item">
-                  <span>{t.acc_fp_title}</span>
-                  <strong>{t.acc_fp_status}</strong>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="acc-sec">
-            <div className="acc-sec__title"><Icon name="shield" size={15} /> {t.acc_role_title}</div>
-            <div className="acc-role-card">
-              <div className="act-panel__who">
-                <div className="act-panel__avatar" style={{ background: role?.color || 'var(--ink-700)' }}>
-                  {role?.name ? role.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'}
-                </div>
-                <div>
-                  <div className="act-panel__name">{role?.name || t.acc_no_role}</div>
-                  <div className="act-panel__dept">{role?.description || t.acc_permissions}</div>
-                </div>
-              </div>
-              <div className="acc-perms">
-                {rolePerms.length === 0 ? (
-                  <span className="acc-perms__empty">{t.acc_no_role}</span>
-                ) : rolePerms.map((p) => (
-                  <span className="usermenu__perm" key={p}><Icon name="check" size={12} stroke={2.6} />{permissionLabel(p, lang)}</span>
-                ))}
-              </div>
-              {canRoles && (
-                <button className="btn btn--ghost acc-role-card__action"
-                        type="button"
-                        onClick={() => { close(); setRoute('roles'); }}>
-                  <Icon name="shield" size={14} /> {t.acc_manage_roles}
-                </button>
-              )}
-            </div>
-          </section>
-
-          <section className="acc-sec">
-            <div className="acc-sec__title"><Icon name="settings" size={15} /> {t.acc_prefs_title}</div>
-            <div className="acc-row">
-              <span className="acc-row__label">{t.acc_lang}</span>
-              <LangSwitch lang={lang} setLang={setLang} />
-            </div>
-          </section>
-
           {/* Change password */}
           <section className="acc-sec">
             <div className="acc-sec__title"><Icon name="shield" size={15} /> {t.acc_pw_title}</div>
