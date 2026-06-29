@@ -1,13 +1,11 @@
 /* login.jsx — institutional login (floating card + crest panel) */
 
 function LoginView({ t, lang, setLang, setRoute }) {
-  const [email, setEmail] = React.useState('ggomez@uasd.edu.do');
-  const [pass, setPass] = React.useState('Uasd2026');
+  const [email, setEmail] = React.useState('');
+  const [pass, setPass] = React.useState('');
   const [showPass, setShowPass] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(false);
-
-  const VALID = { email: 'ggomez@uasd.edu.do', pass: 'Uasd2026' };
 
   const submit = (e) => {
     e.preventDefault();
@@ -16,11 +14,19 @@ function LoginView({ t, lang, setLang, setRoute }) {
     setSubmitting(true);
     setTimeout(() => {
       setSubmitting(false);
-      // DEMO: validate against known credentials. Replace with real auth.
-      if (email.trim().toLowerCase() === VALID.email && pass === VALID.pass) {
+      const creds = typeof getCredentials === 'function' ? getCredentials() : {};
+      const found = Object.entries(creds).find(([, c]) => c.email.toLowerCase() === email.trim().toLowerCase());
+      if (found && found[1].password === pass) {
+        if (typeof setCurrentUserId === 'function') setCurrentUserId(found[0]);
         setRoute('dashboard');
       } else {
-        setError(true);
+        // fallback for demo: hardcoded admin
+        if (email.trim().toLowerCase() === 'ggomez@uasd.edu.do' && pass === 'Uasd2026') {
+          if (typeof setCurrentUserId === 'function') setCurrentUserId('EMP-00601');
+          setRoute('dashboard');
+        } else {
+          setError(true);
+        }
       }
     }, 700);
   };

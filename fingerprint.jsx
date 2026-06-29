@@ -36,12 +36,12 @@ const FingerprintSVG = () =>
 
 
 /* Scanner widget — used in kiosk + registration capture */
-function FingerprintScanner({ state = 'idle' /* idle | scanning | success | error */, size = 280 }) {
+function FingerprintScanner({ state = 'idle' /* idle | scanning | success | error */, size = 280, rings = true }) {
   return (
     <div className={`scanner scanner--${state}`} style={{ width: size, height: size * 1.14 }}>
-      <div className="scanner__ring scanner__ring--3"></div>
-      <div className="scanner__ring scanner__ring--2"></div>
-      <div className="scanner__ring"></div>
+      {rings && <div className="scanner__ring scanner__ring--3"></div>}
+      {rings && <div className="scanner__ring scanner__ring--2"></div>}
+      {rings && <div className="scanner__ring"></div>}
       <div className="scanner__plate"></div>
       <div className="scanner__scanline"></div>
       <div className="scanner__fp">

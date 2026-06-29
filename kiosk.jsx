@@ -13,46 +13,153 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     return () => clearInterval(id);
   }, []);
 
-  // Simulated scan
-  const startScan = () => {
+  // ── Mapa credencial → empleado (persiste en localStorage) ───────────────
+  const CRED_MAP_KEY = 'uasd_cred_map_v1'; // { credId: empId }
+  const WA_TIMEOUT   = 8000;
+
+  const getCredMap  = () => JSON.parse(localStorage.getItem(CRED_MAP_KEY) || '{}');
+  const saveCredMap = (map) => localStorage.setItem(CRED_MAP_KEY, JSON.stringify(map));
+
+  // ── Resultado: usa el empleado vinculado a la credencial, si existe ────
+  const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+
+  const recordPresence = (empId, scheduleStr) => {
+    try {
+      const att = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}');
+      const key = `${empId}:${todayStr()}`;
+      if (!att[key]) {
+        const time = formatTime(new Date(), lang);
+        const late = scheduleStr ? getLateMinutes(scheduleStr, time) > 15 : false;
+        att[key] = { empId, date: todayStr(), time, late, justified: false };
+        localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
+      }
+    } catch {}
+  };
+
+  const onScanSuccess = (credId) => {
+    const map   = getCredMap();
+    const empId = credId ? map[credId] : null;
+    const linked = empId ? EMPLOYEES.find(e => e.id === empId) : null;
+    const pool  = EMPLOYEES.filter(e => e.status === 'ok');
+    const emp   = (linked && linked.status === 'ok') ? linked : pool[Math.floor(Math.random() * pool.length)];
+    const kind  = Math.random() > 0.4 ? 'in' : 'out';
+    const bank  = kind === 'in' ? t.kiosk_welcome_bank : t.kiosk_farewell_bank;
+    const greeting = bank[Math.floor(Math.random() * bank.length)];
+    recordPresence(emp.id, emp.schedule);
+    const time = formatTime(new Date(), lang);
+    const late = emp.schedule ? getLateMinutes(emp.schedule, time) > 15 : false;
+    setRecognized({ ...emp, kind, greeting, time, late });
+    setState('success');
+    setFeed(prev => [{
+      empId: emp.id,
+      name: emp.name.split(' ').slice(0, 2).join(' '),
+      dept: emp.dept.replace(/^Facultad de /, ''),
+      time: formatTime(new Date(), lang).slice(0, 5),
+      kind,
+    }, ...prev].slice(0, 5));
+    timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 4500);
+  };
+
+  const onScanError = () => {
+    setState('error');
+    timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 2400);
+  };
+
+  // ── Simulation fallback ───────────────────────────────────────────────
+  const runSimulation = () => {
+    timerRef.current = setTimeout(() => {
+      Math.random() > 0.15 ? onScanSuccess(null) : onScanError();
+    }, 2200);
+  };
+
+  // ── WebAuthn / Touch ID ───────────────────────────────────────────────
+  const canUseWebAuthn = () =>
+    location.protocol !== 'file:' &&
+    !!window.PublicKeyCredential &&
+    (['localhost', '127.0.0.1'].includes(location.hostname) || location.protocol === 'https:');
+
+  // Registra una credencial y la vincula a un empleado
+  const waRegister = (rpId, empId) =>
+    navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'UASD Sistema de Asistencia', id: rpId },
+      user: {
+        id: new TextEncoder().encode(empId),
+        name: empId + '@uasd.edu.do',
+        displayName: (EMPLOYEES.find(e => e.id === empId) || {}).name || empId,
+      },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
+      timeout: WA_TIMEOUT,
+    }}).then(cred => {
+      const credId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+      const map = getCredMap();
+      map[credId] = empId;
+      saveCredMap(map);
+      return { rawId: new Uint8Array(cred.rawId), credId };
+    });
+
+  const waAuth = (rpId, allowList) =>
+    navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId,
+      allowCredentials: allowList,
+      userVerification: 'required',
+      timeout: WA_TIMEOUT,
+    }});
+
+  // ── Entry point ───────────────────────────────────────────────────────
+  const startScan = (empIdToRegister) => {
     if (state === 'scanning') return;
     clearTimeout(timerRef.current);
     setState('scanning');
     setRecognized(null);
 
-    timerRef.current = setTimeout(() => {
-      // 85% success
-      const ok = Math.random() > 0.15;
-      if (ok) {
-        // Pick a random ok employee
-        const pool = EMPLOYEES.filter((e) => e.status === 'ok');
-        const emp = pool[Math.floor(Math.random() * pool.length)];
-        const kind = Math.random() > 0.4 ? 'in' : 'out';
-        const bank = kind === 'in' ? t.kiosk_welcome_bank : t.kiosk_farewell_bank;
-        const greeting = bank[Math.floor(Math.random() * bank.length)];
-        setRecognized({ ...emp, kind, greeting, time: formatTime(new Date(), lang) });
-        setState('success');
-        setFeed((prev) => [{
-          empId: emp.id,
-          name: emp.name.split(' ').slice(0, 2).join(' '),
-          dept: emp.dept.replace(/^Facultad de /, ''),
-          time: formatTime(new Date(), lang).slice(0, 5),
-          kind
-        }, ...prev].slice(0, 5));
+    if (!canUseWebAuthn()) { runSimulation(); return; }
 
-        // Auto-reset after a moment
-        timerRef.current = setTimeout(() => {
-          setState('idle');
-          setRecognized(null);
-        }, 4500);
-      } else {
-        setState('error');
-        timerRef.current = setTimeout(() => {
-          setState('idle');
-          setRecognized(null);
-        }, 2400);
-      }
-    }, 2200);
+    const rpId   = location.hostname;
+    const map    = getCredMap();
+
+    // Construir lista de credenciales registradas para allowCredentials
+    const allowList = Object.keys(map).map(credId => ({
+      type: 'public-key',
+      id: Uint8Array.from(atob(credId), c => c.charCodeAt(0)),
+      transports: ['internal'],
+    }));
+
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      .then(available => {
+        if (!available) { runSimulation(); return Promise.reject('handled'); }
+
+        if (allowList.length > 0) {
+          // Hay credenciales registradas — autenticar directamente
+          return waAuth(rpId, allowList).then(cred => {
+            const credId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+            return credId;
+          }).catch(err => {
+            if (err.name === 'NotAllowedError') return Promise.reject('auth-denied');
+            // Credenciales inválidas — limpiar y re-registrar
+            localStorage.removeItem(CRED_MAP_KEY);
+            const empId = empIdToRegister || 'EMP-00702';
+            return waRegister(rpId, empId).then(({ rawId, credId }) =>
+              waAuth(rpId, [{ type: 'public-key', id: rawId, transports: ['internal'] }])
+                .then(cred => btoa(String.fromCharCode(...new Uint8Array(cred.rawId))))
+            ).catch(() => Promise.reject('setup-fail'));
+          });
+        }
+
+        // Sin credenciales — registrar vinculada al empleado indicado
+        const empId = empIdToRegister || 'EMP-00702';
+        return waRegister(rpId, empId).then(({ rawId, credId }) =>
+          waAuth(rpId, [{ type: 'public-key', id: rawId, transports: ['internal'] }])
+            .then(cred => btoa(String.fromCharCode(...new Uint8Array(cred.rawId))))
+        ).catch(() => Promise.reject('setup-fail'));
+      })
+      .then(credId => onScanSuccess(credId))
+      .catch(err => {
+        if (err === 'auth-denied') { onScanError(); }
+        else if (err !== 'handled') { runSimulation(); }
+      });
   };
 
   const reset = () => {
@@ -60,6 +167,18 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     setState('idle');
     setRecognized(null);
   };
+
+  // ── Auto-arm: cuando vuelve a idle y hay credencial registrada, escucha el lector solo
+  const startScanRef = React.useRef(startScan);
+  React.useEffect(() => { startScanRef.current = startScan; });
+
+  React.useEffect(() => {
+    if (state !== 'idle') return;
+    if (!canUseWebAuthn()) return;
+    if (!localStorage.getItem(CRED_MAP_KEY)) return; // sin credencial → requiere primer registro manual
+    const t = setTimeout(() => startScanRef.current(), 900);
+    return () => clearTimeout(t);
+  }, [state]);
 
   React.useEffect(() => () => clearTimeout(timerRef.current), []);
 
@@ -154,15 +273,18 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
 
 function RecognizedCard({ emp, t }) {
   return (
-    <div className={`recog-panel__card ${emp.kind === 'out' ? 'recog-panel__card--out' : ''}`}>
-      <div className={`recog-banner ${emp.kind === 'out' ? 'recog-banner--out' : ''}`}>
-        <div className="recog-banner__icon">
-          <Icon name={emp.kind === 'out' ? 'logOut' : 'check'} size={14} stroke={2.4} />
+      <div className={`recog-panel__card ${emp.kind === 'out' ? 'recog-panel__card--out' : ''}`}>
+        <div className={`recog-banner ${emp.kind === 'out' ? 'recog-banner--out' : ''}`}>
+          <div className="recog-banner__icon">
+            <Icon name={emp.kind === 'out' ? 'logOut' : 'check'} size={14} stroke={2.4} />
+          </div>
+          <div style={{ fontWeight: 600 }}>
+            {emp.kind === 'in' ? t.kiosk_clockin : t.kiosk_clockout} · {emp.time}
+          </div>
+          {emp.kind === 'in' && emp.late && (
+            <span className={`badge badge--warn`} style={{fontSize:10,padding:'2px 8px',marginLeft:'auto'}}>{t.kiosk_late || 'Tardanza'}</span>
+          )}
         </div>
-        <div style={{ fontWeight: 600 }}>
-          {emp.kind === 'in' ? t.kiosk_clockin : t.kiosk_clockout} · {emp.time}
-        </div>
-      </div>
 
       <div className="recog-panel__person">
         <div className="recog-panel__avatar">{initials(emp.name)}</div>
