@@ -185,8 +185,8 @@ function PhoneField({ value, onChange }) {
         onChange={handleLocal} placeholder="000 000 0000" />
       {open && (
         <div className="phone-drop" ref={dropRef} style={dropStyle}>
-          {PHONE_COUNTRIES.map((c, i) => (
-            <button key={i} type="button" className={`phone-drop__item${c===country?' phone-drop__item--sel':''}`}
+          {PHONE_COUNTRIES.map((c) => (
+            <button key={c.code} type="button" className={`phone-drop__item${c===country?' phone-drop__item--sel':''}`}
               onClick={() => selectCountry(c)}>
               <span className="phone-flag">{c.flag}</span>
               <span className="phone-drop__name">{c.name}</span>
@@ -2431,7 +2431,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                               const label = `${MONTHS_ES[+m-1]} ${y}`;
                               const unjust = g.items.filter(t => !t.justified).length;
                               return (
-                                <MonthGroup key={g.key} label={label} total={g.items.length} defaultOpen={gi === 0}>
+                                <MonthGroup key={g.key} label={label} unjust={unjust} total={g.items.length} defaultOpen={gi === 0}>
                                   {g.items.map(t => (
                                     <div key={t.date}>
                                       <div

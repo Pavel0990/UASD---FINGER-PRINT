@@ -4053,7 +4053,7 @@ tr.table__row--selected .table__actions {
   left: 0;
   border-radius: 999px;
   background: var(--ink-800);
-  transition: transform .34s cubic-bezier(.34,1.4,.5,1), width .34s cubic-bezier(.34,1.4,.5,1), opacity .2s ease;
+  transition: transform .3s cubic-bezier(0.25,1,0.5,1), width .62s cubic-bezier(0.22,1.6,0.36,1), opacity .2s ease;
   z-index: 0;
   pointer-events: none;
 }
@@ -4071,7 +4071,7 @@ tr.table__row--selected .table__actions {
   white-space: nowrap;
   position: relative;
   z-index: 1;
-  transition: color .18s ease, transform .18s ease;
+  transition: color .18s ease;
 }
 .seg-filter__item:hover:not(.seg-filter__item--active) { color: var(--ink-800); }
 .seg-filter__item--active {
@@ -5260,9 +5260,14 @@ tr.table__row--selected .table__actions {
   letter-spacing: 0;
 }
 
+@keyframes body-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
 .act-panel__body {
   overflow-y: auto;
   flex: 1;
+  animation: body-in .28s cubic-bezier(0.33,1,0.68,1) both;
 }
 .act-panel__body::-webkit-scrollbar { width: 5px; }
 .act-panel__body::-webkit-scrollbar-track { background: transparent; }

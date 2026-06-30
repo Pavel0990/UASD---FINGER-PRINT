@@ -266,7 +266,7 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
         </div>
       </div>
 
-      {state === 'success' && recognized || state === 'error' ?
+      {(state === 'success' && recognized) || state === 'error' ?
       <div className="recog-overlay" onClick={reset}>
           <div className="recog-overlay__inner" onClick={(e) => e.stopPropagation()}>
             {state === 'success' && recognized ?

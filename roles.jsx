@@ -246,7 +246,7 @@ function RolesView({ t, setRoute }) {
   };
 
   return (
-    <div className="page">
+    <div className="page" style={{ animation:'body-in .28s cubic-bezier(0.33,1,0.68,1) both' }}>
       <div className="page__head">
         <div>
           <div className="page__title">{t.nav_roles}</div>

@@ -730,7 +730,6 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     arrowRight: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
     arrowLeft: <><path d="M19 12H5M11 6l-6 6 6 6" /></>,
     panelLeft: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /></>,
-    fingerprint: <><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4M14 13.12c0 2.38-.08 4.41-.41 6M17.29 16.77c.34-1.03.51-2.15.51-3.27 0-2.76-2.24-5-5-5a4.98 4.98 0 0 0-3.79 1.74M12 6a8 8 0 0 1 8 8c0 1.52-.17 2.79-.47 3.86M6.44 11.28A6 6 0 0 0 6 13c0 1.62.25 3.2.68 4.67" /></>,
     check: <><path d="M5 12l5 5 9-11" /></>,
     x: <><path d="M6 6l12 12M18 6L6 18" /></>,
     download: <><path d="M12 4v12M6 12l6 6 6-6M5 20h14" /></>,
@@ -748,16 +747,19 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
     bell: <><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M14 21a2 2 0 0 1-4 0" /></>,
     shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>,
+    shieldUser: <><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M6.376 18.91a6 6 0 0 1 11.249.003"/><circle cx="12" cy="11" r="4"/></>,
     calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
     grid: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>,
     barChart: <><path d="M3 21h18M7 17V9M12 17V5M17 17v-7" /></>,
+    activity: <><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></>,
     upload: <><path d="M12 16V4M6 10l6-6 6 6M5 20h14" /></>,
     award: <><circle cx="12" cy="8" r="5" /><path d="M8.5 12.5 7 22l5-3 5 3-1.5-9.5" /><path d="m9.8 8 1.4 1.4L14.5 6" /></>,
     edit: <><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></>,
     trash: <><path d="M3 6h18M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M19 6l-1 14c0 1-1 2-2 2H8c-1 0-2-1-2-2L5 6" /></>,
     userPlus: <><circle cx="10" cy="8" r="4" /><path d="M2 21c0-4.4 3.6-8 8-8M19 11v6M16 14h6" /></>,
     users: <><circle cx="9" cy="7" r="3.5" /><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7" /><circle cx="18" cy="6" r="2.5" /><path d="M22 21c0-2.8-1.8-5.2-4.3-6.1" /></>,
-    tree: <><path d="M12 3L6 10h3l-4 6h5v5h4v-5h5l-4-6h3z"/></>,
+    landPlot: <><path d="m12 8 6-3-6-3v10"/><path d="m8 11.99-5.5 3.14a1 1 0 0 0 0 1.74l8.5 4.86a2 2 0 0 0 2 0l8.5-4.86a1 1 0 0 0 0-1.74L16 12"/><path d="m6.49 12.85 11.02 6.3"/><path d="M17.51 12.85 6.5 19.15"/></>,
+    lock: <><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
     userMale: <><circle cx="10" cy="11" r="7"/><path d="M15.5 3H21v5.5M21 3l-7 7"/></>,
     userFemale: <><circle cx="12" cy="9" r="7"/><path d="M12 16v6M9 19h6"/></>,
     photoMale: <><circle cx="12" cy="7" r="4.5"/><path d="M3.5 21a8.5 8.5 0 0 1 17 0"/></>,
@@ -894,19 +896,6 @@ function TopBar({ route, setRoute, lang, setLang, t }) {
 
 }
 
-function TopBarClock({ t, lang }) {
-  const [now, setNow] = React.useState(new Date());
-  React.useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const dateStr = now.toLocaleDateString(lang === 'es' ? 'es-DO' : 'en-US', { weekday: 'short', day: 'numeric', month: 'short' });
-  return (
-    <div className="topbar__clock">
-      <div className="topbar__clock-time mono">{formatTime(now, lang)}</div>
-      <div className="topbar__clock-date">{dateStr}</div>
-    </div>);
-}
 
 function UserMenu({ t, lang, account, setRoute, close, onAdmin }) {
   const emp = account?.employee || {};
@@ -928,17 +917,17 @@ function UserMenu({ t, lang, account, setRoute, close, onAdmin }) {
         </button>
         {(typeof userHasPermission !== 'function' || userHasPermission('audit')) && (
         <button className="usermenu__action" onClick={() => onAdmin('changelog')}>
-          <Icon name="clock" size={15} /> {t.nav_changelog}
+          <Icon name="activity" size={15} /> {t.nav_changelog}
         </button>
         )}
         {(typeof userHasPermission !== 'function' || userHasPermission('roles')) && (
         <button className="usermenu__action" onClick={() => onAdmin('roles')}>
-          <Icon name="shield" size={15} /> {t.nav_roles}
+          <Icon name="shieldUser" size={15} /> {t.nav_roles}
         </button>
         )}
         {(typeof userHasPermission !== 'function' || userHasPermission('farm')) && (
-        <button className="usermenu__action" onClick={() => { close(); setRoute('finca'); }}>
-          <Icon name="tree" size={15} /> {t.farm_title}
+        <button className="usermenu__action" onClick={() => { onAdmin('finca'); }}>
+          <Icon name="landPlot" size={15} /> {t.farm_title}
         </button>
         )}
       </div>
@@ -972,32 +961,31 @@ function AccountPanelContent({ t }) {
   const emp = account.employee || {};
   const role = account.role;
 
-  const infoItems = [
-    { label: t.um_id,         value: emp.id    || '—', mono: true  },
-    { label: t.dash_col_role, value: role?.name || t.acc_no_role, mono: false },
-    { label: t.um_dept,       value: emp.dept   || '—', mono: false },
-    { label: t.um_last, value: localStorage.getItem('uasd_last_login') || '—', mono: true },
-  ];
-
   return (
-    <div style={{ padding:'32px', display:'flex', flexDirection:'column', gap:28 }}>
+    <div style={{ padding:'32px', display:'flex', flexDirection:'column', gap:24 }}>
 
-      {/* ── Info: código, rol, depto, último acceso ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px,1fr))', gap:12 }}>
-        {infoItems.map((item, i) => (
-          <div key={i} style={{ padding:'16px 18px', background:'var(--cream-50)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)' }}>
+      {/* ── Datos: código, rol, depto, último acceso ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:1, background:'var(--ink-100)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)', overflow:'hidden' }}>
+        {[
+          { label: t.um_id,          value: emp.id   || '—',               mono: true  },
+          { label: t.dash_col_role,  value: role?.name || t.acc_no_role,   mono: false, roleColor: role?.color },
+          { label: t.um_dept,        value: emp.dept  || '—',              mono: false },
+          { label: t.um_last,        value: localStorage.getItem('uasd_last_login') || '—', mono: true },
+        ].map((item, i) => (
+          <div key={i} style={{ padding:'16px 20px', background:'var(--paper)' }}>
             <div style={{ fontFamily:'var(--font-sans)', fontSize:10, fontWeight:700, color:'var(--ink-300)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{item.label}</div>
-            <div style={{ fontFamily: item.mono ? 'var(--font-mono)' : 'var(--font-sans)', fontSize:14, fontWeight:600, color:'var(--ink-800)' }}>{item.value}</div>
+            <div style={{ fontFamily: item.mono ? 'var(--font-mono)' : 'var(--font-sans)', fontSize:13, fontWeight:600, color: item.roleColor || 'var(--ink-800)' }}>{item.value}</div>
           </div>
         ))}
       </div>
 
       {/* ── Cambiar contraseña ── */}
       <div>
-        <div style={{ fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-300)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:14 }}>
-          {t.acc_pw_title}
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+          <Icon name="lock" size={13} stroke={2} style={{ color:'var(--ink-400)' }} />
+          <span style={{ fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-300)', letterSpacing:'0.08em', textTransform:'uppercase' }}>{t.acc_pw_title}</span>
         </div>
-        <div style={{ border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)', padding:'22px', background:'var(--paper)' }}>
+        <div style={{ border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)', padding:'22px 24px', background:'var(--paper)' }}>
           <form className="acc-form" onSubmit={savePw}>
             <div className="field">
               <label className="field__label">{t.acc_pw_current}</label>
@@ -1054,9 +1042,9 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
   const canFarm = typeof userHasPermission === 'function' ? userHasPermission('farm') : true;
   const tabs = [
     { id: 'account',   label: t.um_view,       icon: 'user'   },
-    ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'clock'  }] : []),
-    ...(canRoles ? [{ id: 'roles',     label: t.nav_roles,     icon: 'shield' }] : []),
-    ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'tree'   }] : []),
+    ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'activity' }] : []),
+    ...(canRoles ? [{ id: 'roles',     label: t.nav_roles,     icon: 'shieldUser' }] : []),
+    ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'landPlot' }] : []),
   ];
 
   return (

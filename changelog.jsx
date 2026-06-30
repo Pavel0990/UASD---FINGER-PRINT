@@ -156,12 +156,15 @@ function AllAdminZone({ log, isActive, onClick, t }) {
   );
 }
 
-function ActivityTimeline({ admin, log, typeFilter, setTypeFilter, monthFilter, t }) {
+function ActivityTimeline({ admin, log, typeFilter, setTypeFilter, dateFilter, t }) {
   const isAll = admin.id === '__all__';
   const entries = log.filter(e => {
     if (!isAll && e.actor?.id !== admin.id) return false;
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
-    if (monthFilter && !e.ts.startsWith(monthFilter)) return false;
+    if (dateFilter) {
+      if (Array.isArray(dateFilter)) { if (!dateFilter.some(d => e.ts.startsWith(d))) return false; }
+      else if (!e.ts.startsWith(dateFilter)) return false;
+    }
     return true;
   });
 
@@ -221,7 +224,7 @@ function ActivityTimeline({ admin, log, typeFilter, setTypeFilter, monthFilter, 
         </div>
       </div>
 
-      <div className="act-panel__body">
+      <div className="act-panel__body" key={admin.id}>
         {entries.length === 0 ? (
           <div className="audit-empty">
             <Icon name="shield" size={28} stroke={1.2} />
@@ -260,56 +263,307 @@ function ActivityTimeline({ admin, log, typeFilter, setTypeFilter, monthFilter, 
   );
 }
 
-const MONTH_NAMES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MONTH_NAMES_ES      = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MONTH_NAMES_ES_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DOW_ES = ['L','M','X','J','V','S','D'];
 
-function ChangelogView({ t }) {
-  const [log, setLog]               = React.useState(getAuditLog);
-  const [activeId, setActiveId]     = React.useState('__all__');
-  const [typeFilter, setTypeFilter] = React.useState('all');
+/* ── Filtro tipo "KPI Statistic": años → menú flotante mes/día ───────── */
+function DateStatFilter({ log, dateFilter, onChange }) {
+  const now         = new Date();
+  const currentYear = String(now.getFullYear());
+  const todayStr    = now.toISOString().slice(0, 10);
 
-  const now          = new Date();
-  const currentYear  = String(now.getFullYear());
-  const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+  const isMulti      = Array.isArray(dateFilter);
+  const isDayArray   = isMulti && dateFilter[0]?.length === 10;
+  const isMonthArray = isMulti && dateFilter[0]?.length === 7;
 
-  const [yearFilter,  setYearFilter]  = React.useState(currentYear);
-  const [monthFilter, setMonthFilter] = React.useState(currentMonth);
+  const activeYear     = isMulti ? dateFilter[0]?.slice(0,4) : (dateFilter ? dateFilter.slice(0,4) : null);
+  const selectedMonths = isMonthArray ? dateFilter : (dateFilter?.length === 7 ? [dateFilter] : []);
+  const selectedDays   = isDayArray ? dateFilter : [];
+  const activeMonth    = selectedMonths[0] || null;
+  const activeDay      = selectedDays.length === 1 ? selectedDays[0] : null;
 
-  React.useEffect(() => { setLog(getAuditLog()); }, []);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [calYM, setCalYM]         = React.useState(null);
+  const [pendingYear, setPendingYear] = React.useState(null); // año que el menú está mostrando sin haber confirmado
+  const trigRef = React.useRef(null);
+  const popRef  = React.useRef(null);
+  const [pos, setPos] = React.useState({ top:0, left:0 });
 
-  // Años disponibles en el log + año actual
+  // Año que el menú usa para listar meses (puede diferir del filtro activo)
+  const browsedYear = pendingYear || activeYear;
+
   const availableYears = React.useMemo(() => {
     const set = new Set(log.map(e => e.ts.slice(0, 4)));
     set.add(currentYear);
     return Array.from(set).sort().reverse();
   }, [log]);
 
-  // Meses del año seleccionado que tienen entradas + mes actual si es el año actual
   const availableMonths = React.useMemo(() => {
-    const set = new Set(
-      log.filter(e => e.ts.startsWith(yearFilter)).map(e => e.ts.slice(0, 7))
-    );
-    if (yearFilter === currentYear) set.add(currentMonth);
+    if (!browsedYear) return [];
+    const set = new Set(log.filter(e => e.ts.startsWith(browsedYear)).map(e => e.ts.slice(0, 7)));
+    const curM = currentYear + '-' + String(now.getMonth()+1).padStart(2,'0');
+    if (browsedYear === currentYear) set.add(curM);
     return Array.from(set).sort().reverse();
-  }, [log, yearFilter]);
+  }, [log, browsedYear]);
+
+  const openMenu = (yearPillEl, year) => {
+    // Menú ya abierto → cerrar sin tocar el filtro
+    if (menuOpen) {
+      setMenuOpen(false); setCalYM(null); setRangeAnchor(null); setHoverDs(null); setPendingYear(null);
+      return;
+    }
+    // Abrir menú para el año elegido sin borrar la selección actual
+    setPendingYear(year !== activeYear ? year : null);
+    setCalYM(null);
+    setRangeAnchor(null);
+    setHoverDs(null);
+    const r = yearPillEl.getBoundingClientRect();
+    setPos({ top: r.bottom + 8, left: r.left });
+    setMenuOpen(true);
+  };
+
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const onMouse = (e) => {
+      if (!trigRef.current?.contains(e.target) && !popRef.current?.contains(e.target)) {
+        setMenuOpen(false); setPendingYear(null);
+      }
+    };
+    document.addEventListener('mousedown', onMouse);
+    return () => document.removeEventListener('mousedown', onMouse);
+  }, [menuOpen]);
+
+  // Calendario días — mes fijo al elegido en la lista
+  const calY = calYM ? parseInt(calYM.slice(0,4)) : new Date().getFullYear();
+  const calM = calYM ? parseInt(calYM.slice(5,7)) - 1 : new Date().getMonth();
+  const firstDow    = (new Date(calY, calM, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(calY, calM + 1, 0).getDate();
+
+  const [rangeAnchor, setRangeAnchor] = React.useState(null);
+  const [hoverDs,     setHoverDs]     = React.useState(null);
+
+  const getDaysInRange = (a, b) => {
+    const [s, e] = a <= b ? [a, b] : [b, a];
+    const days = [], cur = new Date(s + 'T00:00:00'), end = new Date(e + 'T00:00:00');
+    while (cur <= end) { days.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+    return days;
+  };
+
+  const previewSet = React.useMemo(() => {
+    if (rangeAnchor && hoverDs) return new Set(getDaysInRange(rangeAnchor, hoverDs));
+    return new Set(selectedDays);
+  }, [rangeAnchor, hoverDs, selectedDays]);
+
+  const pickDay = (ds) => {
+    if (!rangeAnchor) {
+      if (selectedDays.includes(ds)) {
+        // Clic sobre día ya seleccionado → deseleccionar todo
+        onChange(calYM);
+      } else {
+        setRangeAnchor(ds);
+        onChange([ds]);
+      }
+    } else {
+      if (ds === rangeAnchor) {
+        // Clic sobre el ancla misma → cancelar selección
+        setRangeAnchor(null);
+        setHoverDs(null);
+        onChange(calYM);
+      } else {
+        const range = getDaysInRange(rangeAnchor, ds);
+        setRangeAnchor(null);
+        setHoverDs(null);
+        onChange(range.length === 0 ? calYM : range);
+      }
+    }
+  };
+
+  const pillBase = {
+    fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600,
+    border:'1px solid var(--ink-200)', borderRadius:999,
+    padding:'5px 15px', cursor:'pointer', transition:'all .15s',
+    background:'transparent', color:'var(--ink-500)', lineHeight:1,
+  };
+  const pillActive = { ...pillBase, background:'var(--ink-800)', color:'var(--cream-100)', border:'1px solid var(--ink-800)' };
+
+  const activeLabel = selectedDays.length > 0
+    ? selectedDays.length === 1
+      ? `${parseInt(selectedDays[0].slice(8))} ${MONTH_NAMES_ES[parseInt(selectedDays[0].slice(5,7))-1]} ${activeYear}`
+      : `${selectedDays.length} días — ${MONTH_NAMES_ES[parseInt(activeMonth?.slice(5))-1]} ${activeYear}`
+    : selectedMonths.length > 1
+      ? `${selectedMonths.map(m => MONTH_NAMES_ES[parseInt(m.slice(5))-1]).join(', ')} ${activeYear}`
+      : activeMonth
+        ? `${MONTH_NAMES_ES_FULL[parseInt(activeMonth.slice(5))-1]} ${activeYear}`
+        : null;
+
+  return (
+    <div style={{ marginBottom:20 }}>
+
+      {/* Pills de año — wrap natural sin cortar */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', rowGap:6 }}>
+        {availableYears.map(y => {
+          const isActive  = activeYear === y;
+          const isBrowsed = browsedYear === y && menuOpen && !isActive;
+          const pillBrowsed = { ...pillBase, background:'var(--ink-100)', color:'var(--ink-700)', border:'1px solid var(--ink-300)' };
+          return (
+          <button key={y} ref={isActive ? trigRef : null}
+            onClick={e => openMenu(e.currentTarget, y)}
+            style={isActive ? pillActive : isBrowsed ? pillBrowsed : pillBase}
+            onMouseEnter={e => { if (!isActive && !isBrowsed) { e.currentTarget.style.background='var(--ink-100)'; e.currentTarget.style.color='var(--ink-800)'; } }}
+            onMouseLeave={e => { if (!isActive && !isBrowsed) { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='var(--ink-500)'; } }}>
+            <span style={{ fontFamily:'var(--font-mono)' }}>{y}</span>
+          </button>
+          );
+        })}
+      </div>
+
+      {/* Indicador activo mes/día — animado para no empujar de golpe */}
+      <div style={{
+        maxHeight: activeLabel ? 36 : 0,
+        opacity:   activeLabel ? 1 : 0,
+        marginTop: activeLabel ? 8 : 0,
+        overflow:  'hidden',
+        transition: 'max-height .48s cubic-bezier(0.33,1,0.68,1), opacity .35s ease, margin-top .48s cubic-bezier(0.33,1,0.68,1)',
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)' }}>
+          <Icon name="arrowRight" size={11} stroke={2} />
+          <span style={{ fontFamily: activeDay ? 'var(--font-mono)' : 'var(--font-sans)', color:'var(--ink-600)', fontWeight:600 }}>{activeLabel}</span>
+          <button onClick={() => { onChange(null); setMenuOpen(false); setRangeAnchor(null); setHoverDs(null); }}
+            style={{ width:16, height:16, borderRadius:'50%', border:'none', background:'var(--ink-200)', color:'var(--ink-600)', cursor:'pointer', display:'grid', placeItems:'center' }}>
+            <Icon name="x" size={9} stroke={2.4} />
+          </button>
+        </div>
+      </div>
+
+      {/* Mini menú flotante */}
+      {menuOpen && ReactDOM.createPortal(
+        <div ref={popRef} style={{ position:'fixed', top:pos.top, left:pos.left, zIndex:9999,
+          background:'var(--paper)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)',
+          boxShadow:'0 8px 28px rgba(0,0,0,0.10)', minWidth:180, overflow:'hidden' }}>
+
+          {!calYM ? (
+            /* ── Lista de meses — selección múltiple ── */
+            <div>
+              <div style={{ padding:'8px 14px 6px', fontFamily:'var(--font-sans)', fontSize:10, fontWeight:700, color:'var(--ink-300)', letterSpacing:'0.08em', textTransform:'uppercase', borderBottom:'1px solid var(--ink-100)' }}>
+                Mes
+              </div>
+              {availableMonths.map(ym => {
+                const isSel = selectedMonths.includes(ym);
+                const toggleMonth = () => {
+                  if (selectedDays.length > 0) return; // en modo días no toggle meses
+                  const next = isSel
+                    ? selectedMonths.filter(m => m !== ym)
+                    : [...selectedMonths, ym];
+                  onChange(next.length === 0 ? (browsedYear || activeYear) : next.length === 1 ? next[0] : next);
+                };
+                return (
+                  <div key={ym} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                    padding:'8px 14px', cursor:'pointer',
+                    background: isSel ? 'rgba(22,27,51,0.05)' : 'transparent',
+                    borderBottom:'1px solid var(--ink-100)', transition:'background .12s' }}
+                    onMouseEnter={e => { if (!isSel) e.currentTarget.style.background='var(--cream-50)'; }}
+                    onMouseLeave={e => { if (!isSel) e.currentTarget.style.background='transparent'; }}>
+                    {/* Checkbox azul oscuro del sistema */}
+                    <span onClick={toggleMonth} style={{ width:15, height:15, borderRadius:3, marginRight:10, flexShrink:0, display:'grid', placeItems:'center', cursor:'pointer',
+                      border: isSel ? '2px solid var(--ink-800)' : '1.5px solid var(--ink-200)',
+                      background: isSel ? 'var(--ink-800)' : 'transparent', transition:'all .12s' }}>
+                      {isSel && (
+                        <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                          <polyline points="1,3.5 3.5,6 8,1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </span>
+                    <span onClick={toggleMonth}
+                      style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight: isSel ? 600 : 400,
+                        color: isSel ? 'var(--ink-800)' : 'var(--ink-600)', flex:1 }}>
+                      {MONTH_NAMES_ES_FULL[parseInt(ym.slice(5),10)-1]}
+                    </span>
+                    <button onClick={e => { e.stopPropagation(); onChange(ym); setCalYM(ym); }}
+                      style={{ border:'none', background:'none', cursor:'pointer', color:'var(--ink-300)',
+                        display:'grid', placeItems:'center', padding:'2px 4px', borderRadius:4 }}
+                      title="Ver días"
+                      onMouseEnter={e => e.currentTarget.style.color='var(--ink-700)'}
+                      onMouseLeave={e => e.currentTarget.style.color='var(--ink-300)'}>
+                      <Icon name="calendar" size={13} stroke={1.8} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ── Grid de días ── */
+            <div>
+              {/* Volver a meses */}
+              <button onClick={() => { setCalYM(null); setRangeAnchor(null); setHoverDs(null); }}
+                style={{ display:'flex', alignItems:'center', gap:4, width:'100%', padding:'9px 14px', border:'none', background:'none', cursor:'pointer', fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', borderBottom:'1px solid var(--ink-100)' }}
+                onMouseEnter={e => e.currentTarget.style.color='var(--ink-800)'}
+                onMouseLeave={e => e.currentTarget.style.color='var(--ink-400)'}>
+                <Icon name="arrowLeft" size={12} stroke={2} /> Meses
+              </button>
+              {/* Grid de días — mismas clases internas que DatePickerField */}
+              <div style={{ padding:'12px 14px 14px', minWidth:220 }}>
+                <div style={{ textAlign:'center', marginBottom:12, fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>
+                  {MONTH_NAMES_ES_FULL[calM]} {calY}
+                </div>
+                <div className="dp-cal__grid">
+                  {DOW_ES.map(d => <span key={d} className="dp-cal__dow">{d}</span>)}
+                  {Array.from({ length: firstDow }).map((_,i) => <span key={`e${i}`} />)}
+                  {Array.from({ length: daysInMonth }, (_,i) => i+1).map(d => {
+                    const ds = `${calY}-${String(calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const isToday   = ds === todayStr;
+                    const inPreview = previewSet.has(ds);
+                    const sortedSel = rangeAnchor && hoverDs
+                      ? [rangeAnchor < hoverDs ? rangeAnchor : hoverDs, rangeAnchor < hoverDs ? hoverDs : rangeAnchor]
+                      : selectedDays.length > 0 ? [selectedDays[0], selectedDays[selectedDays.length-1]] : [null, null];
+                    const isEdge = ds === sortedSel[0] || ds === sortedSel[1];
+                    const isSolid = inPreview && isEdge;
+                    const isTint  = inPreview && !isEdge;
+                    return (
+                      <button type="button" key={d}
+                        onClick={() => pickDay(ds)}
+                        onMouseEnter={() => rangeAnchor && setHoverDs(ds)}
+                        onMouseLeave={() => rangeAnchor && setHoverDs(null)}
+                        className={`dp-cal__day${isToday && !inPreview ? ' dp-cal__day--today' : ''}`}
+                        style={isSolid ? {
+                          background: 'var(--ink-700)', color: 'var(--cream-100)', fontWeight: 700,
+                          borderRadius: '50%', border: 'none',
+                        } : isTint ? {
+                          background: 'rgba(34,42,77,0.10)', color: 'var(--ink-600)', fontWeight: 500,
+                          borderRadius: '50%', border: '1px solid rgba(34,42,77,0.14)',
+                        } : {}}>
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+
+function ChangelogView({ t }) {
+  const [log, setLog]               = React.useState(getAuditLog);
+  const [activeId, setActiveId]     = React.useState('__all__');
+  const [typeFilter, setTypeFilter] = React.useState('all');
+  const [dateFilter, setDateFilter] = React.useState(null); // null | 'YYYY' | 'YYYY-MM' | string[]
+
+  React.useEffect(() => { setLog(getAuditLog()); }, []);
 
   const allAdmin    = { id: '__all__', name: t.cl_all_name, initials: '∑', dept: t.cl_all_dept };
   const activeAdmin = activeId === '__all__'
     ? allAdmin
     : (AUDIT_ADMINS.find(a => a.id === activeId) ?? AUDIT_ADMINS[0]);
 
-  const handleYearChange = (y) => {
-    setYearFilter(y);
-    setTypeFilter('all');
-    // Seleccionar mes actual si es el año actual, si no el más reciente del año
-    if (y === currentYear) {
-      setMonthFilter(currentMonth);
-    } else {
-      const months = log.filter(e => e.ts.startsWith(y)).map(e => e.ts.slice(0, 7)).sort().reverse();
-      setMonthFilter(months[0] || `${y}-01`);
-    }
-  };
-
-  const filteredLog = log.filter(e => e.ts.startsWith(monthFilter));
+  const filteredLog = !dateFilter ? log
+    : Array.isArray(dateFilter) ? log.filter(e => dateFilter.some(d => e.ts.startsWith(d)))
+    : log.filter(e => e.ts.startsWith(dateFilter));
 
   return (
     <div className="page">
@@ -324,27 +578,7 @@ function ChangelogView({ t }) {
         </span>
       </div>
 
-      {/* Filtro año → mes */}
-      <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-        <div style={{ display:'flex', gap:6 }}>
-          {availableYears.map(y => (
-            <button key={y}
-              onClick={() => handleYearChange(y)}
-              className={`ev-month-btn${yearFilter === y ? ' ev-month-btn--active' : ''}`}>
-              {y}
-            </button>
-          ))}
-        </div>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          {availableMonths.map(ym => (
-            <button key={ym}
-              onClick={() => { setMonthFilter(ym); setTypeFilter('all'); }}
-              className={`ev-month-btn${monthFilter === ym ? ' ev-month-btn--active' : ''}`}>
-              {MONTH_NAMES_ES[parseInt(ym.slice(5), 10) - 1]}
-            </button>
-          ))}
-        </div>
-      </div>
+      <DateStatFilter log={log} dateFilter={dateFilter} onChange={setDateFilter} />
 
       <div className="activity-map">
         <div className="activity-map__left">
@@ -374,7 +608,7 @@ function ChangelogView({ t }) {
           log={filteredLog}
           typeFilter={typeFilter}
           setTypeFilter={setTypeFilter}
-          monthFilter={monthFilter}
+          dateFilter={dateFilter}
           t={t}
         />
       </div>
