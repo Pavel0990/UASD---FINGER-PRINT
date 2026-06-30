@@ -9,7 +9,7 @@ const I18N = {
     nav_register: 'Registrar',
     nav_reports: 'Reportes',
     nav_changelog: 'Control de actividad',
-    nav_roles: 'Roles y perfiles',
+    nav_roles: 'Roles',
     nav_signout: 'Cerrar sesión',
     um_role: 'Rol',
     um_role_admin: 'Administrador',
@@ -285,7 +285,7 @@ const I18N = {
 
     // Changelog
     cl_subtitle:     'Registro trazable de acciones del sistema',
-    cl_label_admins: 'Administradores',
+    cl_label_admins: 'Usuarios',
     cl_all_name:     'Todos',
     cl_all_dept:     'Vista unificada del sistema',
     cl_all_unified:  'Vista unificada',
@@ -345,7 +345,7 @@ const I18N = {
     nav_register: 'Register',
     nav_reports: 'Reports',
     nav_changelog: 'Activity log',
-    nav_roles: 'Roles & profiles',
+    nav_roles: 'Roles',
     nav_signout: 'Sign out',
     um_role: 'Role',
     um_role_admin: 'Administrator',
@@ -618,7 +618,7 @@ const I18N = {
 
     // Changelog
     cl_subtitle:     'Traceable system activity log',
-    cl_label_admins: 'Administrators',
+    cl_label_admins: 'Users',
     cl_all_name:     'All',
     cl_all_dept:     'System-wide view',
     cl_all_unified:  'Unified view',

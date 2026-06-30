@@ -4,12 +4,12 @@ const ROLES_KEY = 'uasd_roles_v1';
 const ASSIGN_KEY = 'uasd_role_assignments_v1';
 const CRED_KEY = 'uasd_credentials_v1';
 const CURR_USER_KEY = 'uasd_current_user';
-const ROLE_SEED_VER = 'uasd_role_seed_v4';
+const ROLE_SEED_VER = 'uasd_role_seed_v7';
 
 const SEED_ROLES = [
   { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','kiosk_admin'] },
-  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll','reports','manage','farm'] },
-  { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports','audit'] },
+  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll','reports','manage','farm','roles'] },
+  { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports','audit','roles'] },
 ];
 
 const SEED_ASSIGNMENTS = [
@@ -37,13 +37,17 @@ const ALL_PERMS = [
     if ((r.id === 'role_admin' || r.id === 'role_hr') && !perms.includes('farm')) {
       return { ...r, perms: [...perms, 'farm'] };
     }
+    if (r.id === 'role_hr' && !perms.includes('roles')) {
+      return { ...r, perms: [...perms, 'roles'] };
+    }
+    if (r.id === 'role_viewer' && !perms.includes('roles')) {
+      return { ...r, perms: [...perms, 'roles'] };
+    }
     if (perms !== r.perms) return { ...r, perms };
     return r;
   }) : SEED_ROLES;
   localStorage.setItem(ROLES_KEY, JSON.stringify(roles));
-  if (!localStorage.getItem(ASSIGN_KEY)) {
-    localStorage.setItem(ASSIGN_KEY, JSON.stringify(SEED_ASSIGNMENTS));
-  }
+  localStorage.setItem(ASSIGN_KEY, JSON.stringify(SEED_ASSIGNMENTS));
   const creds = {};
   SEED_ASSIGNMENTS.forEach(a => {
     const emp = EMPLOYEES.find(e => e.id === a.empId);
@@ -120,7 +124,7 @@ window.ALL_PERMS = ALL_PERMS;
 function RolesView({ t, setRoute }) {
   const [roles, setRoles]       = React.useState(getRoles);
   const [assign, setAssign]     = React.useState(getAssignments);
-  const [selRole, setSelRole]   = React.useState(null);
+  const [selRole, setSelRole]   = React.useState(() => { const r = getRoles(); return r.length ? r[0].id : null; });
 
   React.useEffect(() => {
     if (!userHasPermission('roles')) setRoute('dashboard');
@@ -143,6 +147,27 @@ function RolesView({ t, setRoute }) {
   React.useEffect(() => { setAssignRole(selRole || ''); }, [selRole]);
 
   const curRole = selRole && roles.find(r => r.id === selRole);
+
+  const currentUserRoleId = (() => { const a = assign.find(x => x.empId === getCurrentUserId()); return a?.roleId || null; })();
+  const isHRViewer  = currentUserRoleId === 'role_hr';
+  const isReadOnly  = currentUserRoleId === 'role_viewer';
+  const canEditRole = (rid) => {
+    if (isReadOnly) return false;
+    if (isHRViewer) return rid !== 'role_admin';
+    return true;
+  };
+  const canManageAssignments = !isReadOnly;
+  const canCreateRole = !isReadOnly;
+
+  const currentUserPerms = (() => {
+    if (!getCurrentUserId()) return ALL_PERMS.map(p => p.id);
+    const a = assign.find(x => x.empId === getCurrentUserId());
+    if (!a) return [];
+    const r = roles.find(r => r.id === a.roleId);
+    return r?.perms || [];
+  })();
+
+  const grantablePerms = ALL_PERMS.filter(p => currentUserPerms.includes(p.id));
 
   const roleAssignees = assign.filter(a => a.roleId === selRole).map(a => {
     const emp = EMPLOYEES.find(e => e.id === a.empId);
@@ -170,13 +195,14 @@ function RolesView({ t, setRoute }) {
 
   const saveEdit = () => {
     if (!editing.name.trim()) return;
+    const safePerms = (editing.perms || []).filter(p => currentUserPerms.includes(p));
     let list = [...roles];
     if (editing.id) {
       const idx = list.findIndex(r => r.id === editing.id);
-      if (idx >= 0) list[idx] = { ...list[idx], ...editing };
+      if (idx >= 0) list[idx] = { ...list[idx], ...editing, perms: safePerms };
     } else {
       const nid = 'role_' + Date.now().toString(36);
-      list.push({ ...editing, id: nid, perms: editing.perms || [] });
+      list.push({ ...editing, id: nid, perms: safePerms });
     }
     saveRoles(list);
     setRoles(list);
@@ -250,13 +276,15 @@ function RolesView({ t, setRoute }) {
       <div className="page__head">
         <div>
           <div className="page__title">{t.nav_roles}</div>
-          <div className="page__subtitle">{isES ? 'Gestión de roles y permisos de administradores' : 'Admin role and permission management'}</div>
+          <div className="page__subtitle">{isES ? 'Control de acceso al sistema' : 'System access control'}</div>
         </div>
-        <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
-          <button className="kpi__pill kpi__pill--up" onClick={() => startEdit()}>
-            + {isES ? 'Nuevo rol' : 'New role'}
-          </button>
-        </div>
+        {canCreateRole && (
+          <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+            <button className="kpi__pill kpi__pill--up" onClick={() => startEdit()}>
+              + {isES ? 'Nuevo rol' : 'New role'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="activity-map" style={{gridTemplateColumns:'320px 1fr'}}>
@@ -264,11 +292,11 @@ function RolesView({ t, setRoute }) {
           <div className="activity-map__label">
             {isES ? 'Roles definidos' : 'Defined roles'}
             <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
-              ({roles.length})
+              ({roles.filter(role => canEditRole(role.id)).length})
             </span>
           </div>
           <div className="activity-map__grid">
-            {roles.map(role => {
+            {roles.filter(role => canEditRole(role.id)).map(role => {
               const count = assign.filter(a => a.roleId === role.id).length;
               const isActive = selRole === role.id;
               const initials = role.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
@@ -337,7 +365,7 @@ function RolesView({ t, setRoute }) {
                     {isES ? 'Permisos' : 'Permissions'}
                   </label>
                   <div style={{display:'flex',flexDirection:'column',gap:'2px'}}>
-                    {ALL_PERMS.map(p => (
+                    {grantablePerms.map(p => (
                       <label key={p.id} style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer',fontSize:'13px',padding:'7px 0',borderBottom:'1px solid var(--ink-100)'}}>
                         <input type="checkbox" checked={editing.perms.includes(p.id)} onChange={() => togglePerm(p.id)}
                           style={{accentColor:'var(--gold-500)',width:'15px',height:'15px'}} />
@@ -368,7 +396,7 @@ function RolesView({ t, setRoute }) {
                     <div className="act-panel__dept">{curRole.description}</div>
                   </div>
                 </div>
-                <div style={{display:'flex',gap:'6px',marginTop:'4px'}}>
+                <div style={{display:'flex',gap:'6px',marginTop:'4px',alignItems:'center'}}>
                   <button className="kpi__pill kpi__pill--btn" onClick={() => startEdit(curRole)}>
                     <Icon name="edit" size={12} /> {isES ? 'Editar' : 'Edit'}
                   </button>
@@ -445,6 +473,7 @@ function RolesView({ t, setRoute }) {
                         {c && <span className="az__last" style={{fontSize:'10.5px',color:'var(--ink-300)'}}>· {c.email}</span>}
                       </div>
                     </div>
+                    {canManageAssignments && (
                     <div style={{display:'flex',gap:'4px'}}>
                       <button onClick={() => { setEditCred(a.empId); setEditCredEmail(c?.email || a.emp?.email || ''); setEditCredPass(''); }}
                         style={{background:'none',border:'none',cursor:'pointer',color:'var(--ink-300)',padding:'4px',borderRadius:'4px',transition:'color 150ms'}}
@@ -458,6 +487,7 @@ function RolesView({ t, setRoute }) {
                         <Icon name="x" size={16} />
                       </button>
                     </div>
+                    )}
                   </div>
                   );
                 })}
@@ -465,11 +495,13 @@ function RolesView({ t, setRoute }) {
                 )}
 
                 <div className="audit-toolbar" style={{borderTop:'1px solid var(--ink-100)',borderBottom:'none',flexDirection:'column',gap:'8px'}}>
+                  {canManageAssignments && (
                   <button className="kpi__pill kpi__pill--btn" onClick={() => setShowAssign(p => !p)}
                     style={{alignSelf:'flex-start'}}>
                     <Icon name={showAssign ? 'x' : 'plus'} size={12} />
                     {showAssign ? (isES ? 'Cerrar' : 'Close') : (isES ? 'Asignar empleado' : 'Assign employee')}
                   </button>
+                  )}
 
                   {showAssign && (assignEmp ? (
                     <div style={{width:'100%',display:'flex',flexDirection:'column',gap:'10px'}}>

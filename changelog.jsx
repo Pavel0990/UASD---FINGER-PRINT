@@ -284,11 +284,19 @@ function DateStatFilter({ log, dateFilter, onChange }) {
   const activeDay      = selectedDays.length === 1 ? selectedDays[0] : null;
 
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [menuClosing, setMenuClosing] = React.useState(false);
   const [calYM, setCalYM]         = React.useState(null);
-  const [pendingYear, setPendingYear] = React.useState(null); // año que el menú está mostrando sin haber confirmado
+  const [pendingYear, setPendingYear] = React.useState(null);
   const trigRef = React.useRef(null);
   const popRef  = React.useRef(null);
   const [pos, setPos] = React.useState({ top:0, left:0 });
+
+  const closeMenu = () => {
+    setMenuClosing(true);
+  };
+  const onMenuAnimEnd = () => {
+    if (menuClosing) { setMenuOpen(false); setMenuClosing(false); setPendingYear(null); setCalYM(null); setRangeAnchor(null); setHoverDs(null); }
+  };
 
   // Año que el menú usa para listar meses (puede diferir del filtro activo)
   const browsedYear = pendingYear || activeYear;
@@ -308,11 +316,7 @@ function DateStatFilter({ log, dateFilter, onChange }) {
   }, [log, browsedYear]);
 
   const openMenu = (yearPillEl, year) => {
-    // Menú ya abierto → cerrar sin tocar el filtro
-    if (menuOpen) {
-      setMenuOpen(false); setCalYM(null); setRangeAnchor(null); setHoverDs(null); setPendingYear(null);
-      return;
-    }
+    if (menuOpen) { closeMenu(); return; }
     // Abrir menú para el año elegido sin borrar la selección actual
     setPendingYear(year !== activeYear ? year : null);
     setCalYM(null);
@@ -327,7 +331,7 @@ function DateStatFilter({ log, dateFilter, onChange }) {
     if (!menuOpen) return;
     const onMouse = (e) => {
       if (!trigRef.current?.contains(e.target) && !popRef.current?.contains(e.target)) {
-        setMenuOpen(false); setPendingYear(null);
+        closeMenu();
       }
     };
     document.addEventListener('mousedown', onMouse);
@@ -380,9 +384,9 @@ function DateStatFilter({ log, dateFilter, onChange }) {
   };
 
   const pillBase = {
-    fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600,
+    fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600,
     border:'1px solid var(--ink-200)', borderRadius:999,
-    padding:'5px 15px', cursor:'pointer', transition:'all .15s',
+    padding:'8px 22px', cursor:'pointer', transition:'all .15s',
     background:'transparent', color:'var(--ink-500)', lineHeight:1,
   };
   const pillActive = { ...pillBase, background:'var(--ink-800)', color:'var(--cream-100)', border:'1px solid var(--ink-800)' };
@@ -392,7 +396,7 @@ function DateStatFilter({ log, dateFilter, onChange }) {
       ? `${parseInt(selectedDays[0].slice(8))} ${MONTH_NAMES_ES[parseInt(selectedDays[0].slice(5,7))-1]} ${activeYear}`
       : `${selectedDays.length} días — ${MONTH_NAMES_ES[parseInt(activeMonth?.slice(5))-1]} ${activeYear}`
     : selectedMonths.length > 1
-      ? `${selectedMonths.map(m => MONTH_NAMES_ES[parseInt(m.slice(5))-1]).join(', ')} ${activeYear}`
+      ? `${selectedMonths.length} meses — ${activeYear}`
       : activeMonth
         ? `${MONTH_NAMES_ES_FULL[parseInt(activeMonth.slice(5))-1]} ${activeYear}`
         : null;
@@ -401,13 +405,13 @@ function DateStatFilter({ log, dateFilter, onChange }) {
     <div style={{ marginBottom:20 }}>
 
       {/* Pills de año — wrap natural sin cortar */}
-      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', rowGap:6 }}>
+      <div ref={trigRef} style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', rowGap:6 }}>
         {availableYears.map(y => {
           const isActive  = activeYear === y;
           const isBrowsed = browsedYear === y && menuOpen && !isActive;
           const pillBrowsed = { ...pillBase, background:'var(--ink-100)', color:'var(--ink-700)', border:'1px solid var(--ink-300)' };
           return (
-          <button key={y} ref={isActive ? trigRef : null}
+          <button key={y}
             onClick={e => openMenu(e.currentTarget, y)}
             style={isActive ? pillActive : isBrowsed ? pillBrowsed : pillBase}
             onMouseEnter={e => { if (!isActive && !isBrowsed) { e.currentTarget.style.background='var(--ink-100)'; e.currentTarget.style.color='var(--ink-800)'; } }}
@@ -438,9 +442,13 @@ function DateStatFilter({ log, dateFilter, onChange }) {
 
       {/* Mini menú flotante */}
       {menuOpen && ReactDOM.createPortal(
-        <div ref={popRef} style={{ position:'fixed', top:pos.top, left:pos.left, zIndex:9999,
-          background:'var(--paper)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)',
-          boxShadow:'0 8px 28px rgba(0,0,0,0.10)', minWidth:180, overflow:'hidden' }}>
+        <>
+          <div onClick={closeMenu} style={{ position:'fixed', inset:0, zIndex:9998 }} />
+          <div ref={popRef} onAnimationEnd={onMenuAnimEnd}
+            style={{ position:'fixed', top:pos.top, left:pos.left, zIndex:9999,
+              background:'var(--paper)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)',
+              boxShadow:'0 8px 28px rgba(0,0,0,0.10)', minWidth:180, overflow:'hidden',
+              animation: menuClosing ? 'menuClose .18s cubic-bezier(0.4,0,1,1) forwards' : 'menuOpen .18s cubic-bezier(0,0,0.2,1) both' }}>
 
           {!calYM ? (
             /* ── Lista de meses — selección múltiple ── */
@@ -540,7 +548,8 @@ function DateStatFilter({ log, dateFilter, onChange }) {
               </div>
             </div>
           )}
-        </div>,
+        </div>
+        </>,
         document.body
       )}
     </div>
@@ -582,7 +591,12 @@ function ChangelogView({ t }) {
 
       <div className="activity-map">
         <div className="activity-map__left">
-          <div className="activity-map__label">{t.cl_label_admins}</div>
+          <div className="activity-map__label">
+            {t.cl_label_admins}
+            <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
+              ({AUDIT_ADMINS.length})
+            </span>
+          </div>
           <div className="activity-map__grid">
             <AllAdminZone
               log={filteredLog}

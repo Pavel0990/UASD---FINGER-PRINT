@@ -334,11 +334,13 @@ input, select, textarea {
   padding: 0;
   border-radius: 50%;
   border: 1px solid var(--ink-100);
+  transition: color .15s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 .topbar__signout:hover {
-  color: var(--danger);
-  background: rgba(193,85,77,0.06);
-  border-color: rgba(193,85,77,0.25);
+  color: #e07070;
+  background: rgba(193,85,77,0.18);
+  border-color: rgba(193,85,77,0.5);
+  box-shadow: 0 0 0 3px rgba(193,85,77,0.10);
 }
 /* Tooltip */
 .topbar__signout::after {
@@ -4780,6 +4782,8 @@ tr.table__row--selected .table__actions {
   animation: accPop .24s cubic-bezier(.16,1,.3,1);
 }
 @keyframes accPop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes menuOpen  { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes menuClose { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(.97); } }
 .acc-modal__head {
   display: flex;
   align-items: center;
