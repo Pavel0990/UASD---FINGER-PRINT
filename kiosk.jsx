@@ -182,6 +182,12 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
 
   React.useEffect(() => () => clearTimeout(timerRef.current), []);
 
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.shiftKey && e.key === 'P') setRoute('login'); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className={`kiosk ${theme === 'light' ? 'kiosk--light' : ''}`}>
       <div className="kiosk__bg"></div>
@@ -237,7 +243,9 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
             <span>{t.kiosk_status_device}</span>
           </div>
 
-          <div className="hstack" style={{ gap: 12 }}>
+          <div className="hstack" style={{ gap: 12 }}
+            onMouseEnter={e => e.currentTarget.querySelector('a').style.opacity = '1'}
+            onMouseLeave={e => e.currentTarget.querySelector('a').style.opacity = '0'}>
             <a onClick={() => setRoute('login')} style={{
               color: "var(--cream-100)",
               background: "var(--ink-900)",
@@ -249,7 +257,8 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              transition: "background .15s ease", fontSize: "12px"
+              opacity: 0,
+              transition: "background .15s ease, opacity .2s ease", fontSize: "12px"
             }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ink-700)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ink-900)'}>{t.kiosk_admin} →</a>

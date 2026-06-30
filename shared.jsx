@@ -729,6 +729,8 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     plus: <><path d="M12 5v14M5 12h14" /></>,
     arrowRight: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
     arrowLeft: <><path d="M19 12H5M11 6l-6 6 6 6" /></>,
+    panelLeft: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18" /></>,
+    fingerprint: <><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4M14 13.12c0 2.38-.08 4.41-.41 6M17.29 16.77c.34-1.03.51-2.15.51-3.27 0-2.76-2.24-5-5-5a4.98 4.98 0 0 0-3.79 1.74M12 6a8 8 0 0 1 8 8c0 1.52-.17 2.79-.47 3.86M6.44 11.28A6 6 0 0 0 6 13c0 1.62.25 3.2.68 4.67" /></>,
     check: <><path d="M5 12l5 5 9-11" /></>,
     x: <><path d="M6 6l12 12M18 6L6 18" /></>,
     download: <><path d="M12 4v12M6 12l6 6 6-6M5 20h14" /></>,
@@ -806,30 +808,19 @@ function permissionLabel(perm, lang) {
 /* ============================================
    Top bar (admin pages)
    ============================================ */
-function TopBar({ route, setRoute, lang, setLang, t, roleModalOpen }) {
-  const isChangelog = route === 'changelog';
+function TopBar({ route, setRoute, lang, setLang, t }) {
   const isRegister  = route === 'register';
 
   const account = getAccountContext();
   const emp = account.employee || {};
-  const canFarm = typeof userHasPermission === 'function' ? userHasPermission('farm') : false;
-  const isFinca   = route === 'finca';
-  const isRoles   = roleModalOpen;
-  const changelogNavItem = { id: 'changelog', label: t.nav_changelog, icon: 'shield', key: 'c' };
-  const rolesNavItem  = { id: 'roles', label: t.nav_roles, icon: 'shield', key: '3' };
-  const farmNavItem  = { id: 'finca', label: t.farm_title, icon: 'tree',  key: 'f' };
   const mainNav = [
     { id: 'dashboard', label: t.nav_dashboard, icon: 'user',     key: '1' },
     { id: 'reports',   label: t.nav_reports,   icon: 'barChart', key: '2' },
-    ...(isChangelog ? [changelogNavItem] : []),
-    ...(isRoles ? [rolesNavItem] : []),
-    ...(isFinca && canFarm ? [farmNavItem] : []),
   ];
   const regNav = [
     { id: 'register',  label: t.nav_register,  icon: 'userPlus', key: '1' },
     { id: 'dashboard', label: t.nav_dashboard, icon: 'user',     key: '2' },
     { id: 'reports',   label: t.nav_reports,   icon: 'barChart', key: '3' },
-    ...(isFinca && canFarm ? [farmNavItem] : []),
   ];
   const activeNav = isRegister ? regNav : mainNav;
 
@@ -843,7 +834,7 @@ function TopBar({ route, setRoute, lang, setLang, t, roleModalOpen }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [menuOpen]);
 
-  const [accountOpen, setAccountOpen] = React.useState(false);
+  const [adminTab, setAdminTab] = React.useState(null);
 
   const navRef    = React.useRef(null);
   const itemRefs  = React.useRef({});
@@ -892,13 +883,13 @@ function TopBar({ route, setRoute, lang, setLang, t, roleModalOpen }) {
             <div className="topbar__user-name">{emp.name ? emp.name.split(' ')[0][0] + '. ' + emp.name.split(' ').slice(-1)[0] : 'Usuario'}</div>
             <span className="topbar__user-caret"><Icon name="chevDown" size={14} /></span>
           </button>
-          {menuOpen && <UserMenu t={t} lang={lang} account={account} setRoute={setRoute} close={() => setMenuOpen(false)} onAccount={() => { setMenuOpen(false); setAccountOpen(true); }} />}
+          {menuOpen && <UserMenu t={t} lang={lang} account={account} setRoute={setRoute} close={() => setMenuOpen(false)} onAdmin={(tab) => { setMenuOpen(false); setAdminTab(tab); }} />}
         </div>
         <button className="topbar__nav-item topbar__signout" onClick={() => setRoute('kiosk')} aria-label={t.nav_signout} data-tip={t.nav_signout}>
           <Icon name="logOut" size={16} />
         </button>
       </div>
-      {accountOpen && <AccountModal t={t} lang={lang} setLang={setLang} setRoute={setRoute} close={() => setAccountOpen(false)} />}
+      {adminTab && <AdminPanel t={t} lang={lang} setLang={setLang} setRoute={setRoute} initialTab={adminTab} close={() => setAdminTab(null)} />}
     </div>);
 
 }
@@ -917,7 +908,7 @@ function TopBarClock({ t, lang }) {
     </div>);
 }
 
-function UserMenu({ t, lang, account, setRoute, close, onAccount }) {
+function UserMenu({ t, lang, account, setRoute, close, onAdmin }) {
   const emp = account?.employee || {};
   const role = account?.role;
   const rolePerms = role?.perms || [];
@@ -931,42 +922,18 @@ function UserMenu({ t, lang, account, setRoute, close, onAccount }) {
         </div>
       </div>
 
-      <div className="usermenu__role">
-        <div className="usermenu__role-row">
-          <span className="usermenu__role-label">{t.um_role}</span>
-          <span className="badge badge--ok" style={role?.color ? { color: role.color, background: role.color + '18' } : null}>
-            <span className="badge__dot"></span>{role?.name || t.acc_no_role}
-          </span>
-        </div>
-        <div className="usermenu__perms">
-          {rolePerms.slice(0, 4).map((p) =>
-          <span className="usermenu__perm" key={p}><Icon name="check" size={12} stroke={2.6} />{permissionLabel(p, lang)}</span>
-          )}
-        </div>
-      </div>
-
-      <div className="usermenu__meta">
-        <div className="usermenu__meta-item">
-          <span className="usermenu__meta-label">{t.um_id}</span>
-          <span className="usermenu__meta-val mono">{emp.id || '—'}</span>
-        </div>
-        <div className="usermenu__meta-item">
-          <span className="usermenu__meta-label">{t.um_dept}</span>
-          <span className="usermenu__meta-val">{emp.dept || '—'}</span>
-        </div>
-        <div className="usermenu__meta-item">
-          <span className="usermenu__meta-label">{t.um_last}</span>
-          <span className="usermenu__meta-val mono">07:58 AM</span>
-        </div>
-      </div>
-
       <div className="usermenu__actions">
-        <button className="usermenu__action" onClick={onAccount}>
+        <button className="usermenu__action" onClick={() => onAdmin('account')}>
           <Icon name="user" size={15} /> {t.um_view}
         </button>
         {(typeof userHasPermission !== 'function' || userHasPermission('audit')) && (
-        <button className="usermenu__action" onClick={() => { close(); setRoute('changelog'); }}>
-          <Icon name="shield" size={15} /> {t.nav_changelog}
+        <button className="usermenu__action" onClick={() => onAdmin('changelog')}>
+          <Icon name="clock" size={15} /> {t.nav_changelog}
+        </button>
+        )}
+        {(typeof userHasPermission !== 'function' || userHasPermission('roles')) && (
+        <button className="usermenu__action" onClick={() => onAdmin('roles')}>
+          <Icon name="shield" size={15} /> {t.nav_roles}
         </button>
         )}
         {(typeof userHasPermission !== 'function' || userHasPermission('farm')) && (
@@ -974,108 +941,174 @@ function UserMenu({ t, lang, account, setRoute, close, onAccount }) {
           <Icon name="tree" size={15} /> {t.farm_title}
         </button>
         )}
-        {(typeof userHasPermission !== 'function' || userHasPermission('roles')) && (
-        <button className="usermenu__action" onClick={() => { close(); setRoute('roles'); }}>
-          <Icon name="shield" size={15} /> {t.nav_roles}
-        </button>
-        )}
       </div>
     </div>);
 
 }
 
-function AccountModal({ t, lang, setLang, setRoute, close }) {
+function AccountPanelContent({ t }) {
   const [cur, setCur] = React.useState('');
   const [npw, setNpw] = React.useState('');
   const [conf, setConf] = React.useState('');
-  const [msg, setMsg] = React.useState(null); // {type, text}
-  const [reenroll, setReenroll] = React.useState(false);
-
-  React.useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-  const account = getAccountContext();
-  const emp = account.employee || {};
-  const role = account.role;
-  const rolePerms = role?.perms || [];
-  const canRoles = typeof userHasPermission !== 'function' || userHasPermission('roles');
+  const [msg, setMsg] = React.useState(null);
 
   const strong = (p) => p.length >= 8 && /[A-Z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p);
 
   const savePw = (e) => {
     e.preventDefault();
     if (!strong(npw)) { setMsg({ type: 'err', text: t.acc_pw_short }); return; }
-    if (npw !== conf) { setMsg({ type: 'err', text: t.acc_pw_mismatch }); return; }
+    if (npw !== conf)  { setMsg({ type: 'err', text: t.acc_pw_mismatch }); return; }
     const uid = typeof getCurrentUserId === 'function' ? getCurrentUserId() : '';
     if (uid && typeof saveCredential === 'function') {
       const creds = typeof getCredentials === 'function' ? getCredentials() : {};
-      const cur = creds[uid] || {};
-      saveCredential(uid, cur.email || '', npw);
+      const c = creds[uid] || {};
+      saveCredential(uid, c.email || '', npw);
     }
     setMsg({ type: 'ok', text: t.acc_pw_ok });
     setCur(''); setNpw(''); setConf('');
   };
 
+  const account = getAccountContext();
+  const emp = account.employee || {};
+  const role = account.role;
+
+  const infoItems = [
+    { label: t.um_id,         value: emp.id    || '—', mono: true  },
+    { label: t.dash_col_role, value: role?.name || t.acc_no_role, mono: false },
+    { label: t.um_dept,       value: emp.dept   || '—', mono: false },
+    { label: t.um_last, value: localStorage.getItem('uasd_last_login') || '—', mono: true },
+  ];
+
+  return (
+    <div style={{ padding:'32px', display:'flex', flexDirection:'column', gap:28 }}>
+
+      {/* ── Info: código, rol, depto, último acceso ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px,1fr))', gap:12 }}>
+        {infoItems.map((item, i) => (
+          <div key={i} style={{ padding:'16px 18px', background:'var(--cream-50)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)' }}>
+            <div style={{ fontFamily:'var(--font-sans)', fontSize:10, fontWeight:700, color:'var(--ink-300)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:6 }}>{item.label}</div>
+            <div style={{ fontFamily: item.mono ? 'var(--font-mono)' : 'var(--font-sans)', fontSize:14, fontWeight:600, color:'var(--ink-800)' }}>{item.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Cambiar contraseña ── */}
+      <div>
+        <div style={{ fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-300)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:14 }}>
+          {t.acc_pw_title}
+        </div>
+        <div style={{ border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)', padding:'22px', background:'var(--paper)' }}>
+          <form className="acc-form" onSubmit={savePw}>
+            <div className="field">
+              <label className="field__label">{t.acc_pw_current}</label>
+              <input className="field__input" type="password" value={cur}
+                     onChange={(e) => { setCur(e.target.value); setMsg(null); }} placeholder="••••••••" />
+            </div>
+            <div className="acc-form__row">
+              <div className="field">
+                <label className="field__label">{t.acc_pw_new}</label>
+                <input className="field__input" type="password" value={npw}
+                       onChange={(e) => { setNpw(e.target.value); setMsg(null); }} placeholder="••••••••" />
+              </div>
+              <div className="field">
+                <label className="field__label">{t.acc_pw_confirm}</label>
+                <input className="field__input" type="password" value={conf}
+                       onChange={(e) => { setConf(e.target.value); setMsg(null); }} placeholder="••••••••" />
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginTop:4 }}>
+              <span className="field__hint">{t.acc_pw_hint}</span>
+              <button className="btn btn--primary" type="submit">{t.acc_pw_save}</button>
+            </div>
+            {msg && (
+              <div className={`acc-msg acc-msg--${msg.type}`} style={{ marginTop:12 }}>
+                <Icon name={msg.type === 'ok' ? 'check' : 'x'} size={14} stroke={2.4} /> {msg.text}
+              </div>
+            )}
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' }) {
+  const [tab, setTab] = React.useState(initialTab);
+  const [collapsed, setCollapsed] = React.useState(false);
+  const account = getAccountContext();
+  const emp = account.employee || {};
+  const canAudit = typeof userHasPermission !== 'function' || userHasPermission('audit');
+  const canRoles = typeof userHasPermission !== 'function' || userHasPermission('roles');
+
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [close]);
+
+  const canFarm = typeof userHasPermission === 'function' ? userHasPermission('farm') : true;
+  const tabs = [
+    { id: 'account',   label: t.um_view,       icon: 'user'   },
+    ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'clock'  }] : []),
+    ...(canRoles ? [{ id: 'roles',     label: t.nav_roles,     icon: 'shield' }] : []),
+    ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'tree'   }] : []),
+  ];
 
   return (
     <div className="acc-overlay" onMouseDown={close}>
-      <div className="acc-modal" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div className={`admin-panel${collapsed ? ' admin-panel--collapsed' : ''}`} onMouseDown={e => e.stopPropagation()} role="dialog" aria-modal="true">
+        {/* Banda azul */}
         <div className="acc-modal__head">
+          <button onClick={() => setCollapsed(c => !c)}
+            title={collapsed ? 'Expandir panel' : 'Contraer panel'}
+            className="acc-modal__close"
+            style={{ marginRight:8 }}>
+            <span className="admin-panel__toggle-icon">
+              <Icon name="panelLeft" size={18} stroke={1.8} />
+            </span>
+          </button>
           <div className="acc-modal__head-id">
             <div className="acc-modal__avatar">{initials(emp.name || 'Usuario')}</div>
             <div>
-              <div className="acc-modal__title">{t.acc_title}</div>
-              <div className="acc-modal__sub">{emp.name || t.acc_sub}</div>
+              <div className="acc-modal__title">{emp.name || 'Usuario'}</div>
+              <div className="acc-modal__sub">{emp.email || 'usuario@uasd.edu.do'}</div>
             </div>
           </div>
-          <button className="acc-modal__close" onClick={close} aria-label={t.acc_close}>
+          <button className="acc-modal__close acc-modal__close--x" onClick={close} aria-label="Cerrar">
             <Icon name="x" size={18} />
           </button>
         </div>
 
-        <div className="acc-modal__body">
-          {/* Change password */}
-          <section className="acc-sec">
-            <div className="acc-sec__title"><Icon name="shield" size={15} /> {t.acc_pw_title}</div>
-            <form className="acc-form" onSubmit={savePw}>
-              <div className="field">
-                <label className="field__label">{t.acc_pw_current}</label>
-                <input className="field__input" type="password" value={cur}
-                       onChange={(e) => { setCur(e.target.value); setMsg(null); }} placeholder="••••••••" />
-              </div>
-              <div className="acc-form__row">
-                <div className="field">
-                  <label className="field__label">{t.acc_pw_new}</label>
-                  <input className="field__input" type="password" value={npw}
-                         onChange={(e) => { setNpw(e.target.value); setMsg(null); }} placeholder="••••••••" />
-                </div>
-                <div className="field">
-                  <label className="field__label">{t.acc_pw_confirm}</label>
-                  <input className="field__input" type="password" value={conf}
-                         onChange={(e) => { setConf(e.target.value); setMsg(null); }} placeholder="••••••••" />
-                </div>
-              </div>
-              <div className="acc-form__foot">
-                <span className="field__hint">{t.acc_pw_hint}</span>
-                <button className="btn btn--primary" type="submit">{t.acc_pw_save}</button>
-              </div>
-              {msg && (
-                <div className={`acc-msg acc-msg--${msg.type}`}>
-                  <Icon name={msg.type === 'ok' ? 'check' : 'x'} size={14} stroke={2.4} /> {msg.text}
-                </div>
-              )}
-            </form>
-          </section>
+        {/* Cuerpo: sidebar + contenido */}
+        <div className="admin-panel__body">
+          <div className={`admin-panel__sidebar${collapsed ? ' admin-panel__sidebar--collapsed' : ''}`}>
+            {!collapsed && <div className="admin-panel__sidebar-label">Administración</div>}
+            {tabs.map(item => (
+              <button key={item.id}
+                className={`admin-panel__nav-item${tab === item.id ? ' admin-panel__nav-item--active' : ''}`}
+                title={collapsed ? item.label : undefined}
+                onClick={() => setTab(item.id)}
+                style={{ justifyContent: 'flex-start', padding: collapsed ? '10px 16px' : '10px 14px' }}>
+                <Icon name={item.icon} size={15} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="admin-panel__content">
+            {tab === 'account'   && <AccountPanelContent t={t} lang={lang} setLang={setLang} />}
+            {tab === 'changelog' && <ChangelogView t={t} setRoute={setRoute} />}
+            {tab === 'roles'     && <RolesView t={t} setRoute={setRoute} onClose={close} />}
+            {tab === 'finca'     && <FarmView t={t} lang={lang} setRoute={setRoute} />}
+          </div>
         </div>
       </div>
-    </div>);
-
+    </div>
+  );
 }
 function LangSwitch({ lang, setLang, dark = false }) {
   const wrapRef  = React.useRef(null);
@@ -1260,7 +1293,7 @@ function getLateMinutes(schedule, timeStr) {
 
 Object.assign(window, {
   I18N, EMPLOYEES, RECENT_LOG, DEPT_DIST,
-  Icon, Crest, TopBar, LangSwitch,
+  Icon, Crest, TopBar, LangSwitch, AdminPanel,
   initials, StatusBadge, formatTime, formatDate, formatCedula, T, getLateMinutes,
   WEEK_DAYS, WorkDaysPicker, workDaysLabel, ToggleSwitch,
 });

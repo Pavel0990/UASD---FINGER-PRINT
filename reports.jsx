@@ -203,7 +203,7 @@ function ReportsView({ t, lang, setRoute }) {
       </div>
 
       {/* ── Fila inferior: histograma + donut + actividad ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:20, marginBottom:20 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20, marginBottom:20 }}>
         <div className="chart-card">
           <div className="chart-card__head">
             <div>
@@ -257,7 +257,7 @@ function ReportsView({ t, lang, setRoute }) {
           Detalle del período
         </div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:20 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20 }}>
         <TardanzasReport filterMonth={filterMonth} monthLabel={monthLabel}/>
         <StrikesReport   filterMonth={filterMonth} monthLabel={monthLabel}/>
         <EventualidadesReport filterMonth={filterMonth} monthLabel={monthLabel}/>
@@ -331,7 +331,7 @@ function HourHistogram({ t }) {
 
   return (
     <div style={{ padding:'8px 0' }}>
-      <div className="bars" style={{ height:140, gap:6 }}>
+      <div className="bars" style={{ height:'clamp(90px, 20vw, 140px)', gap:6 }}>
         {hours.map((h, i) => (
           <div className="bars__col" key={i}>
             <div className="bars__bar" style={{

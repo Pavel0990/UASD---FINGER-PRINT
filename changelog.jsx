@@ -156,11 +156,12 @@ function AllAdminZone({ log, isActive, onClick, t }) {
   );
 }
 
-function ActivityTimeline({ admin, log, typeFilter, setTypeFilter, t }) {
+function ActivityTimeline({ admin, log, typeFilter, setTypeFilter, monthFilter, t }) {
   const isAll = admin.id === '__all__';
   const entries = log.filter(e => {
     if (!isAll && e.actor?.id !== admin.id) return false;
     if (typeFilter !== 'all' && e.type !== typeFilter) return false;
+    if (monthFilter && !e.ts.startsWith(monthFilter)) return false;
     return true;
   });
 
@@ -259,17 +260,56 @@ function ActivityTimeline({ admin, log, typeFilter, setTypeFilter, t }) {
   );
 }
 
+const MONTH_NAMES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
 function ChangelogView({ t }) {
   const [log, setLog]               = React.useState(getAuditLog);
   const [activeId, setActiveId]     = React.useState('__all__');
   const [typeFilter, setTypeFilter] = React.useState('all');
 
+  const now          = new Date();
+  const currentYear  = String(now.getFullYear());
+  const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+
+  const [yearFilter,  setYearFilter]  = React.useState(currentYear);
+  const [monthFilter, setMonthFilter] = React.useState(currentMonth);
+
   React.useEffect(() => { setLog(getAuditLog()); }, []);
+
+  // Años disponibles en el log + año actual
+  const availableYears = React.useMemo(() => {
+    const set = new Set(log.map(e => e.ts.slice(0, 4)));
+    set.add(currentYear);
+    return Array.from(set).sort().reverse();
+  }, [log]);
+
+  // Meses del año seleccionado que tienen entradas + mes actual si es el año actual
+  const availableMonths = React.useMemo(() => {
+    const set = new Set(
+      log.filter(e => e.ts.startsWith(yearFilter)).map(e => e.ts.slice(0, 7))
+    );
+    if (yearFilter === currentYear) set.add(currentMonth);
+    return Array.from(set).sort().reverse();
+  }, [log, yearFilter]);
 
   const allAdmin    = { id: '__all__', name: t.cl_all_name, initials: '∑', dept: t.cl_all_dept };
   const activeAdmin = activeId === '__all__'
     ? allAdmin
     : (AUDIT_ADMINS.find(a => a.id === activeId) ?? AUDIT_ADMINS[0]);
+
+  const handleYearChange = (y) => {
+    setYearFilter(y);
+    setTypeFilter('all');
+    // Seleccionar mes actual si es el año actual, si no el más reciente del año
+    if (y === currentYear) {
+      setMonthFilter(currentMonth);
+    } else {
+      const months = log.filter(e => e.ts.startsWith(y)).map(e => e.ts.slice(0, 7)).sort().reverse();
+      setMonthFilter(months[0] || `${y}-01`);
+    }
+  };
+
+  const filteredLog = log.filter(e => e.ts.startsWith(monthFilter));
 
   return (
     <div className="page">
@@ -284,12 +324,34 @@ function ChangelogView({ t }) {
         </span>
       </div>
 
+      {/* Filtro año → mes */}
+      <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+        <div style={{ display:'flex', gap:6 }}>
+          {availableYears.map(y => (
+            <button key={y}
+              onClick={() => handleYearChange(y)}
+              className={`ev-month-btn${yearFilter === y ? ' ev-month-btn--active' : ''}`}>
+              {y}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {availableMonths.map(ym => (
+            <button key={ym}
+              onClick={() => { setMonthFilter(ym); setTypeFilter('all'); }}
+              className={`ev-month-btn${monthFilter === ym ? ' ev-month-btn--active' : ''}`}>
+              {MONTH_NAMES_ES[parseInt(ym.slice(5), 10) - 1]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="activity-map">
         <div className="activity-map__left">
           <div className="activity-map__label">{t.cl_label_admins}</div>
           <div className="activity-map__grid">
             <AllAdminZone
-              log={log}
+              log={filteredLog}
               isActive={activeId === '__all__'}
               onClick={() => { setActiveId('__all__'); setTypeFilter('all'); }}
               t={t}
@@ -298,7 +360,7 @@ function ChangelogView({ t }) {
               <AdminZone
                 key={admin.id}
                 admin={admin}
-                log={log}
+                log={filteredLog}
                 isActive={activeId === admin.id}
                 onClick={() => { setActiveId(admin.id); setTypeFilter('all'); }}
                 t={t}
@@ -309,9 +371,10 @@ function ChangelogView({ t }) {
 
         <ActivityTimeline
           admin={activeAdmin}
-          log={log}
+          log={filteredLog}
           typeFilter={typeFilter}
           setTypeFilter={setTypeFilter}
+          monthFilter={monthFilter}
           t={t}
         />
       </div>

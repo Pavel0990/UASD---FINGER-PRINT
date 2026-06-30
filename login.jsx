@@ -16,13 +16,21 @@ function LoginView({ t, lang, setLang, setRoute }) {
       setSubmitting(false);
       const creds = typeof getCredentials === 'function' ? getCredentials() : {};
       const found = Object.entries(creds).find(([, c]) => c.email.toLowerCase() === email.trim().toLowerCase());
+      const saveLogin = () => {
+        const now = new Date();
+        const time = now.toLocaleTimeString('es-DO', { hour:'2-digit', minute:'2-digit', hour12:true });
+        const date = now.toLocaleDateString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric' });
+        localStorage.setItem('uasd_last_login', `${date} ${time}`);
+      };
       if (found && found[1].password === pass) {
         if (typeof setCurrentUserId === 'function') setCurrentUserId(found[0]);
+        saveLogin();
         setRoute('dashboard');
       } else {
         // fallback for demo: hardcoded admin
         if (email.trim().toLowerCase() === 'ggomez@uasd.edu.do' && pass === 'Uasd2026') {
           if (typeof setCurrentUserId === 'function') setCurrentUserId('EMP-00601');
+          saveLogin();
           setRoute('dashboard');
         } else {
           setError(true);

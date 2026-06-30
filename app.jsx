@@ -73,15 +73,11 @@ function App() {
   const [lang, setLang] = React.useState('es');
   const [flash, setFlash] = React.useState(null);
   const [addedEmployees, setAddedEmployees] = React.useState([]);
-  const [roleModalOpen, setRoleModalOpen] = React.useState(false);
   const kioskTheme = t_state.kioskTheme || 'light';
 
   const go = (r) => {
-    if (r === 'roles') { setRoleModalOpen(true); return; }
-    if (roleModalOpen) setRoleModalOpen(false);
     setRoute_(r);
   };
-  const closeRoleModal = () => setRoleModalOpen(false);
 
   const t = I18N[lang];
 
@@ -92,13 +88,6 @@ function App() {
     }
   }, [flash]);
 
-  // Close modal on Escape
-  React.useEffect(() => {
-    if (!roleModalOpen) return;
-    const onKey = (e) => { if (e.key === 'Escape') setRoleModalOpen(false); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [roleModalOpen]);
 
   // Two-phase route transition: exit current → mount + enter next
   const [visibleRoute, setVisibleRoute] = React.useState(route);
@@ -137,7 +126,7 @@ function App() {
   return (
     <div className={`app-shell ${visibleRoute === 'kiosk' && kioskTheme === 'dark' ? 'app-shell--dark' : ''}`}>
       {isAdminLayout && (
-        <TopBar route={visibleRoute} setRoute={go} lang={lang} setLang={setLang} t={t} roleModalOpen={roleModalOpen}/>
+        <TopBar route={visibleRoute} setRoute={go} lang={lang} setLang={setLang} t={t}/>
       )}
 
       <div key={visibleRoute} className={routeAnim}>
@@ -146,22 +135,9 @@ function App() {
       {visibleRoute === 'dashboard' && <DashboardView  t={t} lang={lang} setLang={setLang} setRoute={go} extraEmployees={addedEmployees}/>}
       {visibleRoute === 'register'  && <RegisterView   t={t} setRoute={go} setFlash={setFlash} onRegister={(emp) => setAddedEmployees(prev => [...prev, emp])}/>}
       {visibleRoute === 'reports'   && <ReportsView    t={t} lang={lang} setRoute={go}/>}
-      {visibleRoute === 'changelog' && <ChangelogView  t={t} setRoute={go}/>}
       {visibleRoute === 'finca'     && <FarmView      t={t} lang={lang} setRoute={go}/>}
       </div>
 
-      {roleModalOpen && (
-        <div className="acc-overlay" onMouseDown={closeRoleModal} style={{zIndex:1000}}>
-          <div onMouseDown={e => e.stopPropagation()}
-            style={{width:'95vw',maxWidth:'1200px',maxHeight:'90vh',overflow:'auto',background:'var(--paper)',borderRadius:'var(--radius-lg)',boxShadow:'var(--shadow-xl)',position:'relative'}}>
-            <button onClick={closeRoleModal}
-              style={{position:'sticky',top:'12px',float:'right',margin:'12px 12px 0 0',zIndex:10,background:'var(--cream-50)',border:'1px solid var(--ink-100)',borderRadius:'50%',width:'36px',height:'36px',display:'grid',placeItems:'center',cursor:'pointer',color:'var(--ink-500)'}}>
-              <Icon name="x" size={18} />
-            </button>
-            <RolesView t={t} setRoute={go} onClose={closeRoleModal} />
-          </div>
-        </div>
-      )}
 
       {flash && <div className="flash">{flash}</div>}
 
