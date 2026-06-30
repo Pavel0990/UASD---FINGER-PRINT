@@ -382,6 +382,47 @@ input, select, textarea {
   transform: translateY(0);
 }
 
+/* Color swatch: custom tooltip badge with the color name */
+.color-swatch { position: relative; }
+.color-swatch::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+  z-index: 50;
+}
+.color-swatch::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  border: 5px solid transparent;
+  border-top-color: var(--ink-900);
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+  z-index: 50;
+}
+.color-swatch:hover::after,
+.color-swatch:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .topbar__right {
   display: flex;
   align-items: center;
@@ -1796,6 +1837,7 @@ input, select, textarea {
   white-space: nowrap;
 }
 .kpi__pill--up { color: #2f7a5a; border-color: rgba(79,157,122,0.35); }
+.kpi__pill--danger { color: var(--danger); border-color: rgba(193,85,77,0.35); }
 .kpi--fill .kpi__pill { color: var(--cream-100); border-color: rgba(245,242,234,0.28); }
 .kpi--warn .kpi__pill { color: var(--gold-600); border-color: rgba(201,169,97,0.4); }
 .kpi--ok .kpi__pill { color: #2f7a5a; border-color: rgba(79,157,122,0.4); }
@@ -2733,22 +2775,6 @@ tr.table__row--selected .table__actions {
 }
 .status-card--new:hover { border-color: var(--ink-200); border-left-color: var(--ink-400); background: var(--cream-50); box-shadow: 0 2px 10px rgba(14,18,38,.07); }
 .status-new__input { width: 100%; }
-.status-new__colors { display: flex; flex-wrap: wrap; gap: 6px; }
-.status-new__chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 4px 10px; border-radius: 20px;
-  border: 1.5px solid var(--ink-100); background: none;
-  font-size: 11.5px; font-weight: 500; font-family: var(--font-ui);
-  color: var(--ink-600); cursor: pointer;
-  transition: border-color .15s, background .15s, color .15s;
-}
-.status-new__chip:hover { border-color: var(--ink-300); color: var(--ink-800); }
-.status-new__chip--on { color: var(--ink-800); font-weight: 600; }
-.status-new__chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ink-200); }
-.status-new__chip--custom { position: relative; }
-.status-new__chip--custom input[type=color] {
-  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-}
 
 .status-new__actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; }
 .status-new__cancel {
@@ -5267,6 +5293,13 @@ tr.table__row--selected .table__actions {
 @keyframes body-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes roleFormIn {
+  from { opacity: 0; transform: translateY(-10px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+.role-form-field {
+  animation: roleFormIn .28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .act-panel__body {
   overflow-y: auto;

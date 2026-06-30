@@ -813,31 +813,7 @@ function StatusPicker({ status, inactiveReason, onChange, t }) {
 
   const opts = [...builtIn, ...customOpts];
 
-  const colorOpts = [
-    { cls: 'badge--ok',      bg: '#2f7a5a', label: 'Verde'  },
-    { cls: 'badge--warn',    bg: '#8a6c2c', label: 'Ámbar'  },
-    { cls: 'badge--neutral', bg: '#8b97b3', label: 'Azul'   },
-    { cls: 'badge--retired', bg: '#2C3E66', label: 'Marino' },
-  ];
-
-  const COLOR_NAMES = [
-    { name:'Rojo',     hex:'#c1554d' }, { name:'Naranja', hex:'#c1793c' },
-    { name:'Ámbar',    hex:'#8a6c2c' }, { name:'Lima',    hex:'#5a8a2c' },
-    { name:'Verde',    hex:'#2f7a5a' }, { name:'Turquesa',hex:'#2d7d9a' },
-    { name:'Azul',     hex:'#4a6fa5' }, { name:'Marino',  hex:'#2C3E66' },
-    { name:'Púrpura',  hex:'#6b5b9e' }, { name:'Rosa',    hex:'#9e4d6b' },
-    { name:'Gris',     hex:'#8b97b3' },
-  ];
-  function nearestColorName(hex) {
-    const r1 = parseInt(hex.slice(1,3),16), g1 = parseInt(hex.slice(3,5),16), b1 = parseInt(hex.slice(5,7),16);
-    return COLOR_NAMES.reduce((best, c) => {
-      const r2 = parseInt(c.hex.slice(1,3),16), g2 = parseInt(c.hex.slice(3,5),16), b2 = parseInt(c.hex.slice(5,7),16);
-      const d = (r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2;
-      return d < best.d ? { d, name: c.name } : best;
-    }, { d: Infinity, name: '' }).name;
-  }
-
-  function pickPreset(cls, bg) { setNewCls(cls); setNewColor(bg); }
+  function pickPreset(bg) { setNewColor(bg); }
   function pickCustomColor(hex) { setNewColor(hex); setNewCls(''); }
 
   function addStatus() {
@@ -927,31 +903,28 @@ function StatusPicker({ status, inactiveReason, onChange, t }) {
             onChange={e => setNewDesc(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') addStatus(); if (e.key === 'Escape') setAdding(false); }}
             style={{marginTop: 6}} />
-          <div className="status-new__colors">
-            {colorOpts.map(c => {
-              const on = newColor === c.bg;
-              const textColor = on ? (isLightColor(c.bg) ? '#1a1a1a' : c.bg) : undefined;
+          <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+            {PRESET_COLORS.map(bg => {
+              const on = newColor === bg;
               return (
-                <button key={c.cls} type="button"
-                  className={`status-new__chip${on ? ' status-new__chip--on' : ''}`}
-                  style={on ? { borderColor: c.bg, background: c.bg + '22', color: textColor } : {}}
-                  onClick={() => pickPreset(c.cls, c.bg)}>
-                  <span className="status-new__chip-dot" style={{ background: c.bg }}/>
-                  {c.label}
-                </button>
+                <div key={bg} className="color-swatch" data-tip={PRESET_COLOR_NAMES[bg]} onClick={() => pickPreset(bg)}
+                  style={{width:'28px',height:'28px',borderRadius:'50%',background:bg,cursor:'pointer',
+                    border: on ? '2px solid var(--ink-800)' : '2px solid var(--ink-100)',
+                    boxShadow: on ? '0 0 0 3px rgba(201,169,97,0.25)' : 'none'}} />
               );
             })}
             {(() => {
-              const isCustom = newColor && !colorOpts.some(c => c.bg === newColor);
-              const textColor = isCustom ? (isLightColor(newColor) ? '#1a1a1a' : newColor) : undefined;
+              const isCustom = newColor && !PRESET_COLORS.includes(newColor);
               return (
-                <label className={`status-new__chip status-new__chip--custom${isCustom ? ' status-new__chip--on' : ''}`}
-                  style={isCustom ? { borderColor: newColor, background: newColor + '22', color: textColor } : {}}>
-                  <span className="status-new__chip-dot"
-                    style={{ background: isCustom ? newColor : undefined, opacity: isCustom ? 1 : 0.4 }}/>
-                  {isCustom ? nearestColorName(newColor) : 'Otro…'}
+                <label className="color-swatch" data-tip={isCustom ? nearestColorName(newColor) : 'Otro…'}
+                  style={{position:'relative',width:'28px',height:'28px',borderRadius:'50%',cursor:'pointer',display:'grid',placeItems:'center',
+                    background: isCustom ? newColor : 'conic-gradient(from 0deg,#e3494a,#e8a33d,#e3d23f,#4caf6e,#4a6fa5,#8b2942,#e3494a)',
+                    border: isCustom ? '2px solid var(--ink-800)' : '2px solid var(--ink-100)',
+                    boxShadow: isCustom ? '0 0 0 3px rgba(201,169,97,0.25)' : 'none'}}>
+                  {!isCustom && <span style={{color:'#fff'}}><Icon name="plus" size={12} stroke={2.4} /></span>}
                   <input type="color" value={newColor || '#6366f1'}
-                    onChange={e => pickCustomColor(e.target.value)} />
+                    onChange={e => pickCustomColor(e.target.value)}
+                    style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%',border:'none',padding:0}} />
                 </label>
               );
             })()}
@@ -1534,6 +1507,8 @@ function StrikeBadge({ count }) {
 }
 
 function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
+  const canEnroll = typeof userHasPermission !== 'function' || userHasPermission('enroll');
+  const canManage = typeof userHasPermission !== 'function' || userHasPermission('manage');
   const [filter, setFilter] = React.useState('all');
   const [subFilter, setSubFilter] = React.useState(null);
   const [query, setQuery] = React.useState('');
@@ -1936,9 +1911,11 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
               </div>
             )}
           </div>
-          <button className="btn btn--primary" onClick={() => setRoute('register')}>
-            <Icon name="plus" size={14}/> {t.dash_new}
-          </button>
+          {canEnroll && (
+            <button className="btn btn--primary" onClick={() => setRoute('register')}>
+              <Icon name="plus" size={14}/> {t.dash_new}
+            </button>
+          )}
         </div>
       </div>
 
@@ -2080,14 +2057,16 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                   <StrikeBadge count={unjustifiedThisMonth(e.id)}/>
                 </td>
                 <td className="table__actions-cell">
-                  <div className="table__actions">
-                    <button className="table__action-btn" onClick={(event) => { event.stopPropagation(); openEditor(e); }} title="Editar">
-                      <Icon name="edit" size={14}/>
-                    </button>
-                    <button className="table__action-btn table__action-btn--del" onClick={(event) => { event.stopPropagation(); setDeleteConfirm(e); }} title="Eliminar">
-                      <Icon name="trash" size={14}/>
-                    </button>
-                  </div>
+                  {canManage && (
+                    <div className="table__actions">
+                      <button className="table__action-btn" onClick={(event) => { event.stopPropagation(); openEditor(e); }} title="Editar">
+                        <Icon name="edit" size={14}/>
+                      </button>
+                      <button className="table__action-btn table__action-btn--del" onClick={(event) => { event.stopPropagation(); setDeleteConfirm(e); }} title="Eliminar">
+                        <Icon name="trash" size={14}/>
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td className="mono table__cell-last"><FlipCounter value={getLiveLastIn(e.id) || e.lastIn} /></td>
               </tr>

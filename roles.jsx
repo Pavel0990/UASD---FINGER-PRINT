@@ -20,13 +20,12 @@ const SEED_ASSIGNMENTS = [
 ];
 
 const ALL_PERMS = [
-  { id: 'enroll',       label_es: 'Registrar huellas',       label_en: 'Enroll fingerprints' },
-  { id: 'reports',      label_es: 'Ver reportes',            label_en: 'View reports' },
-  { id: 'manage',       label_es: 'Gestionar empleados',     label_en: 'Manage employees' },
-  { id: 'roles',        label_es: 'Gestionar roles',         label_en: 'Manage roles' },
-  { id: 'audit',        label_es: 'Control de actividad',    label_en: 'Activity log' },
-  { id: 'farm',         label_es: 'Control de finca',        label_en: 'Farm control' },
-  { id: 'kiosk_admin',  label_es: 'Panel del terminal',      label_en: 'Kiosk admin panel' },
+  { id: 'enroll',  label_es: 'Registrar empleados',  label_en: 'Register employees' },
+  { id: 'reports', label_es: 'Ver reportes',          label_en: 'View reports' },
+  { id: 'manage',  label_es: 'Gestionar empleados',   label_en: 'Manage employees' },
+  { id: 'roles',   label_es: 'Gestionar roles',       label_en: 'Manage roles' },
+  { id: 'audit',   label_es: 'Control de actividad',  label_en: 'Activity log' },
+  { id: 'farm',    label_es: 'Control de finca',      label_en: 'Farm control' },
 ];
 
 (function seedRoles() {
@@ -280,8 +279,9 @@ function RolesView({ t, setRoute }) {
         </div>
         {canCreateRole && (
           <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
-            <button className="kpi__pill kpi__pill--up" onClick={() => startEdit()}>
-              + {isES ? 'Nuevo rol' : 'New role'}
+            <button className={`kpi__pill ${editing && !editing.id ? 'kpi__pill--danger' : 'kpi__pill--up'}`}
+              onClick={() => editing && !editing.id ? setEditing(null) : startEdit()}>
+              {editing && !editing.id ? '−' : '+'} {isES ? 'Nuevo rol' : 'New role'}
             </button>
           </div>
         )}
@@ -317,50 +317,79 @@ function RolesView({ t, setRoute }) {
                 </button>
               );
             })}
+
+            {editing && !editing.id && (
+              <div className="az" style={{opacity: editing.name ? 1 : 0.4, border:'1px dashed var(--ink-200)', transition:'opacity .2s'}}>
+                <div className="az__avatar" style={{background: editing.color || 'var(--ink-200)'}}>
+                  {editing.name
+                    ? editing.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
+                    : <Icon name="diamondPlus" size={14} stroke={2} />}
+                </div>
+                <div className="az__name" style={{color: editing.name ? 'var(--ink-800)' : 'var(--ink-300)'}}>
+                  {editing.name || (isES ? 'Nuevo rol' : 'New role')}
+                </div>
+                <div className="az__dept">{editing.description || '—'}</div>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="act-panel">
           {editing ? (
             <div className="audit-toolbar" style={{flexDirection:'column',alignItems:'stretch'}}>
-              <div className="act-panel__who">
+              <div className="act-panel__who role-form-field" style={{animationDelay:'0ms'}}>
                 <div className="act-panel__avatar" style={{background:editing.color}}>
-                  {editing.name ? editing.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : '?'}
+                  {editing.name ? editing.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : <Icon name="diamondPlus" size={16} stroke={2} />}
                 </div>
                 <div>
                   <div className="act-panel__name">{editing.id ? (isES?'Editar rol':'Edit role') : (isES?'Crear nuevo rol':'New role')}</div>
-                  <div className="act-panel__dept">{isES ? 'Complete los datos del rol' : 'Fill in the role details'}</div>
+                  <div className="act-panel__dept">{isES ? 'Completa los datos' : 'Fill in the role details'}</div>
                 </div>
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:'14px',marginTop:'8px'}}>
-                <div>
+                <div className="role-form-field" style={{animationDelay:'40ms'}}>
                   <label className="activity-map__label" style={{marginBottom:'6px'}}>
                     {isES ? 'Nombre' : 'Name'}
                   </label>
-                  <input className="mono" value={editing.name} onChange={e => setEditing({...editing,name:e.target.value})}
+                  <input value={editing.name} onChange={e => setEditing({...editing,name:e.target.value})}
                     placeholder={isES?'Ej. Auditor':'e.g. Auditor'}
-                    style={{width:'100%',padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'14px',background:'var(--paper)'}} />
+                    style={{width:'100%',padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'14px',background:'var(--paper)',fontFamily:'var(--font-sans)',fontWeight:500,color:'var(--ink-800)'}} />
                 </div>
-                <div>
+                <div className="role-form-field" style={{animationDelay:'80ms'}}>
                   <label className="activity-map__label" style={{marginBottom:'6px'}}>
                     {isES ? 'Descripción' : 'Description'}
                   </label>
-                  <input className="mono" value={editing.description} onChange={e => setEditing({...editing,description:e.target.value})}
+                  <input value={editing.description} onChange={e => setEditing({...editing,description:e.target.value})}
                     placeholder={isES?'Ej. Acceso a reportes y auditoría':'e.g. Report and audit access'}
-                    style={{width:'100%',padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'14px',background:'var(--paper)'}} />
+                    style={{width:'100%',padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'14px',background:'var(--paper)',fontFamily:'var(--font-sans)',fontWeight:500,color:'var(--ink-800)'}} />
                 </div>
-                <div>
+                <div className="role-form-field" style={{animationDelay:'120ms'}}>
                   <label className="activity-map__label" style={{marginBottom:'8px'}}>
                     {isES ? 'Color' : 'Color'}
                   </label>
                   <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-                    {['#C9A961','#2C3E66','#1A1F3A','#5a6a90','#8a6c2c','#2f7a5a','#8b2942','#4a6fa5'].map(c =>
-                      <div key={c} onClick={() => setEditing({...editing,color:c})}
+                    {PRESET_COLORS.map(c =>
+                      <div key={c} className="color-swatch" data-tip={PRESET_COLOR_NAMES[c]} onClick={() => setEditing({...editing,color:c})}
                         style={{width:'28px',height:'28px',borderRadius:'50%',background:c,cursor:'pointer',border:editing.color===c?'2px solid var(--ink-800)':'2px solid var(--ink-100)',boxShadow:editing.color===c?'0 0 0 3px rgba(201,169,97,0.25)':'none'}} />
                     )}
+                    {(() => {
+                      const isCustom = editing.color && !PRESET_COLORS.includes(editing.color);
+                      return (
+                        <label className="color-swatch" data-tip={isCustom ? nearestColorName(editing.color) : (isES ? 'Color personalizado' : 'Custom color')}
+                          style={{position:'relative',width:'28px',height:'28px',borderRadius:'50%',cursor:'pointer',display:'grid',placeItems:'center',
+                            background: isCustom ? editing.color : 'conic-gradient(from 0deg,#e3494a,#e8a33d,#e3d23f,#4caf6e,#4a6fa5,#8b2942,#e3494a)',
+                            border: isCustom ? '2px solid var(--ink-800)' : '2px solid var(--ink-100)',
+                            boxShadow: isCustom ? '0 0 0 3px rgba(201,169,97,0.25)' : 'none'}}>
+                          {!isCustom && <span style={{color:'#fff'}}><Icon name="plus" size={12} stroke={2.4} /></span>}
+                          <input type="color" value={editing.color || '#2C3E66'}
+                            onChange={e => setEditing({...editing,color:e.target.value})}
+                            style={{position:'absolute',inset:0,opacity:0,cursor:'pointer',width:'100%',height:'100%',border:'none',padding:0}} />
+                        </label>
+                      );
+                    })()}
                   </div>
                 </div>
-                <div>
+                <div className="role-form-field" style={{animationDelay:'160ms'}}>
                   <label className="activity-map__label" style={{marginBottom:'8px'}}>
                     {isES ? 'Permisos' : 'Permissions'}
                   </label>
@@ -368,18 +397,18 @@ function RolesView({ t, setRoute }) {
                     {grantablePerms.map(p => (
                       <label key={p.id} style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer',fontSize:'13px',padding:'7px 0',borderBottom:'1px solid var(--ink-100)'}}>
                         <input type="checkbox" checked={editing.perms.includes(p.id)} onChange={() => togglePerm(p.id)}
-                          style={{accentColor:'var(--gold-500)',width:'15px',height:'15px'}} />
+                          style={{accentColor:'#2C3E66',width:'15px',height:'15px'}} />
                         {permLabel(p.id)}
                       </label>
                     ))}
                   </div>
                 </div>
-                <div style={{display:'flex',gap:'8px',marginTop:'4px'}}>
-                  <button className="kpi__pill kpi__pill--up" onClick={saveEdit}>
-                    <Icon name="check" size={13} /> {isES ? 'Guardar' : 'Save'}
-                  </button>
-                  <button className="kpi__pill kpi__pill--btn" onClick={() => setEditing(null)}>
+                <div className="role-form-field" style={{display:'flex',justifyContent:'flex-end',gap:'8px',marginTop:'4px',animationDelay:'200ms'}}>
+                  <button className="btn btn--ghost" onClick={() => setEditing(null)} style={{padding:'7px 14px',fontSize:'12px'}}>
                     {isES ? 'Cancelar' : 'Cancel'}
+                  </button>
+                  <button className="btn btn--primary" onClick={saveEdit} style={{padding:'7px 14px',fontSize:'12px'}}>
+                    <Icon name="check" size={12} /> {isES ? 'Guardar' : 'Save'}
                   </button>
                 </div>
               </div>

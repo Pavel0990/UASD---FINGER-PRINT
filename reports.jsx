@@ -20,6 +20,10 @@ const ATTEND_LOW    = ATTEND_TOTALS.indexOf(Math.min(...ATTEND_TOTALS));
 function todayKey() { return new Date().toLocaleDateString('en-CA').slice(0, 7); }
 
 function ReportsView({ t, lang, setRoute }) {
+  React.useEffect(() => {
+    if (typeof userHasPermission === 'function' && !userHasPermission('reports')) setRoute('dashboard');
+  }, []);
+
   const [hoveredIdx, setHoveredIdx] = React.useState(null);
 
   const [filterMonth, setFilterMonth] = React.useState(todayKey);

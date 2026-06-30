@@ -109,8 +109,10 @@ function App() {
 
   // Keyboard shortcuts — work from any screen
   React.useEffect(() => {
-    const canFarm = typeof userHasPermission === 'function' && userHasPermission('farm');
-    const map = { '1': 'dashboard', '2': 'register', '3': 'reports', '4': (typeof userHasPermission === 'function' && userHasPermission('roles')) ? 'roles' : undefined, '5': canFarm ? 'finca' : undefined };
+    const canFarm    = typeof userHasPermission === 'function' && userHasPermission('farm');
+    const canEnroll  = typeof userHasPermission !== 'function' || userHasPermission('enroll');
+    const canReports = typeof userHasPermission !== 'function' || userHasPermission('reports');
+    const map = { '1': 'dashboard', '2': canEnroll ? 'register' : undefined, '3': canReports ? 'reports' : undefined, '4': (typeof userHasPermission === 'function' && userHasPermission('roles')) ? 'roles' : undefined, '5': canFarm ? 'finca' : undefined };
     const onKey = (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;

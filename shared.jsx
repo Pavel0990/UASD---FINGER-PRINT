@@ -760,6 +760,7 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     users: <><circle cx="9" cy="7" r="3.5" /><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7" /><circle cx="18" cy="6" r="2.5" /><path d="M22 21c0-2.8-1.8-5.2-4.3-6.1" /></>,
     landPlot: <><path d="m12 8 6-3-6-3v10"/><path d="m8 11.99-5.5 3.14a1 1 0 0 0 0 1.74l8.5 4.86a2 2 0 0 0 2 0l8.5-4.86a1 1 0 0 0 0-1.74L16 12"/><path d="m6.49 12.85 11.02 6.3"/><path d="M17.51 12.85 6.5 19.15"/></>,
     lock: <><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
+    diamondPlus: <><path d="M12 8v8"/><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0z"/><path d="M8 12h8"/></>,
     userMale: <><circle cx="10" cy="11" r="7"/><path d="M15.5 3H21v5.5M21 3l-7 7"/></>,
     userFemale: <><circle cx="12" cy="9" r="7"/><path d="M12 16v6M9 19h6"/></>,
     photoMale: <><circle cx="12" cy="7" r="4.5"/><path d="M3.5 21a8.5 8.5 0 0 1 17 0"/></>,
@@ -815,14 +816,16 @@ function TopBar({ route, setRoute, lang, setLang, t }) {
 
   const account = getAccountContext();
   const emp = account.employee || {};
+  const canReports = typeof userHasPermission !== 'function' || userHasPermission('reports');
+  const reportsItem = { id: 'reports', label: t.nav_reports, icon: 'barChart', key: '2' };
   const mainNav = [
-    { id: 'dashboard', label: t.nav_dashboard, icon: 'user',     key: '1' },
-    { id: 'reports',   label: t.nav_reports,   icon: 'barChart', key: '2' },
+    { id: 'dashboard', label: t.nav_dashboard, icon: 'user', key: '1' },
+    ...(canReports ? [reportsItem] : []),
   ];
   const regNav = [
     { id: 'register',  label: t.nav_register,  icon: 'userPlus', key: '1' },
     { id: 'dashboard', label: t.nav_dashboard, icon: 'user',     key: '2' },
-    { id: 'reports',   label: t.nav_reports,   icon: 'barChart', key: '3' },
+    ...(canReports ? [{ ...reportsItem, key: '3' }] : []),
   ];
   const activeNav = isRegister ? regNav : mainNav;
 
@@ -1279,9 +1282,33 @@ function getLateMinutes(schedule, timeStr) {
   return actualMin - startMin;
 }
 
+const PRESET_COLORS = ['#C9A961','#2C3E66','#1A1F3A','#5a6a90','#8a6c2c','#2f7a5a','#8b2942','#4a6fa5'];
+const PRESET_COLOR_NAMES = {
+  '#C9A961': 'Dorado', '#2C3E66': 'Marino', '#1A1F3A': 'Medianoche', '#5a6a90': 'Pizarra',
+  '#8a6c2c': 'Ámbar', '#2f7a5a': 'Verde', '#8b2942': 'Granate', '#4a6fa5': 'Azul',
+};
+const COLOR_NAMES = [
+  { name:'Rojo',     hex:'#c1554d' }, { name:'Naranja', hex:'#c1793c' },
+  { name:'Ámbar',    hex:'#8a6c2c' }, { name:'Lima',    hex:'#5a8a2c' },
+  { name:'Verde',    hex:'#2f7a5a' }, { name:'Turquesa',hex:'#2d7d9a' },
+  { name:'Azul',     hex:'#4a6fa5' }, { name:'Marino',  hex:'#2C3E66' },
+  { name:'Púrpura',  hex:'#6b5b9e' }, { name:'Rosa',    hex:'#9e4d6b' },
+  { name:'Gris',     hex:'#8b97b3' },
+];
+function nearestColorName(hex) {
+  if (PRESET_COLOR_NAMES[hex]) return PRESET_COLOR_NAMES[hex];
+  const r1 = parseInt(hex.slice(1,3),16), g1 = parseInt(hex.slice(3,5),16), b1 = parseInt(hex.slice(5,7),16);
+  return COLOR_NAMES.reduce((best, c) => {
+    const r2 = parseInt(c.hex.slice(1,3),16), g2 = parseInt(c.hex.slice(3,5),16), b2 = parseInt(c.hex.slice(5,7),16);
+    const d = (r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2;
+    return d < best.d ? { d, name: c.name } : best;
+  }, { d: Infinity, name: '' }).name;
+}
+
 Object.assign(window, {
   I18N, EMPLOYEES, RECENT_LOG, DEPT_DIST,
   Icon, Crest, TopBar, LangSwitch, AdminPanel,
   initials, StatusBadge, formatTime, formatDate, formatCedula, T, getLateMinutes,
   WEEK_DAYS, WorkDaysPicker, workDaysLabel, ToggleSwitch,
+  PRESET_COLORS, PRESET_COLOR_NAMES, nearestColorName,
 });

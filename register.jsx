@@ -25,6 +25,11 @@ const REG_REQUIRED = [
 
 function RegisterView({ t, setRoute, setFlash, onRegister }) {
   const FL = t.fingers;
+
+  React.useEffect(() => {
+    if (typeof userHasPermission === 'function' && !userHasPermission('enroll')) setRoute('dashboard');
+  }, []);
+
   const [step, setStep] = React.useState(1);
   const [form, setForm] = React.useState(() => ({
     name: '',
