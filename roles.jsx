@@ -5,6 +5,9 @@ const ASSIGN_KEY = 'uasd_role_assignments_v1';
 const CRED_KEY = 'uasd_credentials_v1';
 const CURR_USER_KEY = 'uasd_current_user';
 const ROLE_SEED_VER = 'uasd_role_seed_v7';
+const CRED_PATCH_V1 = 'uasd_cred_patch_v1';
+const CRED_PATCH_V2 = 'uasd_cred_patch_v2';
+const DEFAULT_PASS   = '123456789';
 
 const SEED_ROLES = [
   { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','kiosk_admin'] },
@@ -20,6 +23,7 @@ const SEED_ASSIGNMENTS = [
 ];
 
 const PROTECTED_ROLE_IDS = ['role_admin', 'role_hr'];
+const MAX_ROLE_MEMBERS = 5;
 
 const ALL_PERMS = [
   { id: 'enroll',  label_es: 'Registrar empleados',  label_en: 'Register employees' },
@@ -52,10 +56,41 @@ const ALL_PERMS = [
   const creds = {};
   SEED_ASSIGNMENTS.forEach(a => {
     const emp = EMPLOYEES.find(e => e.id === a.empId);
-    if (emp) creds[a.empId] = { email: emp.email, password: 'Uasd2026' };
+    if (emp) creds[a.empId] = { email: emp.email, password: DEFAULT_PASS };
   });
   localStorage.setItem(CRED_KEY, JSON.stringify({ ...creds, ...getCredentials() }));
   localStorage.setItem(ROLE_SEED_VER, '1');
+})();
+
+(function patchMissingCreds() {
+  if (localStorage.getItem(CRED_PATCH_V1)) return;
+  const creds = (() => { try { return JSON.parse(localStorage.getItem(CRED_KEY) || '{}'); } catch { return {}; } })();
+  let changed = false;
+  SEED_ASSIGNMENTS.forEach(a => {
+    if (!creds[a.empId]) {
+      const emp = (window.EMPLOYEES || []).find(e => e.id === a.empId);
+      if (emp) { creds[a.empId] = { email: emp.email, password: DEFAULT_PASS }; changed = true; }
+    }
+  });
+  if (changed) localStorage.setItem(CRED_KEY, JSON.stringify(creds));
+  localStorage.setItem(CRED_PATCH_V1, '1');
+})();
+
+(function patchDefaultPass() {
+  if (localStorage.getItem(CRED_PATCH_V2)) return;
+  const creds = (() => { try { return JSON.parse(localStorage.getItem(CRED_KEY) || '{}'); } catch { return {}; } })();
+  let changed = false;
+  SEED_ASSIGNMENTS.forEach(a => {
+    if (creds[a.empId]?.password === 'Uasd2026') {
+      creds[a.empId].password = DEFAULT_PASS; changed = true;
+    }
+    if (!creds[a.empId]) {
+      const emp = (window.EMPLOYEES || []).find(e => e.id === a.empId);
+      if (emp) { creds[a.empId] = { email: emp.email, password: DEFAULT_PASS }; changed = true; }
+    }
+  });
+  if (changed) localStorage.setItem(CRED_KEY, JSON.stringify(creds));
+  localStorage.setItem(CRED_PATCH_V2, '1');
 })();
 
 function getCredentials() {
@@ -179,17 +214,23 @@ function RolesView({ t, setRoute }) {
   const [formClosing, setFormClosing] = React.useState(false);
   const [formError, setFormError] = React.useState(null);
   const [showAssign, setShowAssign] = React.useState(false);
+  const [assignClosing, setAssignClosing] = React.useState(false);
+  const [assignSearchLeaving, setAssignSearchLeaving] = React.useState(false);
   const [assignQ, setAssignQ]   = React.useState('');
   const [assignEmp, setAssignEmp]   = React.useState(null);
   const [assignEmail, setAssignEmail] = React.useState('');
   const [assignPass, setAssignPass]   = React.useState('');
   const [assignShowPass, setAssignShowPass] = React.useState(false);
+  const [assignFieldErr, setAssignFieldErr] = React.useState({ email: false, pass: false });
+  const [assignHighlight, setAssignHighlight] = React.useState(-1);
+  const assignListRef = React.useRef(null);
   const [editCred, setEditCred]     = React.useState(null);
   const [credClosing, setCredClosing] = React.useState(false);
   const [lastClosedCred, setLastClosedCred] = React.useState(null);
   const [editCredEmail, setEditCredEmail] = React.useState('');
   const [editCredPass, setEditCredPass]   = React.useState('');
   const [editCredShowPass, setEditCredShowPass] = React.useState(false);
+  const [editCredFieldErr, setEditCredFieldErr] = React.useState({ email: false, pass: false });
   const [flash, setFlash]       = React.useState(null);
   const isES = t.appName === 'Sistema de Registro Biométrico';
 
@@ -295,16 +336,39 @@ function RolesView({ t, setRoute }) {
   const startAssign = (emp) => {
     const creds = getCredentials();
     const existing = creds[emp.id];
-    setAssignEmp(emp);
-    setAssignEmail(existing?.email || emp.email || '');
-    setAssignPass('');
-    setAssignQ('');
+    setAssignSearchLeaving(true);
+    setTimeout(() => {
+      setAssignEmp(emp);
+      setAssignEmail(existing?.email || emp.email || '');
+      setAssignPass('');
+      setAssignQ('');
+      setAssignSearchLeaving(false);
+    }, 180);
+  };
+
+  const closeAssign = () => {
+    setAssignClosing(true);
+    setTimeout(() => {
+      setShowAssign(false);
+      setAssignClosing(false);
+      setAssignEmp(null);
+      setAssignQ('');
+      setAssignEmail('');
+      setAssignPass('');
+      setAssignFieldErr({ email: false, pass: false });
+    }, 140);
   };
 
   const confirmAssign = () => {
     if (!assignEmp) return;
-    if (!assignEmail.trim() || !assignPass.trim()) { setFlash(isES?'Correo y contraseña obligatorios':'Email and password required'); setTimeout(()=>setFlash(null),2000); return; }
-    if (assignPass.length < 6) { setFlash(isES?'La contraseña debe tener al menos 6 caracteres':'Password must be at least 6 characters'); setTimeout(()=>setFlash(null),2000); return; }
+    if (roleAssignees.length >= MAX_ROLE_MEMBERS) return;
+    const errEmail = !assignEmail.trim();
+    const errPass  = !assignPass.trim() || assignPass.length < 6;
+    if (errEmail || errPass) {
+      setAssignFieldErr({ email: errEmail, pass: errPass });
+      return;
+    }
+    setAssignFieldErr({ email: false, pass: false });
     saveCredential(assignEmp.id, assignEmail.trim(), assignPass);
     const asgn = [...assign, { empId: assignEmp.id, roleId: selRole }];
     saveAssignments(asgn);
@@ -326,6 +390,7 @@ function RolesView({ t, setRoute }) {
   const closeCred = (cb) => {
     const closing = editCred;
     setCredClosing(true);
+    setEditCredFieldErr({ email: false, pass: false });
     setTimeout(() => {
       setEditCred(null);
       setCredClosing(false);
@@ -337,8 +402,10 @@ function RolesView({ t, setRoute }) {
 
   const saveEditCred = () => {
     if (!editCred) return;
-    if (!editCredEmail.trim() || !editCredPass.trim()) { setFlash(isES?'Correo y contraseña obligatorios':'Email and password required'); setTimeout(()=>setFlash(null),2000); return; }
-    if (editCredPass.length < 6) { setFlash(isES?'La contraseña debe tener al menos 6 caracteres':'Password must be at least 6 characters'); setTimeout(()=>setFlash(null),2000); return; }
+    const errEmail = !editCredEmail.trim();
+    const errPass  = !editCredPass.trim() || editCredPass.length < 6;
+    if (errEmail || errPass) { setEditCredFieldErr({ email: errEmail, pass: errPass }); return; }
+    setEditCredFieldErr({ email: false, pass: false });
     saveCredential(editCred, editCredEmail.trim(), editCredPass);
     saveEmployeeEmail(editCred, editCredEmail.trim());
     setCreds(getCredentials());
@@ -361,39 +428,41 @@ function RolesView({ t, setRoute }) {
           <div className="page__title">{t.nav_roles}</div>
           <div className="page__subtitle">{isES ? 'Control de acceso al sistema' : 'System access control'}</div>
         </div>
-        {canCreateRole && (
-          <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
-            <button className={`kpi__pill ${editing && !editing.id ? 'kpi__pill--danger' : 'kpi__pill--up'}`}
-              onClick={() => editing && !editing.id ? closeForm() : startEdit()}>
-              {editing && !editing.id ? '−' : '+'} {isES ? 'Nuevo rol' : 'New role'}
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="activity-map" style={{gridTemplateColumns:'320px 1fr'}}>
         <div className="activity-map__left">
-          <div className="activity-map__label">
-            {isES ? 'Roles definidos' : 'Defined roles'}
-            <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
-              ({roles.length})
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 16px 12px'}}>
+            <span className="activity-map__label" style={{margin:0}}>
+              {isES ? 'Roles definidos' : 'Defined roles'}
+              <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
+                ({roles.length})
+              </span>
             </span>
+            {canCreateRole && (
+              <button className={`kpi__pill kpi__pill--btn${editing && !editing.id ? ' kpi__pill--btn--close' : ''}`}
+                style={{minWidth:'108px',justifyContent:'center'}}
+                onClick={() => editing && !editing.id ? closeForm() : startEdit()}>
+                <Icon name={editing && !editing.id ? 'x' : 'plus'} size={12} />
+                {editing && !editing.id ? (isES ? 'Cerrar' : 'Close') : (isES ? 'Nuevo rol' : 'New role')}
+              </button>
+            )}
           </div>
           <div className="activity-map__grid">
             {roles.map(role => {
+              const live = (editing && editing.id === role.id) ? editing : role;
               const count = assign.filter(a => a.roleId === role.id).length;
               const isActive = selRole === role.id;
-              const initials = role.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+              const initials = live.name ? live.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : '?';
               return (
                 <button key={role.id}
                   className={`az ${isActive ? 'az--active' : ''}`}
                   onClick={() => setSelRole(role.id)}
                   aria-pressed={isActive}>
-                  <div className="az__avatar" style={{background:role.color}}>
+                  <div className="az__avatar" style={{background:live.color,transition:'background .1s'}}>
                     {initials}
                   </div>
-                  <div className="az__name">{role.name}</div>
-                  <div className="az__dept">{role.description}</div>
+                  <div className="az__name" style={{transition:'color .1s'}}>{live.name || role.name}</div>
                   <div className="az__meta">
                     <span className="az__count">{count} {isES ? (count===1?'asignado':'asignados') : (count===1?'assigned':'assigned')}</span>
                   </div>
@@ -412,7 +481,6 @@ function RolesView({ t, setRoute }) {
                 <div className="az__name" style={{color: editing.name ? 'var(--ink-800)' : 'var(--ink-300)'}}>
                   {editing.name || (isES ? 'Nuevo rol' : 'New role')}
                 </div>
-                <div className="az__dept">{editing.description || '—'}</div>
               </div>
             )}
           </div>
@@ -421,14 +489,31 @@ function RolesView({ t, setRoute }) {
         <div className="act-panel">
           {editing ? (
             <div className="audit-toolbar" style={{flexDirection:'column',alignItems:'stretch'}}>
-              <div className={`act-panel__who role-form-field${formClosing?' role-form-field--out':''}`} style={{animationDelay:formClosing?'200ms':'0ms'}}>
-                <div className="act-panel__avatar" style={{background:editing.color}}>
-                  {editing.name ? editing.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : <Icon name="diamondPlus" size={16} stroke={2} />}
+              <div className={`act-panel__who role-form-field${formClosing?' role-form-field--out':''}`} style={{animationDelay:formClosing?'200ms':'0ms',flexDirection:'column',alignItems:'stretch',gap:'10px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
+                  <div className="act-panel__avatar" style={{background:editing.color,transition:'background .1s',flexShrink:0}}>
+                    {editing.name ? editing.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : <Icon name="diamondPlus" size={16} stroke={2} />}
+                  </div>
+                  <div>
+                    <div className="act-panel__name">{editing.name || (isES?'Nuevo rol':'New role')}</div>
+                    <div className="act-panel__dept">{editing.description || (isES?'Completa los datos':'Fill in the role details')}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="act-panel__name">{editing.id ? (isES?'Editar rol':'Edit role') : (isES?'Crear nuevo rol':'New role')}</div>
-                  <div className="act-panel__dept">{isES ? 'Completa los datos' : 'Fill in the role details'}</div>
-                </div>
+                {editing.perms.length > 0 && (() => {
+                  const h = editing.color || '#2C3E66';
+                  const r = parseInt(h.slice(1,3),16), g = parseInt(h.slice(3,5),16), b = parseInt(h.slice(5,7),16);
+                  const bg = `rgba(${r},${g},${b},0.12)`;
+                  const col = `rgb(${Math.round(r*0.5)},${Math.round(g*0.5)},${Math.round(b*0.5)})`;
+                  return (
+                    <div style={{display:'flex',flexWrap:'wrap',gap:'5px'}}>
+                      {editing.perms.map(p => (
+                        <span key={p} className="badge role-perm-badge" style={{background:bg,color:col,transition:'background .1s, color .1s'}}>
+                          {permLabel(p)}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:'14px',marginTop:'8px'}}>
                 <div className={`role-form-field${formClosing?' role-form-field--out':''}`} style={{animationDelay:formClosing?'160ms':'40ms'}}>
@@ -436,6 +521,7 @@ function RolesView({ t, setRoute }) {
                     {isES ? 'Nombre' : 'Name'} <span className="field__req">*</span>
                   </label>
                   <input value={editing.name} onChange={e => { setEditing({...editing,name:e.target.value}); setFormError(null); }}
+                    onKeyDown={e => e.key==='Enter' && saveEdit()}
                     placeholder={isES?'Ej. Auditor':'e.g. Auditor'}
                     style={{width:'100%',padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'14px',background:'var(--paper)',fontFamily:'var(--font-sans)',fontWeight:500,color:'var(--ink-800)'}} />
                 </div>
@@ -444,6 +530,7 @@ function RolesView({ t, setRoute }) {
                     {isES ? 'Descripción' : 'Description'} <span className="field__req">*</span>
                   </label>
                   <input value={editing.description} onChange={e => { setEditing({...editing,description:e.target.value}); setFormError(null); }}
+                    onKeyDown={e => e.key==='Enter' && saveEdit()}
                     placeholder={isES?'Ej. Acceso a reportes y auditoría':'e.g. Report and audit access'}
                     style={{width:'100%',padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'14px',background:'var(--paper)',fontFamily:'var(--font-sans)',fontWeight:500,color:'var(--ink-800)'}} />
                 </div>
@@ -508,11 +595,20 @@ function RolesView({ t, setRoute }) {
             </div>
           ) : curRole ? (
             <div style={{animation:'body-in .25s cubic-bezier(0.33,1,0.68,1) both'}}>
-              <div className="act-panel__head" style={{position:'relative'}}>
-                {PROTECTED_ROLE_IDS.includes(curRole.id) && (
+              <div className="act-panel__head role-head" style={{position:'relative'}}>
+                {PROTECTED_ROLE_IDS.includes(curRole.id) ? (
                   <span style={{position:'absolute',top:'20px',right:'24px',display:'inline-flex',alignItems:'center',gap:'5px',fontSize:'11px',fontFamily:'var(--font-sans)',fontWeight:600,color:'var(--ink-400)',background:'var(--ink-50,#f4f5f7)',border:'1px solid var(--ink-100)',borderRadius:'6px',padding:'4px 9px',letterSpacing:'0.02em',whiteSpace:'nowrap'}}>
                     <Icon name="lock" size={11} stroke={2}/> {isES ? 'Rol de sistema' : 'System role'}
                   </span>
+                ) : canEditRole(curRole.id) && (
+                  <div className="role-head__actions">
+                    <button className="table__action-btn" aria-label={isES?'Editar rol':'Edit role'} onClick={() => startEdit(curRole)} style={{width:'34px',height:'34px'}}>
+                      <Icon name="edit" size={17} />
+                    </button>
+                    <button className="table__action-btn table__action-btn--del" aria-label={isES?'Eliminar rol':'Delete role'} onClick={() => deleteRole(curRole.id)} style={{width:'34px',height:'34px'}}>
+                      <Icon name="trash" size={17} />
+                    </button>
+                  </div>
                 )}
                 <div className="act-panel__who">
                   <div className="act-panel__avatar" style={{background:curRole.color}}>
@@ -523,16 +619,6 @@ function RolesView({ t, setRoute }) {
                     <div className="act-panel__dept">{curRole.description}</div>
                   </div>
                 </div>
-                {!PROTECTED_ROLE_IDS.includes(curRole.id) && (
-                  <div style={{display:'flex',gap:'6px',marginTop:'4px',alignItems:'center'}}>
-                    <button className="kpi__pill kpi__pill--btn" onClick={() => startEdit(curRole)}>
-                      <Icon name="edit" size={12} /> {isES ? 'Editar' : 'Edit'}
-                    </button>
-                    <button className="kpi__pill kpi__pill--btn" onClick={() => deleteRole(curRole.id)} style={{color:'var(--danger)'}}>
-                      <Icon name="trash" size={12} /> {isES ? 'Eliminar' : 'Delete'}
-                    </button>
-                  </div>
-                )}
                 {(() => {
                   const h = curRole.color || '#2C3E66';
                   const r = parseInt(h.slice(1,3),16), g = parseInt(h.slice(3,5),16), b = parseInt(h.slice(5,7),16);
@@ -554,59 +640,114 @@ function RolesView({ t, setRoute }) {
                 <div className="audit-toolbar" style={{justifyContent:'space-between'}}>
                   <span className="activity-map__label">
                     {isES ? 'Asignados a este rol' : 'Assigned to this role'}
-                    <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
-                      ({roleAssignees.length})
+                    <span style={{fontWeight:400,marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0,
+                      color: roleAssignees.length >= MAX_ROLE_MEMBERS ? 'var(--danger)' : 'var(--ink-300)'}}>
+                      ({roleAssignees.length}/{MAX_ROLE_MEMBERS})
                     </span>
                   </span>
                   {canManageAssignments && (
-                    <button className={`kpi__pill kpi__pill--btn${showAssign ? ' kpi__pill--btn--close' : ''}`} onClick={() => setShowAssign(p => !p)}>
+                    <button
+                      className={`kpi__pill kpi__pill--btn${showAssign ? ' kpi__pill--btn--close' : ''}`}
+                      onClick={() => showAssign ? closeAssign() : setShowAssign(true)}
+                      disabled={!showAssign && roleAssignees.length >= MAX_ROLE_MEMBERS}
+                      title={!showAssign && roleAssignees.length >= MAX_ROLE_MEMBERS ? (isES ? 'Límite de 5 personas alcanzado' : 'Maximum of 5 members reached') : undefined}
+                      style={{minWidth:'148px',justifyContent:'center',opacity: !showAssign && roleAssignees.length >= MAX_ROLE_MEMBERS ? 0.45 : 1, cursor: !showAssign && roleAssignees.length >= MAX_ROLE_MEMBERS ? 'not-allowed' : 'pointer'}}>
                       <Icon name={showAssign ? 'x' : 'plus'} size={12} />
                       {showAssign ? (isES ? 'Cerrar' : 'Close') : (isES ? 'Asignar empleado' : 'Assign employee')}
                     </button>
                   )}
                 </div>
 
-                {showAssign && (
-                  <div style={{padding:'12px 24px 16px',borderBottom:'1px solid var(--ink-100)'}}>
+                {(showAssign || assignClosing) && (
+                  <div style={{padding:'12px 24px 16px',borderBottom:'1px solid var(--ink-100)',transformOrigin:'top',animation:`${assignClosing ? 'assignFormOut .14s ease-in' : 'assignFormIn .22s cubic-bezier(.16,1,.3,1)'} both`,pointerEvents:assignClosing?'none':'auto'}}>
                   {assignEmp ? (
-                    <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 12px',background:'var(--cream-50)',borderRadius:'8px',border:'1px solid var(--ink-100)'}}>
-                        <div style={{width:'32px',height:'32px',borderRadius:'50%',background:'var(--ink-200)',display:'grid',placeItems:'center',fontSize:'11px',fontWeight:700,color:'var(--ink-600)',flexShrink:0}}>
+                    <div className="status-card status-card--new" style={{animation:'assignSelectIn .32s cubic-bezier(.16,1,.3,1) both',borderLeftColor:curRole.color}}>
+                      <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
+                        <div style={{width:'32px',height:'32px',borderRadius:'50%',background:curRole.color,display:'grid',placeItems:'center',fontSize:'11px',fontWeight:700,color:'#fff',flexShrink:0}}>
                           {assignEmp.name.split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase()}
                         </div>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:600,fontSize:'13px'}}>{assignEmp.name}</div>
-                          <div style={{fontSize:'11px',color:'var(--ink-300)'}}><span className="mono">{assignEmp.id}</span> · {assignEmp.dept}</div>
+                        <div>
+                          <div className="act-panel__name" style={{fontSize:'14px'}}>{assignEmp.name}</div>
+                          <div className="act-panel__dept" style={{display:'flex',gap:'6px',flexWrap:'wrap',marginTop:'2px'}}>
+                            <span>{assignEmp.dept}</span>
+                            <span>· <span className="mono">{assignEmp.id}</span></span>
+                          </div>
                         </div>
-                        <button onClick={() => setAssignEmp(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--ink-300)',padding:'4px'}}>
-                          <Icon name="x" size={14} />
-                        </button>
                       </div>
-                      <div>
-                        <label className="activity-map__label" style={{marginBottom:'4px'}}>{isES ? 'Correo institucional' : 'Institutional email'}</label>
-                        <input type="email" value={assignEmail} onChange={e => setAssignEmail(e.target.value)}
-                          style={{width:'100%',padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'13px',background:'var(--paper)'}} />
+                      {(assignFieldErr.email || assignFieldErr.pass) && (
+                        <div className="login__error" role="alert" style={{padding:'9px 12px',gap:'8px'}}>
+                          <div className="login__error-icon" style={{width:'26px',height:'26px'}}><Icon name="alertTriangle" size={13} stroke={2.4} /></div>
+                          <div>
+                            <div className="login__error-title" style={{fontSize:'12px'}}>{isES ? 'Campos obligatorios' : 'Required fields'}</div>
+                            <div className="login__error-sub" style={{fontSize:'11px'}}>
+                              {assignFieldErr.email && assignFieldErr.pass
+                                ? (isES ? 'El correo y la contraseña son obligatorios.' : 'Email and password are required.')
+                                : assignFieldErr.email
+                                  ? (isES ? 'El correo institucional es obligatorio.' : 'Institutional email is required.')
+                                  : assignPass.trim()
+                                    ? (isES ? 'La contraseña debe tener al menos 6 caracteres.' : 'Password must be at least 6 characters.')
+                                    : (isES ? 'La contraseña de inicio es obligatoria.' : 'Login password is required.')}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+                        <label className="field__label">
+                          {isES ? 'Correo institucional' : 'Institutional email'}<span className="field__req">*</span>
+                        </label>
+                        <input type="email" className={`field__input status-new__input${assignFieldErr.email?' field__input--err':''}`} value={assignEmail}
+                          onChange={e => { const v=e.target.value; setAssignEmail(v); setAssignFieldErr(p=>({...p,email:p.email?!v.trim():false})); }}
+                          onKeyDown={e => e.key==='Enter' && confirmAssign()}
+                          placeholder="usuario@uasd.edu.do" autoFocus />
                       </div>
-                      <div>
-                        <label className="activity-map__label" style={{marginBottom:'4px'}}>{isES ? 'Contraseña de inicio' : 'Login password'}</label>
-                        <div style={{display:'flex',gap:'6px'}}>
-                          <input type={assignShowPass?'text':'password'} value={assignPass} onChange={e => setAssignPass(e.target.value)}
-                            style={{flex:1,padding:'9px 12px',border:'1px solid var(--ink-100)',borderRadius:'8px',fontSize:'13px',background:'var(--paper)'}} />
-                          <button onClick={() => setAssignShowPass(p=>!p)} style={{background:'none',border:'1px solid var(--ink-100)',borderRadius:'8px',cursor:'pointer',padding:'0 10px',color:'var(--ink-400)'}}>
-                            <Icon name="eye" size={16} />
+                      <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
+                        <label className="field__label">
+                          {isES ? 'Contraseña de inicio' : 'Login password'}<span className="field__req">*</span>
+                        </label>
+                        <div style={{position:'relative'}}>
+                          <input type={assignShowPass?'text':'password'} className={`field__input status-new__input${assignFieldErr.pass?' field__input--err':''}`} value={assignPass}
+                            onChange={e => { const v=e.target.value; setAssignPass(v); setAssignFieldErr(p=>({...p,pass:p.pass?(!v.trim()||v.length<6):false})); }}
+                            onKeyDown={e => e.key==='Enter' && confirmAssign()}
+                            placeholder="••••••••" style={{paddingRight:'38px'}} />
+                          <button onClick={() => setAssignShowPass(p=>!p)}
+                            style={{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--ink-400)',display:'grid',placeItems:'center',padding:'2px',transition:'color .15s ease'}}
+                            onMouseEnter={e => e.currentTarget.style.color='var(--ink-800)'}
+                            onMouseLeave={e => e.currentTarget.style.color='var(--ink-400)'}>
+                            <Icon name={assignShowPass ? 'eyeOff' : 'eye'} size={14} />
                           </button>
                         </div>
                       </div>
-                      <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
-                        <button className="kpi__pill kpi__pill--up" onClick={confirmAssign}>
-                          <Icon name="check" size={12} /> {isES ? 'Asignar' : 'Assign'}
-                        </button>
+                      <div className="status-new__actions">
+                        <button className="status-new__cancel" onClick={() => { setAssignEmp(null); setAssignFieldErr({email:false,pass:false}); }}>{isES ? 'Cancelar' : 'Cancel'}</button>
+                        <button className="status-new__save" onClick={confirmAssign}>{isES ? 'Asignar' : 'Assign'}</button>
                       </div>
                     </div>
                   ) : (
-                    <div className="toolbar__search" style={{width:'100%'}}>
+                    <div className="toolbar__search" style={{width:'100%',animation:assignSearchLeaving?'assignFormOut .18s ease-in both':undefined}}>
                       <span className="toolbar__search-icon"><Icon name="search" size={15}/></span>
-                      <input value={assignQ} onChange={e => setAssignQ(e.target.value)}
+                      <input value={assignQ}
+                        onChange={e => { setAssignQ(e.target.value); setAssignHighlight(-1); }}
+                        onKeyDown={e => {
+                          const len = filteredEmployees.length;
+                          if (!len) return;
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            const next = (assignHighlight + 1) % len;
+                            setAssignHighlight(next);
+                            assignListRef.current?.children[next]?.scrollIntoView({block:'nearest'});
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            const prev = (assignHighlight - 1 + len) % len;
+                            setAssignHighlight(prev);
+                            assignListRef.current?.children[prev]?.scrollIntoView({block:'nearest'});
+                          } else if (e.key === 'Enter' && assignHighlight >= 0) {
+                            e.preventDefault();
+                            startAssign(filteredEmployees[assignHighlight]);
+                          } else if (e.key === 'Tab' && len > 0) {
+                            e.preventDefault();
+                            assignListRef.current?.children[0]?.focus();
+                          }
+                        }}
                         placeholder={isES?'Buscar empleado…':'Search employee…'}
                         style={{background:'var(--paper)'}} />
                       {assignQ && (<>
@@ -616,20 +757,26 @@ function RolesView({ t, setRoute }) {
                         </button>
                       </>)}
                       {assignQ && (
-                        <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,right:0,background:'var(--paper)',border:'1px solid var(--ink-100)',borderRadius:'10px',zIndex:10,maxHeight:'200px',overflowY:'auto',boxShadow:'var(--shadow-md)'}}>
+                        <div ref={assignListRef} style={{position:'absolute',top:'calc(100% + 6px)',left:0,right:0,background:'var(--paper)',border:'1px solid var(--ink-100)',borderRadius:'10px',zIndex:10,maxHeight:'200px',overflowY:'auto',boxShadow:'var(--shadow-md)'}}>
                           {filteredEmployees.length === 0 && (
                             <div style={{padding:'12px',fontSize:'13px',color:'var(--ink-300)',textAlign:'center'}}>
                               {isES ? 'Sin resultados' : 'No results'}
                             </div>
                           )}
-                          {filteredEmployees.map(e => (
-                            <div key={e.id} onClick={() => startAssign(e)}
-                              style={{padding:'10px 14px',cursor:'pointer',fontSize:'13px',borderBottom:'1px solid var(--ink-100)'}}
-                              onMouseOver={e => e.currentTarget.style.background='var(--cream-50)'}
-                              onMouseOut={e => e.currentTarget.style.background=''}>
+                          {filteredEmployees.map((e, i) => (
+                            <button key={e.id}
+                              onClick={() => startAssign(e)}
+                              onFocus={() => setAssignHighlight(i)}
+                              onKeyDown={ev => {
+                                if (ev.key === 'Enter') { ev.preventDefault(); startAssign(e); }
+                                else if (ev.key === 'ArrowDown') { ev.preventDefault(); assignListRef.current?.children[Math.min(i+1, filteredEmployees.length-1)]?.focus(); }
+                                else if (ev.key === 'ArrowUp') { ev.preventDefault(); i === 0 ? ev.currentTarget.closest('.toolbar__search')?.querySelector('input')?.focus() : assignListRef.current?.children[i-1]?.focus(); }
+                                else if (ev.key === 'Escape') closeAssign();
+                              }}
+                              style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',cursor:'pointer',fontSize:'13px',borderBottom:'1px solid var(--ink-100)',border:'none',background: i===assignHighlight ? 'var(--cream-50)' : 'transparent',outline:'none',transition:'background .1s'}}>
                               <div style={{fontWeight:600}}>{e.name}</div>
                               <div style={{fontSize:'11px',color:'var(--ink-300)'}}><span className="mono">{e.id}</span> · {e.dept}</div>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -640,7 +787,7 @@ function RolesView({ t, setRoute }) {
 
                 {roleAssignees.length === 0 ? (
                   <div className="audit-empty">
-                    <Icon name="shield" size={24} stroke={1.2} />
+                    <Icon name="userPlus" size={24} stroke={1.2} />
                     <div className="audit-empty__title">{isES ? 'Sin asignaciones' : 'No assignments'}</div>
                     <div className="audit-empty__sub">{isES ? 'Este rol no tiene empleados asignados aún.' : 'This role has no employees assigned yet.'}</div>
                   </div>
@@ -650,7 +797,7 @@ function RolesView({ t, setRoute }) {
                   const c = creds[a.empId];
                   const isEditingCred = editCred === a.empId;
                   return isEditingCred ? (
-                    <div key={a.empId} className="status-card status-card--new" style={{animation:`${credClosing?'credFormOut .38s':'credFormIn .42s'} ease-in-out both`,margin:'4px 0',pointerEvents:credClosing?'none':'auto'}}>
+                    <div key={a.empId} className="status-card status-card--new" style={{animation:`${credClosing?'credFormOut .38s':'credFormIn .42s'} ease-in-out both`,margin:'4px 0',pointerEvents:credClosing?'none':'auto',borderLeftColor:curRole.color}}>
                       <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}}>
                         <div style={{width:'32px',height:'32px',borderRadius:'50%',background:curRole.color,display:'grid',placeItems:'center',fontSize:'11px',fontWeight:700,color:'#fff',flexShrink:0}}>
                           {a.emp ? a.emp.name.split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase() : '?'}
@@ -664,17 +811,36 @@ function RolesView({ t, setRoute }) {
                           </div>
                         </div>
                       </div>
+                      {(editCredFieldErr.email || editCredFieldErr.pass) && (
+                        <div className="login__error" role="alert" style={{padding:'9px 12px',gap:'8px'}}>
+                          <div className="login__error-icon" style={{width:'26px',height:'26px'}}><Icon name="alertTriangle" size={13} stroke={2.4} /></div>
+                          <div>
+                            <div className="login__error-title" style={{fontSize:'12px'}}>{isES ? 'Campos obligatorios' : 'Required fields'}</div>
+                            <div className="login__error-sub" style={{fontSize:'11px'}}>
+                              {editCredFieldErr.email && editCredFieldErr.pass
+                                ? (isES ? 'El correo y la contraseña son obligatorios.' : 'Email and password are required.')
+                                : editCredFieldErr.email
+                                  ? (isES ? 'El correo institucional es obligatorio.' : 'Institutional email is required.')
+                                  : editCredPass.trim()
+                                    ? (isES ? 'La contraseña debe tener al menos 6 caracteres.' : 'Password must be at least 6 characters.')
+                                    : (isES ? 'La contraseña de inicio es obligatoria.' : 'Login password is required.')}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
-                        <label className="field__label">{isES ? 'Correo' : 'Email'}</label>
-                        <input type="email" className="field__input status-new__input" value={editCredEmail}
-                          onChange={e => setEditCredEmail(e.target.value)}
+                        <label className="field__label">{isES ? 'Correo' : 'Email'}<span className="field__req">*</span></label>
+                        <input type="email" className={`field__input status-new__input${editCredFieldErr.email?' field__input--err':''}`} value={editCredEmail}
+                          onChange={e => { const v=e.target.value; setEditCredEmail(v); setEditCredFieldErr(p=>({...p,email:p.email?!v.trim():false})); }}
+                          onKeyDown={e => e.key==='Enter' && saveEditCred()}
                           placeholder="usuario@uasd.edu.do" autoFocus />
                       </div>
                       <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
-                        <label className="field__label">{isES ? 'Contraseña' : 'Password'}</label>
+                        <label className="field__label">{isES ? 'Contraseña' : 'Password'}<span className="field__req">*</span></label>
                         <div style={{position:'relative'}}>
-                          <input type={editCredShowPass?'text':'password'} className="field__input status-new__input" value={editCredPass}
-                            onChange={e => setEditCredPass(e.target.value)}
+                          <input type={editCredShowPass?'text':'password'} className={`field__input status-new__input${editCredFieldErr.pass?' field__input--err':''}`} value={editCredPass}
+                            onChange={e => { const v=e.target.value; setEditCredPass(v); setEditCredFieldErr(p=>({...p,pass:p.pass?(!v.trim()||v.length<6):false})); }}
+                            onKeyDown={e => e.key==='Enter' && saveEditCred()}
                             placeholder="••••••••" style={{paddingRight:'38px'}} />
                           <button onClick={() => setEditCredShowPass(p=>!p)}
                             style={{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--ink-400)',display:'grid',placeItems:'center',padding:'2px',transition:'color .15s ease'}}
@@ -707,8 +873,8 @@ function RolesView({ t, setRoute }) {
                     {canManageAssignments && (
                     <div className="role-assignee-actions" style={{display:'flex',gap:'4px'}}>
                       {canEditCred(a) && (
-                        <button className="table__action-btn" onClick={() => { setEditCred(a.empId); setEditCredEmail(c?.email || a.emp?.email || ''); setEditCredPass(c?.password || ''); }} title={isES?'Editar credenciales':'Edit credentials'}>
-                          <Icon name="edit" size={14} />
+                        <button className="table__action-btn" onClick={() => { setEditCred(a.empId); setEditCredEmail(c?.email || a.emp?.email || ''); setEditCredPass(c?.password || ''); }} title={isES?(c?'Editar credenciales':'Asignar credenciales'):(c?'Edit credentials':'Assign credentials')}>
+                          <Icon name={c ? 'edit' : 'key'} size={14} />
                         </button>
                       )}
                       <button className="table__action-btn table__action-btn--del" onClick={() => removeAssign(a.empId, a.roleId)} title={isES?'Quitar rol':'Remove role'}>

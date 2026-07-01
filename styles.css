@@ -1864,6 +1864,9 @@ input, select, textarea {
 .kpi__pill--btn svg { transition: transform .18s ease; }
 .kpi__pill--btn:hover svg { transform: translateX(2px); }
 
+.kpi__pill--btn--close svg {
+  animation: iconSpinIn .15s cubic-bezier(.16,1,.3,1);
+}
 .kpi__pill--btn--close:hover {
   color: var(--danger);
   border-color: rgba(193,85,77,0.35);
@@ -1871,6 +1874,11 @@ input, select, textarea {
   box-shadow: 0 3px 8px rgba(193,85,77,0.12);
 }
 .kpi__pill--btn--close:hover svg { transform: rotate(90deg); }
+
+@keyframes iconSpinIn {
+  from { transform: rotate(-60deg) scale(.7); opacity: 0; }
+  to   { transform: rotate(0deg)   scale(1);  opacity: 1; }
+}
 
 .kpi__foot {
   margin-top: auto;
@@ -4822,8 +4830,11 @@ tr.table__row--selected .table__actions {
 }
 @keyframes accPop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes menuOpen  { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
-@keyframes credFormIn  { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes credFormOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes credFormIn    { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes credFormOut   { from { opacity: 1; } to { opacity: 0; } }
+@keyframes assignFormIn    { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes assignFormOut   { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(4px) scale(.99); } }
+@keyframes assignSelectIn  { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes menuClose { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(.97); } }
 .acc-modal__head {
   display: flex;
@@ -5122,7 +5133,7 @@ tr.table__row--selected .table__actions {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 20px 12px 16px;
+  padding: 26px 12px 22px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--ink-100);
   background: var(--paper);
@@ -5182,6 +5193,21 @@ tr.table__row--selected .table__actions {
   color: var(--ink-600);
 }
 .az--active .az__count { color: var(--ink-700); }
+
+.role-head__actions {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+.role-head:hover .role-head__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 .az__last {
   font-size: 10.5px;

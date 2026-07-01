@@ -774,6 +774,7 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     absent: <><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></>,
     doorOpen: <><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h20"/><path d="M13 20V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v16"/></>,
     alertTriangle: <><path d="M10.3 3.5 2 19h20L13.7 3.5a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><circle cx="12" cy="16.5" r=".5" fill="currentColor"/></>,
+    key: <><circle cx="7.5" cy="15.5" r="3.5"/><path d="M10.9 12.1 20 3"/><path d="M19 4l1 1"/><path d="M17 6l1 1"/></>,
   };
   return <svg {...props}>{paths[name]}</svg>;
 };

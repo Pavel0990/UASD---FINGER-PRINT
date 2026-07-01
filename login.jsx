@@ -33,7 +33,7 @@ function LoginView({ t, lang, setLang, setRoute }) {
         setRoute('dashboard');
       } else {
         // fallback for demo: hardcoded admin
-        if (email.trim().toLowerCase() === 'ggomez@uasd.edu.do' && pass === 'Uasd2026') {
+        if (email.trim().toLowerCase() === 'ggomez@uasd.edu.do' && pass === '123456789') {
           if (typeof setCurrentUserId === 'function') setCurrentUserId('EMP-00601');
           saveLogin();
           setRoute('dashboard');
