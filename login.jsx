@@ -22,7 +22,12 @@ function LoginView({ t, lang, setLang, setRoute }) {
         const date = now.toLocaleDateString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric' });
         localStorage.setItem('uasd_last_login', `${date} ${time}`);
       };
+      const hasRole = (empId) => {
+        const assignments = typeof getAssignments === 'function' ? getAssignments() : [];
+        return assignments.some(a => a.empId === empId);
+      };
       if (found && found[1].password === pass) {
+        if (!hasRole(found[0])) { setError('no_role'); return; }
         if (typeof setCurrentUserId === 'function') setCurrentUserId(found[0]);
         saveLogin();
         setRoute('dashboard');
@@ -33,7 +38,7 @@ function LoginView({ t, lang, setLang, setRoute }) {
           saveLogin();
           setRoute('dashboard');
         } else {
-          setError(true);
+          setError('credentials');
         }
       }
     }, 700);
@@ -57,10 +62,10 @@ function LoginView({ t, lang, setLang, setRoute }) {
 
             {error &&
             <div className="login__error" role="alert">
-              <div className="login__error-icon"><Icon name="x" size={16} stroke={2.6} /></div>
+              <div className="login__error-icon"><Icon name={error === 'no_role' ? 'lock' : 'x'} size={16} stroke={2.6} /></div>
               <div>
-                <div className="login__error-title">{t.login_err_title}</div>
-                <div className="login__error-sub">{t.login_err_sub}</div>
+                <div className="login__error-title">{error === 'no_role' ? t.login_err_norole_title : t.login_err_title}</div>
+                <div className="login__error-sub">{error === 'no_role' ? t.login_err_norole_sub : t.login_err_sub}</div>
               </div>
             </div>
             }
@@ -86,7 +91,7 @@ function LoginView({ t, lang, setLang, setRoute }) {
             </div>
 
             <div className="login__row login__row--end">
-              <a className="login__link" style={{ fontSize: "13px" }}>{t.login_forgot}</a>
+              <span className="login__link" style={{ fontSize: "13px" }}>{t.login_forgot}</span>
             </div>
 
             <button className="btn btn--primary btn--lg btn--block login__submit" type="submit"

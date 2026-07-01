@@ -142,6 +142,8 @@ const I18N = {
     login_back: 'Volver al terminal de marcaje',
     login_err_title: 'Credenciales incorrectas',
     login_err_sub: 'Verifique su correo institucional y contraseña.',
+    login_err_norole_title: 'Acceso denegado',
+    login_err_norole_sub: 'Su cuenta no tiene un rol asignado. Contacte al administrador del sistema.',
     login_terms: 'Términos y condiciones',
     login_chip_mark: 'Marcaje registrado',
     login_chip_welcome: 'Bienvenida',
@@ -476,6 +478,8 @@ const I18N = {
     login_back: 'Back to attendance terminal',
     login_err_title: 'Incorrect credentials',
     login_err_sub: 'Check your institutional email and password.',
+    login_err_norole_title: 'Access denied',
+    login_err_norole_sub: 'Your account has no assigned role. Contact the system administrator.',
     login_terms: 'Terms & conditions',
     login_chip_mark: 'Entry recorded',
     login_chip_welcome: 'Welcome',
@@ -743,6 +747,7 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
     fingerprint: <><path d="M6 17c0-1 .3-2 .8-3M12 3a9 9 0 0 0-9 9c0 1.4.3 2.7.8 3.9" /><path d="M21 12a9 9 0 0 0-9-9c-1 0-2 .2-3 .5M9 21a8 8 0 0 1-2-4c-.5-2-.3-4.2.5-6" /><path d="M16 21a18 18 0 0 0 1-7c0-2.8-2-5-5-5s-5 2.2-5 5" /><path d="M12 21v-7c0-1.1.9-2 2-2s2 .9 2 2v3" /></>,
     eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>,
+    eyeOff: <><path d="M17.9 17.9A10 10 0 0 1 12 19c-6 0-10-7-10-7a17.6 17.6 0 0 1 4.1-5"/><path d="M9.5 4.7A9.4 9.4 0 0 1 12 5c6 0 10 7 10 7a17.7 17.7 0 0 1-2.2 3.2"/><path d="M14.1 14.1A3 3 0 0 1 9.9 9.9"/><path d="M2 2l20 20"/></>,
     chevDown: <><path d="m6 9 6 6 6-6" /></>,
     filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
     bell: <><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M14 21a2 2 0 0 1-4 0" /></>,
@@ -768,6 +773,7 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     baseball: <><circle cx="12" cy="12" r="9"/><path d="M9.5 4.5C8 7.5 8 10.5 9.5 13.5"/><path d="M9.5 13.5C8 16.5 8 19 9.5 21"/><path d="M14.5 4.5C16 7.5 16 10.5 14.5 13.5"/><path d="M14.5 13.5C16 16.5 16 19 14.5 21"/></>,
     absent: <><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></>,
     doorOpen: <><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h20"/><path d="M13 20V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v16"/></>,
+    alertTriangle: <><path d="M10.3 3.5 2 19h20L13.7 3.5a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><circle cx="12" cy="16.5" r=".5" fill="currentColor"/></>,
   };
   return <svg {...props}>{paths[name]}</svg>;
 };
@@ -1305,10 +1311,27 @@ function nearestColorName(hex) {
   }, { d: Infinity, name: '' }).name;
 }
 
+const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DAYS_ES   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+const EMP_EMAILS_KEY = 'uasd_employee_emails';
+function getEmployeeEmails() {
+  try { return JSON.parse(localStorage.getItem(EMP_EMAILS_KEY) || '{}'); } catch { return {}; }
+}
+function saveEmployeeEmail(empId, email) {
+  try {
+    const map = getEmployeeEmails();
+    map[empId] = email;
+    localStorage.setItem(EMP_EMAILS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
 Object.assign(window, {
   I18N, EMPLOYEES, RECENT_LOG, DEPT_DIST,
   Icon, Crest, TopBar, LangSwitch, AdminPanel,
   initials, StatusBadge, formatTime, formatDate, formatCedula, T, getLateMinutes,
   WEEK_DAYS, WorkDaysPicker, workDaysLabel, ToggleSwitch,
   PRESET_COLORS, PRESET_COLOR_NAMES, nearestColorName,
+  MONTHS_ES, DAYS_ES,
+  getEmployeeEmails, saveEmployeeEmail,
 });

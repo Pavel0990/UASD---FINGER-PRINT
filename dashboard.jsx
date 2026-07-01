@@ -1,6 +1,12 @@
 /* dashboard.jsx — employee directory */
 
-const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+/* ── Shared time helpers (used by TimePickerField + SimpleTimePicker) ── */
+function parseTimeParts(s) {
+  if (!s) return { h: 8, min: 0, ampm: 'AM' };
+  const m = /(\d+):(\d+)\s*(AM|PM)/i.exec(s.trim());
+  return m ? { h: parseInt(m[1]) % 12 || 12, min: parseInt(m[2]), ampm: m[3].toUpperCase() } : { h: 8, min: 0, ampm: 'AM' };
+}
+function fmtTimeParts(t) { return `${t.h}:${String(t.min).padStart(2,'0')} ${t.ampm}`; }
 
 /* ── ComboBoxField ───────────────────────────────────────────── */
 // requireSelection=true: only select/Agregar commit the value; typing alone does not
@@ -394,18 +400,12 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
 
 /* ── TimePickerField ─────────────────────────────────────────── */
 function TimePickerField({ value, onChange }) {
-  const parseTime = (s) => {
-    const m = /(\d+):(\d+)\s*(AM|PM)/i.exec((s || '').trim());
-    return m ? { h: parseInt(m[1]) % 12 || 12, min: parseInt(m[2]), ampm: m[3].toUpperCase() } : { h: 8, min: 0, ampm: 'AM' };
-  };
-  const fmtTime = (t) => `${t.h}:${String(t.min).padStart(2,'0')} ${t.ampm}`;
-
   const parts = (value || '8:00 AM — 4:00 PM').split('—').map(s => s.trim());
-  const [start, setStart]     = React.useState(() => parseTime(parts[0]));
-  const [end,   setEnd  ]     = React.useState(() => parseTime(parts[1] || '4:00 PM'));
+  const [start, setStart]     = React.useState(() => parseTimeParts(parts[0]));
+  const [end,   setEnd  ]     = React.useState(() => parseTimeParts(parts[1] || '4:00 PM'));
   const [open,  setOpen ]     = React.useState(false);
   const [tab,   setTab  ]     = React.useState('start');
-  const [manual, setManual]   = React.useState(() => fmtTime(parseTime(parts[0])));
+  const [manual, setManual]   = React.useState(() => fmtTimeParts(parseTimeParts(parts[0])));
   const trigRef   = React.useRef(null);
   const popRef    = React.useRef(null);
   const manualRef = React.useRef(null);
@@ -423,11 +423,11 @@ function TimePickerField({ value, onChange }) {
 
   React.useEffect(() => {
     if (document.activeElement !== manualRef.current) {
-      setManual(fmtTime(tab === 'start' ? start : end));
+      setManual(fmtTimeParts(tab === 'start' ? start : end));
     }
   }, [tab, start, end]);
 
-  const emit = (s, e) => onChange(`${fmtTime(s)} — ${fmtTime(e)}`);
+  const emit = (s, e) => onChange(`${fmtTimeParts(s)} — ${fmtTimeParts(e)}`);
   const setH   = (h)    => { if (tab==='start'){const s={...start,h};    setStart(s); emit(s,end);}  else {const e={...end,h};      setEnd(e);  emit(start,e);} };
   const setMin = (min)  => { if (tab==='start'){const s={...start,min};  setStart(s); emit(s,end);}  else {const e={...end,min};    setEnd(e);  emit(start,e);} };
   const setAP  = (ampm) => {
@@ -545,12 +545,12 @@ function TimePickerField({ value, onChange }) {
           <div className="tp-tabs">
             <button type="button" className={`tp-tab${tab==='start'?' tp-tab--act':''}`} onClick={() => setTab('start')}>
               <span className="tp-tab__lbl">Inicio</span>
-              <span className="tp-tab__time">{fmtTime(start)}</span>
+              <span className="tp-tab__time">{fmtTimeParts(start)}</span>
             </button>
             <span className="tp-sep">→</span>
             <button type="button" className={`tp-tab${tab==='end'?' tp-tab--act':''}`} onClick={() => setTab('end')}>
               <span className="tp-tab__lbl">Fin</span>
-              <span className="tp-tab__time">{fmtTime(end)}</span>
+              <span className="tp-tab__time">{fmtTimeParts(end)}</span>
             </button>
           </div>
           <input ref={manualRef} className="tp-manual" value={manual}
@@ -617,13 +617,7 @@ function FlipCounter({ value, className = '' }) {
 
 /* ── SimpleTimePicker ─────────────────────────────────────────── */
 function SimpleTimePicker({ value, onChange }) {
-  const parseTime = (s) => {
-    if (!s) return { h: 8, min: 0, ampm: 'AM' };
-    const m = /(\d+):(\d+)\s*(AM|PM)/i.exec(s.trim());
-    return m ? { h: parseInt(m[1]) % 12 || 12, min: parseInt(m[2]), ampm: m[3].toUpperCase() } : { h: 8, min: 0, ampm: 'AM' };
-  };
-  const fmtTime = (t) => `${t.h}:${String(t.min).padStart(2,'0')} ${t.ampm}`;
-  const [parts, setParts] = React.useState(() => parseTime(value));
+  const [parts, setParts] = React.useState(() => parseTimeParts(value));
   const [open, setOpen] = React.useState(false);
   const [manual, setManual] = React.useState('');
   const [popPos, setPopPos] = React.useState({ top: 0, left: 0, minWidth: 0 });
@@ -654,10 +648,10 @@ function SimpleTimePicker({ value, onChange }) {
   }, [open]);
 
   React.useEffect(() => {
-    if (document.activeElement !== manualRef.current) setManual(fmtTime(parts));
+    if (document.activeElement !== manualRef.current) setManual(fmtTimeParts(parts));
   }, [parts, open]);
 
-  const emit = (p) => { setParts(p); onChange(fmtTime(p)); };
+  const emit = (p) => { setParts(p); onChange(fmtTimeParts(p)); };
   const setH = (h) => { const p = { ...parts, h }; emit(p); };
   const setMin = (min) => { const p = { ...parts, min }; emit(p); };
   const setAP = (ampm) => { const p = { ...parts, ampm }; emit(p); };
@@ -1512,7 +1506,12 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const [filter, setFilter] = React.useState('all');
   const [subFilter, setSubFilter] = React.useState(null);
   const [query, setQuery] = React.useState('');
-  const [employees, setEmployees] = React.useState(() => [...EMPLOYEES, ...extraEmployees]);
+  const [employees, setEmployees] = React.useState(() => {
+    const emailOverrides = typeof getEmployeeEmails === 'function' ? getEmployeeEmails() : {};
+    return [...EMPLOYEES, ...extraEmployees].map(e =>
+      emailOverrides[e.id] ? { ...e, email: emailOverrides[e.id] } : e
+    );
+  });
   const [selectedId, setSelectedId] = React.useState(EMPLOYEES[0]?.id || null);
   const allDepts = React.useMemo(() => [...new Set(employees.map(e => e.dept))].sort(), [employees]);
   const allRoles = React.useMemo(() => [...new Set(employees.map(e => e.role))].sort(), [employees]);
@@ -1568,7 +1567,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     return () => { document.body.style.overflow = ''; };
   }, [editTarget, deleteConfirm]);
   const [exportOpen, setExportOpen] = React.useState(false);
-  const exportRef = React.useRef(null);
+  const exportRef    = React.useRef(null);
+  const photoInputRef = React.useRef(null);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const statusRef = React.useRef(null);
   const [displayList, setDisplayList] = React.useState([]);
@@ -1644,6 +1644,11 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     setEditErrors({});
     window.auditLog?.edit({ name: editTarget.name, id: editTarget.id });
     setEmployees(prev => prev.map(e => e.id === editTarget.id ? editTarget : e));
+    if (typeof saveEmployeeEmail === 'function') saveEmployeeEmail(editTarget.id, editTarget.email.trim());
+    if (typeof getCredentials === 'function' && typeof saveCredential === 'function') {
+      const c = getCredentials()[editTarget.id];
+      if (c) saveCredential(editTarget.id, editTarget.email.trim(), c.password);
+    }
     setEditTarget(null);
   };
 
@@ -1807,22 +1812,6 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     });
     return result;
   }, [allAtt, todayStr]);
-
-  const eventMap = React.useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch { return {}; }
-  }, []);
-  const eventToday = React.useMemo(() => {
-    let evCount = 0, libreCount = 0;
-    Object.values(eventMap).forEach(list => {
-      list.forEach(e => {
-        if (e.date === todayStr) {
-          if (e.type === 'eventualidad') evCount++;
-          else if (e.type === 'dia_libre') libreCount++;
-        }
-      });
-    });
-    return { ev: evCount, libre: libreCount };
-  }, [eventMap, todayStr]);
 
   const lateToday = React.useMemo(() => {
     return Object.values(todayAtt).filter(a => a.late).length;
@@ -2116,7 +2105,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                 Cerrar
               </button>
               <button className="btn btn--primary" style={{flex:1}}
-                onClick={() => { setPhotoExpanded(false); setTimeout(() => document.getElementById('edit-photo-input').click(), 50); }}>
+                onClick={() => { setPhotoExpanded(false); setTimeout(() => photoInputRef.current?.click(), 50); }}>
                 <Icon name="upload" size={13}/> Cambiar foto
               </button>
             </div>
@@ -2131,7 +2120,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
               <div className="edit-modal__head-id">
                 <div className="edit-modal__avatar-wrap">
                   <input type="file" accept="image/*" style={{display:'none'}}
-                    id="edit-photo-input"
+                    ref={photoInputRef}
                     onChange={e => {
                       const file = e.target.files[0];
                       if (!file) return;
@@ -2140,7 +2129,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                       reader.readAsDataURL(file);
                     }}/>
                   <div className="edit-modal__avatar"
-                    onClick={() => editTarget.photo ? setPhotoExpanded(true) : document.getElementById('edit-photo-input').click()}
+                    onClick={() => editTarget.photo ? setPhotoExpanded(true) : photoInputRef.current?.click()}
                     style={{cursor: editTarget.photo ? 'zoom-in' : 'pointer'}}>
                     {editTarget.photo
                       ? <img src={editTarget.photo} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
@@ -2156,7 +2145,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                   <div className="edit-modal__sub">{editTarget.id} · {formatCedula(editTarget.cedula)}</div>
                 </div>
               </div>
-              <button className="edit-modal__close" onClick={closeEditor}><Icon name="x" size={18}/></button>
+              <button className="edit-modal__close" onClick={closeEditor} aria-label="Cerrar"><Icon name="x" size={18}/></button>
             </div>
             <div className="edit-modal__tabs">
               {[

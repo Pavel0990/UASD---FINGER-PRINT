@@ -36,6 +36,7 @@
   --shadow-lg: 0 24px 64px -24px rgba(14,18,38,0.35), 0 8px 24px -8px rgba(14,18,38,0.12);
 
   --font-sans: 'Manrope', system-ui, -apple-system, sans-serif;
+  --font-ui:   var(--font-sans);
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --font-serif: 'Source Serif 4', 'Lora', Georgia, 'Times New Roman', serif;
   --font-display: 'Source Serif 4', 'Lora', Georgia, serif;
@@ -1851,13 +1852,25 @@ input, select, textarea {
   cursor: pointer;
   transition: all .15s ease;
 }
+.kpi__pill--btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+}
 .kpi--warn .kpi__pill--btn:hover {
   background: var(--ink-900);
   color: var(--cream-100);
   border-color: var(--ink-900);
 }
-.kpi__pill--btn svg { transition: transform .15s ease; }
+.kpi__pill--btn svg { transition: transform .18s ease; }
 .kpi__pill--btn:hover svg { transform: translateX(2px); }
+
+.kpi__pill--btn--close:hover {
+  color: var(--danger);
+  border-color: rgba(193,85,77,0.35);
+  background: rgba(193,85,77,0.06);
+  box-shadow: 0 3px 8px rgba(193,85,77,0.12);
+}
+.kpi__pill--btn--close:hover svg { transform: rotate(90deg); }
 
 .kpi__foot {
   margin-top: auto;
@@ -4809,6 +4822,8 @@ tr.table__row--selected .table__actions {
 }
 @keyframes accPop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes menuOpen  { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes credFormIn  { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes credFormOut { from { opacity: 1; } to { opacity: 0; } }
 @keyframes menuClose { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(.97); } }
 .acc-modal__head {
   display: flex;
@@ -5298,8 +5313,32 @@ tr.table__row--selected .table__actions {
   from { opacity: 0; transform: translateY(-10px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0)     scale(1);    }
 }
+@keyframes roleFormOut {
+  from { opacity: 1; transform: translateY(0)      scale(1);    }
+  to   { opacity: 0; transform: translateY(-10px)  scale(0.96); }
+}
 .role-form-field {
   animation: roleFormIn .28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.role-form-field--out {
+  animation: roleFormOut .2s cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+.role-perm-badge {
+  transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.role-perm-badge:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+}
+.role-assignee-row .role-assignee-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+.role-assignee-row:hover .role-assignee-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 .act-panel__body {
   overflow-y: auto;

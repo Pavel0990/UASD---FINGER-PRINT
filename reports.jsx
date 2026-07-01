@@ -1,7 +1,5 @@
 /* reports.jsx — attendance analytics */
 
-const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-
 const ATTEND_DAYS = [
   { day: 'Lun', valid: 287, late: 22 },
   { day: 'Mar', valid: 294, late: 18 },

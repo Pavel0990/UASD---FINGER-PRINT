@@ -563,8 +563,6 @@ function ChangelogView({ t }) {
   const [typeFilter, setTypeFilter] = React.useState('all');
   const [dateFilter, setDateFilter] = React.useState(null); // null | 'YYYY' | 'YYYY-MM' | string[]
 
-  React.useEffect(() => { setLog(getAuditLog()); }, []);
-
   const allAdmin    = { id: '__all__', name: t.cl_all_name, initials: '∑', dept: t.cl_all_dept };
   const activeAdmin = activeId === '__all__'
     ? allAdmin

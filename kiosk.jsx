@@ -1,5 +1,11 @@
 /* kiosk.jsx — primary recognition view (employees clock in/out) */
 
+const CRED_MAP_KEY = 'uasd_cred_map_v1';
+const WA_TIMEOUT   = 8000;
+const kioskTodayStr = () => new Date().toLocaleDateString('en-CA');
+const getCredMap  = () => { try { return JSON.parse(localStorage.getItem(CRED_MAP_KEY) || '{}'); } catch { return {}; } };
+const saveCredMap = (map) => { try { localStorage.setItem(CRED_MAP_KEY, JSON.stringify(map)); } catch {} };
+
 function KioskView({ t, lang, setLang, setRoute, theme }) {
   const [state, setState] = React.useState('idle'); // idle | scanning | success | error
   const [now, setNow] = React.useState(new Date());
@@ -13,24 +19,14 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     return () => clearInterval(id);
   }, []);
 
-  // ── Mapa credencial → empleado (persiste en localStorage) ───────────────
-  const CRED_MAP_KEY = 'uasd_cred_map_v1'; // { credId: empId }
-  const WA_TIMEOUT   = 8000;
-
-  const getCredMap  = () => JSON.parse(localStorage.getItem(CRED_MAP_KEY) || '{}');
-  const saveCredMap = (map) => localStorage.setItem(CRED_MAP_KEY, JSON.stringify(map));
-
-  // ── Resultado: usa el empleado vinculado a la credencial, si existe ────
-  const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
-
   const recordPresence = (empId, scheduleStr) => {
     try {
       const att = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}');
-      const key = `${empId}:${todayStr()}`;
+      const key = `${empId}:${kioskTodayStr()}`;
       if (!att[key]) {
         const time = formatTime(new Date(), lang);
         const late = scheduleStr ? getLateMinutes(scheduleStr, time) > 15 : false;
-        att[key] = { empId, date: todayStr(), time, late, justified: false };
+        att[key] = { empId, date: kioskTodayStr(), time, late, justified: false };
         localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
       }
     } catch {}
