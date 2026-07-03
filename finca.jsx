@@ -95,52 +95,357 @@ function getStarsAlpha(h) {
   return 0;
 }
 
-/* ── Worker — círculo con iniciales, tamaño dinámico por cantidad ── */
-const W_TIERS = [
-  { circle:38, initFs:12, nameFs:9.5, nameW:52, pin:true,  gap:'clamp(8px,2.4vw,28px)' }, // 1–4
-  { circle:32, initFs:10, nameFs:8.5, nameW:44, pin:true,  gap:'clamp(5px,1.6vw,18px)' }, // 5–7
-  { circle:26, initFs: 8, nameFs:7.5, nameW:36, pin:false, gap:'clamp(3px,1.0vw,12px)' }, // 8–12
-  { circle:20, initFs: 6, nameFs:6.5, nameW:26, pin:false, gap:'clamp(2px,0.6vw, 7px)' }, // 13+
-];
-function getWTier(n) { return n<=4?0:n<=7?1:n<=12?2:3; }
+/* ── Farm workers — illustrated SVG people ── */
 
-function FarmWorker({ emp, present, onToggle, delay, tier }) {
-  const s = W_TIERS[tier] || W_TIERS[0];
-  const initials = emp.name.split(' ').slice(0,2).map(p=>p[0]).join('').toUpperCase();
+/*
+ * Slots: actividades intercaladas (cada una aparece exactamente 2 veces),
+ * con los 5 primeros slots cubriendo el campo de extremo a extremo.
+ * Slot 0: junto a la palma izquierda → regar (le echa agua al coco).
+ */
+const FARM_SLOTS = [
+  { left:'10%', act:'regar'      }, // 1 — riega la mata de coco (palma izq)
+  { left:'25%', act:'arar'       }, // 2 — ara el campo izquierdo
+  { left:'40%', act:'machetear'  }, // 3 — corta con machete en el centro
+  { left:'54%', act:'cargar'  }, // 4 — acarrea por el camino
+  { left:'68%', act:'revisar' }, // 5 — revisa cerca del granero
+  { left:'17%', act:'sembrar' }, // 6 — siembra izq (relleno)
+  { left:'32%', act:'revisar' }, // 7 — revisa centro-izq (relleno)
+  { left:'47%', act:'arar'    }, // 8 — ara centro (relleno)
+  { left:'61%', act:'regar'   }, // 9 — riega cultivos del centro-der
+  { left:'74%', act:'cargar'  }, // 10 — carga hacia el granero
+];
+
+const CLOTH_COLS = ['#3a78c0','#b07830','#288858','#a03838','#7048b0'];
+const MAX_FARM_SCENE = FARM_SLOTS.length; /* máximo de trabajadores visibles en la escena */
+
+/* ── SVG figure sub-components (viewBox "0 0 44 56") ── */
+
+/* Sombrero vaquero de paja con bandera RD y escudo UASD */
+function StrawHat({ cx, cy }) {
+  var straw = '#d2b428';
+  var dark  = '#a88c18';
+  var yt    = cy - 11;        /* tope de la copa */
+  var xL    = cx - 7;
+  var xR    = cx + 7;
+  var xTL   = cx - 5.5;
+  var xTR   = cx + 5.5;
+  var pts   = ''+xL+','+cy+' '+xR+','+cy+' '+xTR+','+yt+' '+xTL+','+yt;
+  /* "U" de UASD — en la zona verde del escudo (cy-7.5 a cy-4.5) */
+  var ut    = cy - 7;
+  var ub    = cy - 5.4;
+  var uPath = 'M'+(cx-2)+','+ut+
+              ' L'+(cx-2)+','+ub+
+              ' Q'+cx+','+(ub+1.1)+
+              ' '+(cx+2)+','+ub+
+              ' L'+(cx+2)+','+ut;
+  return (
+    <g>
+      {/* Ala trasera */}
+      <ellipse cx={cx} cy={cy} rx="13" ry="3.2" fill={dark}/>
+      {/* Copa trapezoidal (más alta para dar espacio a los logos) */}
+      <polygon points={pts} fill={straw}/>
+      {/* Textura de paja */}
+      <line x1={xTL} y1={cy-5.5} x2={xTR} y2={cy-5.5} stroke={dark} strokeWidth=".9" opacity=".5"/>
+      <line x1={xTL} y1={cy-8.5} x2={xTR} y2={cy-8.5} stroke={dark} strokeWidth=".9" opacity=".5"/>
+      {/* Hundimiento vaquero en el tope */}
+      <ellipse cx={cx} cy={yt} rx="5.5" ry="2.2" fill={dark}/>
+      {/* === Escudo UASD (franja superior de la copa) === */}
+      {/* Fondo verde con borde blanco */}
+      <rect x={cx-3} y={cy-9.5} width="6" height="5" rx="1.2"
+        fill="#1a7020" stroke="#fff" strokeWidth=".9"/>
+      {/* Franja dorada superior */}
+      <rect x={cx-3} y={cy-9.5} width="6" height="2" rx=".8" fill="#d4a020"/>
+      {/* Letra U en blanco */}
+      <path d={uPath} stroke="#fff" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+      {/* === Cinta bandera RD (inmediatamente debajo del escudo) === */}
+      {/* Mitad azul */}
+      <rect x={xL}  y={cy-4.5} width="7" height="3.5" rx=".6" fill="#002d62"/>
+      {/* Mitad roja */}
+      <rect x={cx}  y={cy-4.5} width="7" height="3.5" rx=".6" fill="#cf102e"/>
+      {/* Cruz blanca gruesa */}
+      <line x1={xL} y1={cy-2.75} x2={xR}    y2={cy-2.75} stroke="#fff" strokeWidth="1.6"/>
+      <line x1={cx} y1={cy-4.5}  x2={cx}     y2={cy-1}    stroke="#fff" strokeWidth="1.6"/>
+      {/* Ala delantera */}
+      <ellipse cx={cx} cy={cy} rx="13" ry="2.6" fill={straw}/>
+      <ellipse cx={cx} cy={cy} rx="13" ry="2.6" fill="none" stroke={dark} strokeWidth=".9"/>
+    </g>
+  );
+}
+
+/* Arar — golpea la tierra con azadón */
+function FigArar({ s, c, t, p, noHat }) {
+  var armAnim = {
+    animation: 'w-hoe 2.2s linear infinite',
+    animationPlayState: p ? 'running' : 'paused',
+    transformBox: 'fill-box', transformOrigin: '30% 15%'
+  };
+  return (
+    <g>
+      {!noHat && <StrawHat cx={20} cy={6}/>}
+      {/* Cabeza */}
+      <circle cx="20" cy="13" r="7" fill={s}/>
+      {/* Torso inclinado */}
+      <path d="M20,20 Q17,28 15,33" stroke={c} strokeWidth="6" fill="none" strokeLinecap="round"/>
+      {/* Piernas */}
+      <line x1="15" y1="33" x2="10" y2="47" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="15" y1="33" x2="20" y2="47" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      {/* Pies */}
+      <line x1="10" y1="47" x2="5"  y2="52" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="20" y1="47" x2="25" y2="52" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      {/* Brazos + azadón ANIMADOS (pivotan desde hombros) */}
+      <g style={armAnim}>
+        {/* Brazo izquierdo */}
+        <line x1="18" y1="22" x2="8"  y2="32" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        {/* Brazo derecho */}
+        <line x1="20" y1="21" x2="30" y2="28" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        {/* Mango del azadón */}
+        <line x1="8"  y1="32" x2="32" y2="48" stroke="#8b6030" strokeWidth="3" strokeLinecap="round"/>
+        {/* Hoja del azadón */}
+        <line x1="26" y1="46" x2="38" y2="48" stroke="#787878" strokeWidth="5" strokeLinecap="round"/>
+      </g>
+    </g>
+  );
+}
+
+/* Sembrar — se agacha a plantar un brote */
+function FigSembrar({ s, c, t, p, noHat }) {
+  var armAnim = {
+    animation: 'w-plant 2.8s linear infinite',
+    animationPlayState: p ? 'running' : 'paused',
+    transformBox: 'fill-box', transformOrigin: '50% 5%'
+  };
+  return (
+    <g>
+      {!noHat && <StrawHat cx={14} cy={7}/>}
+      {/* Cabeza inclinada */}
+      <circle cx="14" cy="15" r="6.5" fill={s}/>
+      {/* Torso inclinado hacia adelante */}
+      <path d="M14,21 Q18,28 22,32" stroke={c} strokeWidth="6" fill="none" strokeLinecap="round"/>
+      {/* Piernas dobladas */}
+      <line x1="22" y1="32" x2="16" y2="46" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="22" y1="32" x2="28" y2="44" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="16" y1="46" x2="10" y2="51" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="28" y1="44" x2="32" y2="50" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      {/* Brazo + mano bajando a plantar ANIMADOS */}
+      <g style={armAnim}>
+        <line x1="14" y1="22" x2="7"  y2="34" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        <line x1="7"  y1="34" x2="6"  y2="42" stroke={s} strokeWidth="3.5" strokeLinecap="round"/>
+        {/* Brote en la mano */}
+        <circle cx="6"  cy="43" r="2.5" fill="#5a9830"/>
+        <path d="M6,40 Q9,36 11,38" stroke="#5a9830" strokeWidth="2" fill="none" strokeLinecap="round"/>
+        <path d="M6,40 Q3,36 2,38"  stroke="#5a9830" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      </g>
+      {/* Brazo derecho estático apoyado */}
+      <line x1="15" y1="23" x2="24" y2="30" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+    </g>
+  );
+}
+
+/* Regar — vierte agua con regadera */
+function FigRegar({ s, c, t, p, noHat }) {
+  var canAnim = {
+    animation: 'w-pour 3.2s linear infinite',
+    animationPlayState: p ? 'running' : 'paused',
+    transformBox: 'fill-box', transformOrigin: '15% 40%'
+  };
+  return (
+    <g>
+      {!noHat && <StrawHat cx={18} cy={6}/>}
+      {/* Cabeza */}
+      <circle cx="18" cy="13" r="6.5" fill={s}/>
+      {/* Torso */}
+      <path d="M18,19 L18,34" stroke={c} strokeWidth="6" strokeLinecap="round"/>
+      {/* Brazo izquierdo estático */}
+      <line x1="17" y1="23" x2="8" y2="30" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+      {/* Piernas */}
+      <line x1="18" y1="34" x2="12" y2="48" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="18" y1="34" x2="24" y2="48" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="12" y1="48" x2="7"  y2="53" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="24" y1="48" x2="29" y2="53" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      {/* Brazo derecho + regadera ANIMADOS (pivotan juntos) */}
+      <g style={canAnim}>
+        {/* Brazo */}
+        <line x1="19" y1="22" x2="30" y2="26" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        {/* Regadera (cuerpo) */}
+        <rect x="28" y="20" width="12" height="9" rx="3" fill={c}/>
+        {/* Asa */}
+        <path d="M34,20 Q38,17 38,20" stroke={c} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+        {/* Pitorro */}
+        <line x1="40" y1="25" x2="46" y2="28" stroke={c} strokeWidth="3" strokeLinecap="round"/>
+        {/* Gotas de agua */}
+        <line x1="44" y1="30" x2="43" y2="36" stroke="#4898d8" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3"/>
+        <line x1="47" y1="29" x2="46" y2="35" stroke="#4898d8" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3"/>
+        <line x1="50" y1="28" x2="49" y2="34" stroke="#4898d8" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3"/>
+      </g>
+    </g>
+  );
+}
+
+/* Revisar — toma nota en clipboard */
+function FigRevisar({ s, c, t, p, female, noHat }) {
+  var clipAnim = {
+    animation: 'w-inspect 2.6s linear infinite',
+    animationPlayState: p ? 'running' : 'paused',
+    transformBox: 'fill-box', transformOrigin: '20% 30%'
+  };
+  return (
+    <g>
+      {female ? (
+        <g>
+          {/* Masa base del cabello rizado (detrás de la cabeza) */}
+          <ellipse cx="20" cy="9" rx="9.5" ry="6.5" fill="#1a1008"/>
+          {/* Cabeza */}
+          <circle cx="20" cy="13" r="6.5" fill={s}/>
+          {/* Rizos en la corona — círculos que crean la textura de rizo */}
+          <circle cx="12" cy="11" r="3.8" fill="#1a1008"/>
+          <circle cx="16" cy="6"  r="4"   fill="#1a1008"/>
+          <circle cx="20" cy="4"  r="4.2" fill="#1a1008"/>
+          <circle cx="24" cy="6"  r="4"   fill="#1a1008"/>
+          <circle cx="28" cy="11" r="3.8" fill="#1a1008"/>
+          {/* Reflejos suaves en los rizos */}
+          <circle cx="13" cy="10" r="1.5" fill="#5a3a20" opacity=".45"/>
+          <circle cx="17" cy="6"  r="1.8" fill="#5a3a20" opacity=".45"/>
+          <circle cx="21" cy="4"  r="1.8" fill="#5a3a20" opacity=".45"/>
+          <circle cx="25" cy="6"  r="1.5" fill="#5a3a20" opacity=".45"/>
+          {/* Mechones laterales que caen */}
+          <path d="M12,14 Q10,19 13,22" stroke="#1a1008" strokeWidth="4.5" fill="none" strokeLinecap="round"/>
+          <path d="M28,14 Q30,19 27,22" stroke="#1a1008" strokeWidth="4.5" fill="none" strokeLinecap="round"/>
+          {!noHat && <StrawHat cx={20} cy={4}/>}
+        </g>
+      ) : (
+        <g>
+          {!noHat && <StrawHat cx={20} cy={6}/>}
+          {/* Cabeza */}
+          <circle cx="20" cy="13" r="6.5" fill={s}/>
+        </g>
+      )}
+      {/* Torso */}
+      <path d="M20,19 L20,34" stroke={c} strokeWidth="6" strokeLinecap="round"/>
+      {/* Brazo izquierdo sostiene portapapeles ANIMADO */}
+      <g style={clipAnim}>
+        <line x1="18" y1="22" x2="8" y2="28" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        {/* Portapapeles */}
+        <rect x="1"  y="22" width="9" height="12" rx="1.5" fill="#fffbe8" stroke="#ccc" strokeWidth="1"/>
+        <rect x="4"  y="20" width="4" height="3"  rx="1" fill="#aaa"/>
+        <line x1="3"  y1="27" x2="8"  y2="27" stroke="#888" strokeWidth="1"/>
+        <line x1="3"  y1="29" x2="8"  y2="29" stroke="#888" strokeWidth="1"/>
+        <line x1="3"  y1="31" x2="6"  y2="31" stroke="#888" strokeWidth="1"/>
+      </g>
+      {/* Brazo derecho con lápiz ANIMADO */}
+      <g style={clipAnim}>
+        <line x1="21" y1="21" x2="30" y2="25" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        <line x1="28" y1="24" x2="26" y2="33" stroke="#f0c040" strokeWidth="3" strokeLinecap="round"/>
+        <line x1="26" y1="33" x2="25" y2="36" stroke="#ffe0a0" strokeWidth="2.5" strokeLinecap="round"/>
+      </g>
+      {/* Piernas */}
+      <line x1="20" y1="34" x2="14" y2="48" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="20" y1="34" x2="26" y2="48" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="14" y1="48" x2="9"  y2="53" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="26" y1="48" x2="31" y2="53" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+    </g>
+  );
+}
+
+/* Machetear — corta vegetación con machete */
+function FigMachete({ s, c, t, p, noHat }) {
+  var armAnim = {
+    animation: 'w-machete 2.2s linear infinite',
+    animationPlayState: p ? 'running' : 'paused',
+    transformBox: 'fill-box', transformOrigin: '4% 88%'
+  };
+  return (
+    <g>
+      {!noHat && <StrawHat cx={20} cy={6}/>}
+      {/* Cabeza */}
+      <circle cx="20" cy="13" r="6.5" fill={s}/>
+      {/* Torso ligeramente inclinado */}
+      <path d="M20,19 Q19,27 18,34" stroke={c} strokeWidth="6" fill="none" strokeLinecap="round"/>
+      {/* Brazo izquierdo — apoyo hacia abajo */}
+      <line x1="18" y1="24" x2="10" y2="33" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+      {/* Piernas */}
+      <line x1="18" y1="34" x2="12" y2="48" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="18" y1="34" x2="24" y2="48" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="12" y1="48" x2="7"  y2="53" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="24" y1="48" x2="29" y2="53" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      {/* Brazo derecho + machete ANIMADOS */}
+      <g style={armAnim}>
+        {/* Brazo */}
+        <line x1="21" y1="20" x2="33" y2="14" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        {/* Mango del machete */}
+        <line x1="31" y1="13" x2="38" y2="9" stroke="#7a4a18" strokeWidth="3.5" strokeLinecap="round"/>
+        {/* Guarda del mango */}
+        <line x1="35" y1="8" x2="35" y2="14" stroke="#888" strokeWidth="2.5" strokeLinecap="round"/>
+        {/* Hoja del machete — trapezoidal, más ancha en la punta */}
+        <path d="M38,9 L50,1 L53,6 L40,15Z" fill="#d0d0d0"/>
+        {/* Filo superior — brillo metálico */}
+        <line x1="38" y1="9" x2="52" y2="2" stroke="#f0f0f0" strokeWidth="1.2" strokeLinecap="round"/>
+        {/* Lomo de la hoja (borde grueso) */}
+        <line x1="40" y1="15" x2="53" y2="6" stroke="#a0a0a0" strokeWidth="1.8" strokeLinecap="round"/>
+      </g>
+    </g>
+  );
+}
+
+/* Cargar — lleva racimo de plátanos al hombro */
+function FigCargar({ s, c, t, p, noHat }) {
+  var bodyAnim = {
+    animation: 'w-carry 1.9s ease-in-out infinite',
+    animationPlayState: p ? 'running' : 'paused',
+    transformBox: 'fill-box', transformOrigin: '50% 60%'
+  };
+  return (
+    <g style={bodyAnim}>
+      {/* Racimo de plátanos encima del hombro */}
+      <ellipse cx="28" cy="8"  rx="6"  ry="3.5" fill="#e8c830" opacity=".95"/>
+      <ellipse cx="22" cy="10" rx="5.5" ry="3"   fill="#d4b828"/>
+      <ellipse cx="32" cy="11" rx="5"   ry="2.8"  fill="#f0d038"/>
+      <ellipse cx="26" cy="13" rx="5"   ry="2.5"  fill="#c8a820"/>
+      <path d="M28,5 Q30,2 32,4" stroke="#5a8820" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      {!noHat && <StrawHat cx={18} cy={9}/>}
+      {/* Cabeza */}
+      <circle cx="18" cy="17" r="6.5" fill={s}/>
+      {/* Brazo derecho alzado sosteniendo el racimo */}
+      <line x1="20" y1="24" x2="28" y2="13" stroke={s} strokeWidth="4.5" strokeLinecap="round"/>
+      {/* Torso */}
+      <path d="M18,23 L18,38" stroke={c} strokeWidth="6" strokeLinecap="round"/>
+      {/* Brazo izquierdo bajado */}
+      <line x1="16" y1="26" x2="8" y2="34" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+      {/* Piernas caminando */}
+      <line x1="18" y1="38" x2="12" y2="52" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="18" y1="38" x2="24" y2="50" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="12" y1="52" x2="7"  y2="56" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="24" y1="50" x2="29" y2="55" stroke="#4a2e10" strokeWidth="4" strokeLinecap="round"/>
+    </g>
+  );
+}
+
+function FarmWorker({ emp, present, onToggle, delay, slotIndex, totalCount, noHat }) {
+  const slot      = FARM_SLOTS[slotIndex % FARM_SLOTS.length];
+  const isFemale  = emp.gender === 'F';
+  const act       = isFemale ? 'revisar' : slot.act;
+  const sz        = totalCount > 9 ? 24 : totalCount > 6 ? 28 : totalCount > 4 ? 32 : 36;
+  const skin      = present ? '#d4956a' : '#999';
+  const cloth     = present ? CLOTH_COLS[slotIndex % CLOTH_COLS.length] : '#777';
+  const hat       = present ? '#c8a050' : '#888';
   const firstName = emp.name.split(' ')[0];
+
   return (
     <div onClick={() => onToggle(emp.id)} title={emp.name}
-      style={{display:'flex',flexDirection:'column',alignItems:'center',gap:s.pin?'4px':'3px',
+      style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',
         cursor:'pointer',userSelect:'none',
-        opacity: present ? 1 : 0.32,
-        filter: present ? 'none' : 'grayscale(.85)',
-        transition:'opacity .3s, filter .3s',
-        animation:`farmBob ${1.9+delay*0.3}s ease-in-out infinite`,
-        animationDelay:`${delay*0.22}s`}}>
-      <div style={{
-        width:s.circle+'px', height:s.circle+'px', borderRadius:'50%', flexShrink:0,
-        background: present ? '#2d5a27' : 'var(--ink-600)',
-        display:'grid', placeItems:'center',
-        fontSize:s.initFs+'px', fontWeight:700, color:'#fff',
-        boxShadow: present
-          ? `0 ${tier<2?4:2}px ${tier<2?14:8}px rgba(45,90,39,.55),0 0 0 ${tier<2?2:1}px rgba(255,255,255,.22)`
-          : `0 2px 8px rgba(0,0,0,.38)`,
-        transition:'background .3s, box-shadow .3s'}}>
-        {initials}
-      </div>
-      {s.pin && (
-        <div style={{width:'3px',height:'10px',borderRadius:'2px',
-          background: present ? '#2d5a27' : 'var(--ink-500)',
-          opacity: present ? 0.75 : 0.4, transition:'background .3s'}}/>
-      )}
-      <span style={{
-        fontSize:s.nameFs+'px', fontWeight:700, textAlign:'center',
-        maxWidth:s.nameW+'px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-        fontFamily:'var(--font-sans)', letterSpacing:'.01em',
-        color: present ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.32)',
-        transition:'color .3s'}}>
-        {firstName}
-      </span>
+        opacity: present ? 1 : 0.28,
+        filter:  present ? 'none' : 'grayscale(.95)',
+        transition:'opacity .3s,filter .3s',
+        animationPlayState: present ? 'running' : 'paused'}}>
+      <svg width={sz} height={Math.round(sz*1.27)} viewBox="0 0 44 56"
+        style={{overflow:'visible', animationPlayState: present ? 'running' : 'paused'}}>
+        {act === 'arar'       && <FigArar     s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
+        {act === 'sembrar'    && <FigSembrar  s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
+        {act === 'machetear'  && <FigMachete  s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
+        {act === 'regar'      && <FigRegar    s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
+        {act === 'revisar'    && <FigRevisar  s={skin} c={cloth} t={hat} p={present} female={isFemale} noHat={noHat}/>}
+        {act === 'cargar'     && <FigCargar   s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
+      </svg>
     </div>
   );
 }
@@ -206,12 +511,20 @@ function DomPlane() {
   );
 }
 
+
 /* ── Animated farm scene ── */
 function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, totalCount, isES, viewDate }) {
-  const [clock, setClock] = React.useState(() => new Date());
-  React.useEffect(() => {
-    const id = setInterval(() => setClock(new Date()), 60000);
-    return () => clearInterval(id);
+  const [clock, setClock] = React.useState(function() { return new Date(); });
+  React.useEffect(function() {
+    var intervalId;
+    /* Espera al próximo cambio de minuto para alinear el intervalo al reloj */
+    var now   = new Date();
+    var delay = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+    var timeoutId = setTimeout(function() {
+      setClock(new Date());
+      intervalId = setInterval(function() { setClock(new Date()); }, 60000);
+    }, delay);
+    return function() { clearTimeout(timeoutId); clearInterval(intervalId); };
   }, []);
 
   const hours     = clock.getHours() + clock.getMinutes() / 60;
@@ -220,9 +533,8 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
   const moon      = getMoonConfig(hours);
   const starAlpha = getStarsAlpha(hours);
 
-  const isDay = hours >= 6.5 && hours < 19;
-  const tier  = getWTier(totalCount);
-  const wsz   = W_TIERS[tier];
+  const isDay   = hours >= 6.5 && hours < 19;
+  const isNight = hours >= 19  || hours < 6;
 
   return (
     <div style={{position:'relative',width:'100%',
@@ -334,16 +646,40 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         <path d="M30,16 Q18,20 14,34" stroke="#3a7820" strokeWidth="2" fill="none" strokeLinecap="round"/>
         <path d="M30,16 Q42,22 46,36" stroke="#429020" strokeWidth="2" fill="none" strokeLinecap="round"/>
         {/* Cocos — racimo bajo las hojas */}
-        <ellipse cx="24" cy="22" rx="4.5" ry="5.5" fill="#5a8c28"/>
-        <ellipse cx="24" cy="22" rx="4.5" ry="5.5" fill="none" stroke="#3d6018" strokeWidth=".8"/>
-        <ellipse cx="32" cy="20" rx="4.5" ry="5.5" fill="#4e7e22"/>
-        <ellipse cx="32" cy="20" rx="4.5" ry="5.5" fill="none" stroke="#3d6018" strokeWidth=".8"/>
-        <ellipse cx="28" cy="26" rx="4" ry="5" fill="#638c2a"/>
-        <ellipse cx="28" cy="26" rx="4" ry="5" fill="none" stroke="#3d6018" strokeWidth=".8"/>
-        {/* Sombra/detalle de cada coco */}
-        <ellipse cx="24" cy="24" rx="2" ry="1.5" fill="rgba(0,0,0,.15)"/>
-        <ellipse cx="32" cy="22" rx="2" ry="1.5" fill="rgba(0,0,0,.15)"/>
-        <ellipse cx="28" cy="28" rx="1.8" ry="1.4" fill="rgba(0,0,0,.15)"/>
+        {/* Coco 1 — izquierda */}
+        <g transform="translate(23,21) scale(0.65)">
+          <path d="M0,-7 C6,-6 8,1 7,6 C6,10 3,12 0,12 C-3,12 -6,10 -7,6 C-8,1 -6,-6 0,-7Z" fill="#3d7018"/>
+          <path d="M0,-7 C6,-6 8,1 7,6 C6,10 3,12 0,12 C-3,12 -6,10 -7,6 C-8,1 -6,-6 0,-7Z" fill="none" stroke="#2a5010" strokeWidth="1.2"/>
+          <path d="M-3,-4 C-1,-6 2,-6 4,-4" stroke="#5a9828" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
+          <path d="M-5,2 C-4,0 -2,-1 0,-1" stroke="#4a8820" strokeWidth="1" fill="none" strokeLinecap="round"/>
+          <ellipse cx="1" cy="7" rx="3.5" ry="2" fill="rgba(0,0,0,.18)"/>
+          <circle cx="0" cy="-7" r="1.2" fill="#5a3a10"/>
+        </g>
+        {/* Coco 2 — derecha */}
+        <g transform="translate(33,19) scale(0.65)">
+          <path d="M0,-7 C6,-6 8,1 7,6 C6,10 3,12 0,12 C-3,12 -6,10 -7,6 C-8,1 -6,-6 0,-7Z" fill="#4a8020"/>
+          <path d="M0,-7 C6,-6 8,1 7,6 C6,10 3,12 0,12 C-3,12 -6,10 -7,6 C-8,1 -6,-6 0,-7Z" fill="none" stroke="#2a5010" strokeWidth="1.2"/>
+          <path d="M-3,-4 C-1,-6 2,-6 4,-4" stroke="#6aaa30" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
+          <path d="M-5,2 C-4,0 -2,-1 0,-1" stroke="#5a9820" strokeWidth="1" fill="none" strokeLinecap="round"/>
+          <ellipse cx="1" cy="7" rx="3.5" ry="2" fill="rgba(0,0,0,.18)"/>
+          <circle cx="0" cy="-7" r="1.2" fill="#5a3a10"/>
+        </g>
+        {/* Coco 3 — centro abajo */}
+        <g transform="translate(28,27) scale(0.65)">
+          <path d="M0,-6 C5,-5 7,1 6,5 C5,9 3,11 0,11 C-3,11 -5,9 -6,5 C-7,1 -5,-5 0,-6Z" fill="#558a25"/>
+          <path d="M0,-6 C5,-5 7,1 6,5 C5,9 3,11 0,11 C-3,11 -5,9 -6,5 C-7,1 -5,-5 0,-6Z" fill="none" stroke="#2a5010" strokeWidth="1.2"/>
+          <path d="M-2,-3 C-1,-5 2,-5 3,-3" stroke="#70b835" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
+          <ellipse cx="0" cy="6" rx="3" ry="1.8" fill="rgba(0,0,0,.18)"/>
+          <circle cx="0" cy="-6" r="1.1" fill="#5a3a10"/>
+        </g>
+        {/* Coco 4 — extra izq arriba */}
+        <g transform="translate(18,24) scale(0.65)">
+          <path d="M0,-5.5 C4.5,-4.5 6,1 5.5,4.5 C5,8 2.5,10 0,10 C-2.5,10 -5,8 -5.5,4.5 C-6,1 -4.5,-4.5 0,-5.5Z" fill="#3a6815"/>
+          <path d="M0,-5.5 C4.5,-4.5 6,1 5.5,4.5 C5,8 2.5,10 0,10 C-2.5,10 -5,8 -5.5,4.5 C-6,1 -4.5,-4.5 0,-5.5Z" fill="none" stroke="#2a5010" strokeWidth="1.1"/>
+          <path d="M-2,-3 C0,-5 2.5,-4 3,-2" stroke="#528a22" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+          <ellipse cx="0" cy="6" rx="2.8" ry="1.6" fill="rgba(0,0,0,.18)"/>
+          <circle cx="0" cy="-5.5" r="1" fill="#5a3a10"/>
+        </g>
       </svg>
 
       {/* Palma derecha (pequeña, detrás del granero) */}
@@ -354,17 +690,31 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         <path d="M22,10 Q36,-4 46,5" stroke="#5aaa38" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
         <path d="M22,12 Q10,6 4,18" stroke="#42882a" strokeWidth="2" fill="none" strokeLinecap="round"/>
         <path d="M22,12 Q34,7 40,20" stroke="#4a9028" strokeWidth="2" fill="none" strokeLinecap="round"/>
-        {/* Cocos — racimo pequeño */}
-        <ellipse cx="18" cy="17" rx="3.5" ry="4.2" fill="#5a8c28"/>
-        <ellipse cx="18" cy="17" rx="3.5" ry="4.2" fill="none" stroke="#3d6018" strokeWidth=".7"/>
-        <ellipse cx="25" cy="16" rx="3.5" ry="4.2" fill="#4e7e22"/>
-        <ellipse cx="25" cy="16" rx="3.5" ry="4.2" fill="none" stroke="#3d6018" strokeWidth=".7"/>
-        <ellipse cx="21" cy="21" rx="3.2" ry="3.8" fill="#638c2a"/>
-        <ellipse cx="21" cy="21" rx="3.2" ry="3.8" fill="none" stroke="#3d6018" strokeWidth=".7"/>
-        {/* Sombra */}
-        <ellipse cx="18" cy="18.5" rx="1.6" ry="1.2" fill="rgba(0,0,0,.15)"/>
-        <ellipse cx="25" cy="17.5" rx="1.6" ry="1.2" fill="rgba(0,0,0,.15)"/>
-        <ellipse cx="21" cy="22.5" rx="1.4" ry="1.1" fill="rgba(0,0,0,.15)"/>
+        {/* Cocos — racimo pequeño palma derecha */}
+        {/* Coco A — izquierda */}
+        <g transform="translate(17,17) scale(0.65)">
+          <path d="M0,-6 C5,-5 7,1 6,5 C5,8 3,10 0,10 C-3,10 -5,8 -6,5 C-7,1 -5,-5 0,-6Z" fill="#3d7018"/>
+          <path d="M0,-6 C5,-5 7,1 6,5 C5,8 3,10 0,10 C-3,10 -5,8 -6,5 C-7,1 -5,-5 0,-6Z" fill="none" stroke="#2a5010" strokeWidth="1.1"/>
+          <path d="M-2.5,-3 C-1,-5 2,-5 3.5,-3" stroke="#5a9828" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+          <ellipse cx="0" cy="6" rx="3" ry="1.6" fill="rgba(0,0,0,.18)"/>
+          <circle cx="0" cy="-6" r="1" fill="#5a3a10"/>
+        </g>
+        {/* Coco B — derecha */}
+        <g transform="translate(25,15) scale(0.65)">
+          <path d="M0,-6 C5,-5 7,1 6,5 C5,8 3,10 0,10 C-3,10 -5,8 -6,5 C-7,1 -5,-5 0,-6Z" fill="#4a8020"/>
+          <path d="M0,-6 C5,-5 7,1 6,5 C5,8 3,10 0,10 C-3,10 -5,8 -6,5 C-7,1 -5,-5 0,-6Z" fill="none" stroke="#2a5010" strokeWidth="1.1"/>
+          <path d="M-2.5,-3 C-1,-5 2,-5 3.5,-3" stroke="#6aaa30" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+          <ellipse cx="0" cy="6" rx="3" ry="1.6" fill="rgba(0,0,0,.18)"/>
+          <circle cx="0" cy="-6" r="1" fill="#5a3a10"/>
+        </g>
+        {/* Coco C — centro abajo */}
+        <g transform="translate(21,21) scale(0.65)">
+          <path d="M0,-5.5 C4,-4.5 5.5,1 5,4.5 C4.5,7.5 2.5,9 0,9 C-2.5,9 -4.5,7.5 -5,4.5 C-5.5,1 -4,-4.5 0,-5.5Z" fill="#558a25"/>
+          <path d="M0,-5.5 C4,-4.5 5.5,1 5,4.5 C4.5,7.5 2.5,9 0,9 C-2.5,9 -4.5,7.5 -5,4.5 C-5.5,1 -4,-4.5 0,-5.5Z" fill="none" stroke="#2a5010" strokeWidth="1.1"/>
+          <path d="M-2,-3 C-1,-4.5 1.5,-4.5 3,-3" stroke="#70b835" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+          <ellipse cx="0" cy="5.5" rx="2.6" ry="1.5" fill="rgba(0,0,0,.18)"/>
+          <circle cx="0" cy="-5.5" r="1" fill="#5a3a10"/>
+        </g>
       </svg>
 
       {/* Granero (casita) */}
@@ -389,7 +739,7 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         <line x1="64" y1="52" x2="78" y2="52" stroke="rgba(0,0,0,.25)" strokeWidth="1"/>
       </svg>
 
-      {/* Cultivos — área central */}
+{/* Cultivos — grama central */}
       <div style={{position:'absolute',bottom:'115px',left:'18%',right:'28%',height:'52px',
         display:'flex',alignItems:'flex-end',gap:'4px',overflow:'hidden',pointerEvents:'none'}}>
         {Array.from({length:28}).map((_,i) => (
@@ -412,25 +762,163 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         background:'linear-gradient(180deg,rgba(140,110,60,.35) 0%,rgba(160,120,65,.55) 100%)',
         clipPath:'polygon(30% 0%,70% 0%,100% 100%,0% 100%)'}}/>
 
-      {/* Cerca — posts y rieles */}
-      <svg style={{position:'absolute',bottom:'85px',left:0,width:'100%',height:'32px',pointerEvents:'none'}}
-        viewBox="0 0 800 32" preserveAspectRatio="none">
-        {/* Rieles horizontales */}
-        <line x1="0" y1="10" x2="800" y2="10" stroke="#8b6e44" strokeWidth="2.5" opacity=".85"/>
-        <line x1="0" y1="22" x2="800" y2="22" stroke="#8b6e44" strokeWidth="2" opacity=".75"/>
-        {/* Posts verticales */}
-        {Array.from({length:17}).map((_,i)=>(
-          <rect key={i} x={i*50+4} y="4" width="6" height="28" rx="2" fill="#7a5c34" opacity=".9"/>
-        ))}
+      {/* Cerca con puerta abierta — bajada al nivel del campo */}
+      <svg style={{position:'absolute',bottom:'65px',left:0,width:'100%',height:'42px',
+        overflow:'visible',pointerEvents:'none',zIndex:4}}
+        viewBox="0 0 800 42" preserveAspectRatio="none">
+
+        {/* Rieles izquierdos (hasta la puerta) */}
+        <line x1="0"   y1="13" x2="345" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
+        <line x1="0"   y1="27" x2="345" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
+        {/* Rieles derechos (desde la puerta) */}
+        <line x1="465" y1="13" x2="800" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
+        <line x1="465" y1="27" x2="800" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
+
+        {/* Posts normales — saltamos la zona de la puerta (x 340–465) */}
+        {Array.from({length:17}).map((_,i) => {
+          var x = i*50+4;
+          if (x >= 340 && x <= 465) return null;
+          return <rect key={i} x={x} y="5" width="7" height="34" rx="2" fill="#7a5c34" opacity=".9"/>;
+        })}
+
+        {/* ── Puerta de establo ── */}
+
+        {/* Poste izquierdo (bisagra) */}
+        <rect x="337" y="-4" width="11" height="50" rx="2" fill="#7a5c34" opacity=".95"/>
+        <rect x="338" y="-4" width="3"  height="50" rx="1" fill="#b09060" opacity=".28"/>
+
+        {/* Poste derecho (latch) */}
+        <rect x="461" y="-4" width="11" height="50" rx="2" fill="#7a5c34" opacity=".95"/>
+        <rect x="462" y="-4" width="3"  height="50" rx="1" fill="#b09060" opacity=".28"/>
+
+        {isNight ? (
+          <g>
+            {/* Puerta CERRADA — panel recto llenando el vano */}
+            <rect x="348" y="-4" width="113" height="50" fill="#8b6e44"/>
+            {/* Sombra izquierda de grosor */}
+            <rect x="348" y="-4" width="9"   height="50" fill="#5a4020" opacity=".3"/>
+            {/* 4 tablones horizontales cerrados */}
+            <line x1="348" y1="9"  x2="461" y2="9"  stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="348" y1="18" x2="461" y2="18" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="348" y1="27" x2="461" y2="27" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="348" y1="36" x2="461" y2="36" stroke="#6a5030" strokeWidth="2.5"/>
+            {/* Z-brace */}
+            <line x1="350" y1="46" x2="459" y2="2" stroke="#5a4020" strokeWidth="3" strokeLinecap="round" opacity=".82"/>
+            {/* Bisagras */}
+            <rect x="344" y="4"  width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+            <rect x="344" y="31" width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+            <circle cx="349" cy="7"  r="2" fill="#555" opacity=".75"/>
+            <circle cx="349" cy="34" r="2" fill="#555" opacity=".75"/>
+            {/* Candado */}
+            <rect x="396" y="14" width="14" height="12" rx="2.5" fill="#b8982a"/>
+            <path d="M399,14 Q399,8 403,8 Q407,8 407,14" fill="none" stroke="#b8982a" strokeWidth="3" strokeLinecap="round"/>
+            <circle cx="403" cy="20" r="2.5" fill="#7a6010"/>
+            <rect x="402" y="20" width="2" height="4" rx="1" fill="#7a6010"/>
+          </g>
+        ) : (
+          <g>
+            {/* Puerta ABIERTA ~60° */}
+            <path d="M346,3 L411,0 L411,39 L346,42Z" fill="#8b6e44"/>
+            <path d="M346,3 L355,3 L355,42 L346,42Z" fill="#5a4020" opacity=".3"/>
+            <line x1="346" y1="11" x2="411" y2="9"  stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="346" y1="20" x2="411" y2="18" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="346" y1="29" x2="411" y2="27" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="346" y1="38" x2="411" y2="36" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="348" y1="40" x2="410" y2="2"  stroke="#5a4020" strokeWidth="3" strokeLinecap="round" opacity=".82"/>
+            <rect x="344" y="4"  width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+            <rect x="344" y="31" width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+            <circle cx="349" cy="7"  r="2" fill="#555" opacity=".75"/>
+            <circle cx="349" cy="34" r="2" fill="#555" opacity=".75"/>
+            <rect x="408" y="16" width="9" height="7" rx="2" fill="#888" opacity=".88"/>
+            <circle cx="412" cy="19.5" r="2.5" fill="#bbb" opacity=".85"/>
+          </g>
+        )}
       </svg>
 
-      {/* Tierra oscura al frente */}
-      <div style={{position:'absolute',bottom:0,left:0,right:0,height:'30px',
-        background:'linear-gradient(180deg,#3a2a14 0%,#28200e 100%)',opacity:.7}}/>
+      {/* Tractor de frente diagonal — mismo estilo que el granero */}
+      <svg style={{position:'absolute',bottom:'0',right:'2%',
+        width:'88px',height:'78px',
+        pointerEvents:'none',zIndex:5,overflow:'visible',
+        transform:'perspective(320px) rotateY(-28deg)',
+        transformOrigin:'50% 50%'}}
+        viewBox="0 0 88 78">
+
+        {/* ── Rueda trasera IZQUIERDA (grande) ── */}
+        <circle cx="14" cy="61" r="14" fill="#181818"/>
+        <circle cx="14" cy="61" r="11" fill="#282828"/>
+        <circle cx="14" cy="61" r="4"  fill="#555"/>
+        <line x1="14" y1="47" x2="14" y2="75" stroke="#3a3a3a" strokeWidth="2"/>
+        <line x1="0"  y1="61" x2="28" y2="61" stroke="#3a3a3a" strokeWidth="2"/>
+        <line x1="4"  y1="51" x2="24" y2="71" stroke="#3a3a3a" strokeWidth="2"/>
+        <line x1="24" y1="51" x2="4"  y2="71" stroke="#3a3a3a" strokeWidth="2"/>
+
+        {/* ── Rueda trasera DERECHA (grande) ── */}
+        <circle cx="74" cy="61" r="14" fill="#181818"/>
+        <circle cx="74" cy="61" r="11" fill="#282828"/>
+        <circle cx="74" cy="61" r="4"  fill="#555"/>
+        <line x1="74" y1="47" x2="74" y2="75" stroke="#3a3a3a" strokeWidth="2"/>
+        <line x1="60" y1="61" x2="88" y2="61" stroke="#3a3a3a" strokeWidth="2"/>
+        <line x1="64" y1="51" x2="84" y2="71" stroke="#3a3a3a" strokeWidth="2"/>
+        <line x1="84" y1="51" x2="64" y2="71" stroke="#3a3a3a" strokeWidth="2"/>
+
+        {/* ── Guardabarros sobre ruedas traseras ── */}
+        <path d="M2,47 Q4,30 14,28 Q27,28 28,46Z" fill="#c83028"/>
+        <path d="M60,46 Q61,28 74,28 Q86,28 86,47Z" fill="#c83028"/>
+
+        {/* ── Tope del capó — perspectiva diagonal (como el techo del granero) ── */}
+        <path d="M22,30 L66,30 L62,22 L26,22Z" fill="#d83a30"/>
+
+        {/* ── Cara frontal del capó / grille ── */}
+        <rect x="22" y="30" width="44" height="18" rx="1.5" fill="#b82820"/>
+        <line x1="23" y1="35" x2="65" y2="35" stroke="#8a1a10" strokeWidth="1.5"/>
+        <line x1="23" y1="40" x2="65" y2="40" stroke="#8a1a10" strokeWidth="1.5"/>
+        <line x1="23" y1="45" x2="65" y2="45" stroke="#8a1a10" strokeWidth="1.5"/>
+
+        {/* Faros */}
+        <circle cx="29" cy="46" r="4.5" fill="#ffe870" opacity=".92"/>
+        <circle cx="29" cy="46" r="2.8" fill="#fff"    opacity=".75"/>
+        <circle cx="59" cy="46" r="4.5" fill="#ffe870" opacity=".92"/>
+        <circle cx="59" cy="46" r="2.8" fill="#fff"    opacity=".75"/>
+
+        {/* ── Sombra lateral derecha del capó (da el efecto diagonal) ── */}
+        <rect x="60" y="22" width="8" height="26" rx="1" fill="rgba(0,0,0,.24)"/>
+
+        {/* ── Tope de la cabina — perspectiva diagonal ── */}
+        <path d="M22,8 L66,8 L62,2 L26,2Z" fill="#c83028"/>
+
+        {/* ── Cara frontal de la cabina ── */}
+        <rect x="22" y="8"  width="44" height="24" rx="2" fill="#aa2418"/>
+        {/* Ventana bipartita */}
+        <rect x="24" y="10" width="40" height="16" rx="1.5" fill="#78c8ea" opacity=".9"/>
+        <line x1="44" y1="10" x2="44" y2="26" stroke="#8a1a10" strokeWidth="1.5"/>
+        <line x1="24" y1="18" x2="64" y2="18" stroke="#8a1a10" strokeWidth="1"/>
+
+        {/* ── Sombra lateral derecha de la cabina ── */}
+        <rect x="60" y="2"  width="8" height="30" rx="1" fill="rgba(0,0,0,.24)"/>
+
+        {/* ── ROPS barra de seguridad ── */}
+        <rect x="20" y="2"  width="42" height="8"  rx="2" fill="#881a10"/>
+        <rect x="20" y="2"  width="3"  height="12" rx="1" fill="#7a1808"/>
+        <rect x="59" y="2"  width="3"  height="12" rx="1" fill="#7a1808"/>
+
+        {/* ── Escape vertical (derecha, sale del tope de la cabina) ── */}
+        <rect x="60" y="-9" width="5" height="22" rx="2.5" fill="#484848"/>
+        <ellipse cx="62.5" cy="-10" rx="4" ry="2.2" fill="#383838"/>
+        <circle cx="62"  cy="-13" r="3"   fill="#ddd" opacity=".28"/>
+        <circle cx="65"  cy="-16" r="2"   fill="#ddd" opacity=".16"/>
+
+        {/* ── Ruedas delanteras pequeñas ── */}
+        <circle cx="33" cy="66" r="9.5" fill="#181818"/>
+        <circle cx="33" cy="66" r="7.5" fill="#282828"/>
+        <circle cx="33" cy="66" r="3"   fill="#555"/>
+        <circle cx="55" cy="66" r="9.5" fill="#181818"/>
+        <circle cx="55" cy="66" r="7.5" fill="#282828"/>
+        <circle cx="55" cy="66" r="3"   fill="#555"/>
+      </svg>
 
 
 
-      {/* Trabajadores */}
+      {/* Trabajadores — cada uno en su zona de la escena */}
       {totalCount === 0 ? (
         <div style={{position:'absolute',bottom:'42px',left:0,right:0,textAlign:'center',
           fontFamily:'var(--font-sans)',fontSize:'12px',fontWeight:600,
@@ -438,13 +926,25 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
           {isES?'Sin trabajadores asignados':'No workers assigned'}
         </div>
       ) : (
-        <div style={{position:'absolute',bottom:'34px',left:'10%',right:'20%',
-          display:'flex',justifyContent:'center',alignItems:'flex-end',
-          gap:wsz.gap, flexWrap:'wrap'}}>
-          {workers.map((emp,i) => (
-            <FarmWorker key={emp.id} emp={emp} present={!!dayRecords[emp.id]}
-              onToggle={onToggle} delay={i} tier={tier}/>
-          ))}
+        <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,pointerEvents:'none',zIndex:3}}>
+          {workers.map((emp,i) => {
+            var slot = FARM_SLOTS[i % FARM_SLOTS.length];
+            /*
+             * bottom del contenedor = fondo del label (si hay label) o fondo del SVG.
+             * Los pies están a ~3px del fondo del SVG (y=52 de 56 en el viewBox).
+             * Suelo en bottom:116px. Con label (~13px): 116-13-3=100. Sin label: 116-3=113.
+             */
+            var workerBottom = '113px';
+            return (
+              <div key={emp.id} style={{position:'absolute',left:slot.left,bottom:workerBottom,
+                transform:'translateX(-50%)',display:'flex',flexDirection:'column',
+                alignItems:'center',pointerEvents:'auto'}}>
+                <FarmWorker emp={emp} present={!!dayRecords[emp.id]}
+                  onToggle={onToggle} delay={i} slotIndex={i} totalCount={totalCount}
+                  noHat={isNight}/>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -453,89 +953,110 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
 
 /* ── Farm date navigator with calendar popup ── */
 function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily }) {
-  const [open, setOpen] = React.useState(false);
-  const [calPos, setCalPos] = React.useState({ top:0, left:0 });
-  const trigRef = React.useRef(null);
-  const calRef  = React.useRef(null);
+  const [open,   setOpen]   = React.useState(false);
+  const [calPos, setCalPos] = React.useState({ top: 0, centerX: 0 });
+  const navRef  = React.useRef(null); /* fila completa ‹ fecha › — ancla para centrar */
+  const trigRef = React.useRef(null); /* solo el pill — para outside-click */
+  const calRef  = React.useRef(null); /* popup */
   const today = new Date().toLocaleDateString('en-CA');
 
   const parseISO = (iso) => {
-    const parts = iso.split('-').map(Number);
-    return { y: parts[0], m: parts[1]-1, d: parts[2] };
+    var p = iso.split('-').map(Number);
+    return { y: p[0], m: p[1]-1, d: p[2] };
   };
-  const sel = parseISO(viewDate);
-  const now  = parseISO(today);
+  var sel = parseISO(viewDate);
+  var now = parseISO(today);
 
   const [month, setMonth] = React.useState(sel.m);
   const [year,  setYear]  = React.useState(sel.y);
 
-  React.useEffect(() => {
-    const p = parseISO(viewDate);
-    setMonth(p.m);
-    setYear(p.y);
+  React.useEffect(function() {
+    var p = parseISO(viewDate);
+    setMonth(p.m); setYear(p.y);
   }, [viewDate]);
 
-  /* position calendar below trigger, centered on viewport width */
-  React.useEffect(() => {
-    if (!open || !trigRef.current) return;
-    const r = trigRef.current.getBoundingClientRect();
-    const calW = 284;
-    const left = r.left + r.width / 2 - calW / 2 + 2;
-    setCalPos({ top: r.bottom + 8, left: Math.max(8, left) });
-  }, [open]);
+  /* Centra el popup bajo la fila ‹ fecha ›.
+     Se llama sincrónicamente en el click para que open y calPos
+     cambien en un solo render (sin frame intermedio en 0,0). */
+  const computePos = function() {
+    var trig = trigRef.current;
+    if (!trig) return;
+    var tr    = trig.getBoundingClientRect();
+    var panel = trig.closest('.act-panel');
+    var rawX;
+    if (panel) {
+      var pr = panel.getBoundingClientRect();   /* un solo reflow */
+      rawX = pr.left + pr.width / 2;
+    } else {
+      rawX = tr.left + tr.width / 2;
+    }
+    /* Clamp para que el calendario no salga del viewport en pantallas estrechas */
+    var calW    = 284;
+    var half    = calW / 2;
+    var centerX = Math.max(half + 8, Math.min(rawX, window.innerWidth - half - 8));
+    setCalPos({ top: tr.bottom + 8, centerX: centerX });
+  };
 
-  /* close on outside click or Escape */
-  React.useEffect(() => {
+  /* Cierra con clic fuera o Escape */
+  React.useEffect(function() {
     if (!open) return;
-    const onMouse = (e) => {
+    var onMouse = function(e) {
       if (trigRef.current && !trigRef.current.contains(e.target) &&
           calRef.current  && !calRef.current.contains(e.target))
         setOpen(false);
     };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    var onKey = function(e) { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onMouse);
-    document.addEventListener('keydown', onKey);
-    return () => {
+    document.addEventListener('keydown',   onKey);
+    return function() {
       document.removeEventListener('mousedown', onMouse);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown',   onKey);
     };
   }, [open]);
 
-  const DOW = ['L','M','X','J','V','S','D'];
-  const firstDow    = (new Date(year, month, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const prevMo   = () => month === 0  ? (setMonth(11), setYear(function(y){ return y-1; })) : setMonth(function(m){ return m-1; });
-  const nextMo   = () => month === 11 ? (setMonth(0),  setYear(function(y){ return y+1; })) : setMonth(function(m){ return m+1; });
-  const prevYear = () => setYear(function(y){ return y-1; });
-  const nextYear = () => setYear(function(y){ return y+1; });
+  var DOW = ['L','M','X','J','V','S','D'];
+  var firstDow    = (new Date(year, month, 1).getDay() + 6) % 7;
+  var daysInMonth = new Date(year, month + 1, 0).getDate();
+  var prevMo   = function() { month === 0  ? (setMonth(11), setYear(function(y){ return y-1; })) : setMonth(function(m){ return m-1; }); };
+  var nextMo   = function() { month === 11 ? (setMonth(0),  setYear(function(y){ return y+1; })) : setMonth(function(m){ return m+1; }); };
+  var prevYear = function() { setYear(function(y){ return y-1; }); };
+  var nextYear = function() { setYear(function(y){ return y+1; }); };
 
-  const hasRecords = (d) => {
-    const iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    const rec = daily && daily[iso];
+  var hasRecords = function(d) {
+    var iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var rec = daily && daily[iso];
     return rec && Object.keys(rec).length > 0;
   };
 
-  const pick = (d) => {
-    const iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  var pick = function(d) {
+    var iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     setViewDate(iso);
     setOpen(false);
   };
 
-  const isToday = viewDate === today;
+  var isToday = viewDate === today;
 
   return (
-    <div style={{display:'flex',alignItems:'center',gap:'10px',justifyContent:'center',position:'relative'}}>
-      <button className="dp-cal__arrow" onClick={()=>navDate(-1)}>‹</button>
+    /* onMouseDown:preventDefault en el contenedor raíz evita que cualquier
+       botón interior reciba focus y dispare scroll de página */
+    <div ref={navRef}
+      onMouseDown={function(e){ e.preventDefault(); }}
+      style={{display:'flex',alignItems:'center',gap:'10px',
+              justifyContent:'center',width:'100%'}}>
 
-      <div ref={trigRef} style={{display:'flex',alignItems:'center',gap:'2px'}}>
-        <button type="button" onClick={() => setOpen(function(o){ return !o; })}
+      <button className="dp-cal__arrow" tabIndex={-1} onClick={function(){ navDate(-1); }}>‹</button>
+
+      <div ref={trigRef}>
+        <button type="button" tabIndex={-1}
+          onClick={function(){ computePos(); setOpen(function(o){ return !o; }); }}
+          className="farm-date-pill"
           style={{display:'flex',alignItems:'center',gap:'7px',
             background: open ? 'var(--ink-100)' : 'transparent',
             border:'1.5px solid '+(open ? 'var(--accent)' : 'var(--ink-200,#ddd)'),
-            borderRadius:'8px', padding:'6px 14px',
-            cursor:'pointer', transition:'background .15s, border-color .15s',
-            fontFamily:'var(--font-sans)', fontWeight:700, fontSize:'14px',
-            color:'var(--ink-800)', whiteSpace:'nowrap', lineHeight:1.2}}>
+            borderRadius:'8px',padding:'6px 14px',cursor:'pointer',
+            transition:'background .15s,border-color .2s,box-shadow .2s',
+            fontFamily:'var(--font-sans)',fontWeight:700,fontSize:'14px',
+            color:'var(--ink-800)',whiteSpace:'nowrap',lineHeight:1.2}}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" style={{opacity:.55,flexShrink:0}}>
             <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -547,58 +1068,58 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily }) {
         </button>
       </div>
 
-      <button className="dp-cal__arrow" onClick={()=>navDate(1)}
+      <button className="dp-cal__arrow" tabIndex={-1}
+        onClick={function(){ navDate(1); }}
         disabled={isToday}
         style={isToday ? {opacity:.28,cursor:'not-allowed'} : {}}>›</button>
 
       {open && ReactDOM.createPortal(
-        <div ref={calRef} className="dp-cal"
-          style={{position:'fixed', top:calPos.top, left:calPos.left,
-            zIndex:9999, boxShadow:'0 16px 48px rgba(0,0,0,.22)',
-            animation:'body-in .15s cubic-bezier(0.33,1,0.68,1) both'}}>
-          <div className="dp-cal__nav">
-            <button type="button" className="dp-cal__arrow" onClick={prevYear} title="Año anterior">«</button>
-            <button type="button" className="dp-cal__arrow" onClick={prevMo}   title="Mes anterior">‹</button>
-            <span className="dp-cal__month">{(MONTHS_ES||[])[month]} {year}</span>
-            <button type="button" className="dp-cal__arrow" onClick={nextMo}   title="Mes siguiente">›</button>
-            <button type="button" className="dp-cal__arrow" onClick={nextYear} title="Año siguiente">»</button>
-          </div>
-          <div className="dp-cal__grid">
-            {DOW.map(function(d){ return <span key={d} className="dp-cal__dow">{d}</span>; })}
-            {Array.from({length:firstDow}).map(function(_,i){ return <span key={'b'+i}/>; })}
-            {Array.from({length:daysInMonth}, function(_,i){
-              const d = i+1;
-              const isoDay = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-              const isFuture = isoDay > today;
-              const isSel = sel.d===d && sel.m===month && sel.y===year;
-              const isNow = now.d===d && now.m===month && now.y===year;
-              const hasRec = hasRecords(d);
-              return (
-                <button type="button" key={d}
-                  disabled={isFuture}
-                  className={'dp-cal__day'+(isSel?' dp-cal__day--sel':'')+(isNow&&!isSel?' dp-cal__day--today':'')+(isFuture?' dp-cal__day--disabled':'')}
-                  onClick={() => pick(d)}
-                  style={isFuture ? {opacity:.28,cursor:'not-allowed'} : isSel ? {} : hasRec ? {
-                    background:'#d4edda',
-                    color:'#1a5c1a',
-                    fontWeight:700,
-                    borderRadius:'6px',
-                    border:'1.5px solid #7ec89a',
-                    position:'relative'
-                  } : {}}>
-                  {d}
-                  {hasRec && !isSel && !isFuture && (
-                    <span style={{
-                      position:'absolute', bottom:'1px', left:'50%',
-                      transform:'translateX(-50%)',
-                      width:'5px', height:'5px', borderRadius:'50%',
-                      background:'#2d8a2d', display:'block',
-                      boxShadow:'0 0 0 1px #fff'
-                    }}/>
-                  )}
-                </button>
-              );
-            })}
+        /* onMouseDown:preventDefault cubre todos los botones del popup */
+        <div onMouseDown={function(e){ e.preventDefault(); }}
+          style={{position:'fixed',top:calPos.top,left:calPos.centerX,
+                  transform:'translateX(-50%)',zIndex:9999}}>
+          <div ref={calRef} className="dp-cal"
+            style={{boxShadow:'0 16px 48px rgba(0,0,0,.18)',
+              /* Reemplaza dp-open (que usa translateY) por fadeIn puro:
+                 evita la ilusión de que la finca "sube" al abrir */
+              animation:'fadeIn .14s ease both'}}>
+            <div className="dp-cal__nav">
+              <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevYear}>«</button>
+              <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevMo}>‹</button>
+              <span className="dp-cal__month">{(MONTHS_ES||[])[month]} {year}</span>
+              <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={nextMo}>›</button>
+              <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={nextYear}>»</button>
+            </div>
+            <div className="dp-cal__grid">
+              {DOW.map(function(d){ return <span key={d} className="dp-cal__dow">{d}</span>; })}
+              {Array.from({length:firstDow}).map(function(_,i){ return <span key={'b'+i}/>; })}
+              {Array.from({length:daysInMonth}, function(_,i){
+                var d = i+1;
+                var isoDay = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+                var isFuture = isoDay > today;
+                var isSel = sel.d===d && sel.m===month && sel.y===year;
+                var isNow = now.d===d && now.m===month && now.y===year;
+                var hasRec = hasRecords(d);
+                return (
+                  <button tabIndex={-1} type="button" key={d}
+                    disabled={isFuture}
+                    className={'dp-cal__day'+(isSel?' dp-cal__day--sel':'')+(isNow&&!isSel?' dp-cal__day--today':'')+(isFuture?' dp-cal__day--disabled':'')}
+                    onClick={function(){ pick(d); }}
+                    style={isFuture?{opacity:.28,cursor:'not-allowed'}:isSel?{}:hasRec?{
+                      background:'#d4edda',color:'#1a5c1a',fontWeight:700,
+                      borderRadius:'6px',border:'1.5px solid #7ec89a',position:'relative'
+                    }:{}}>
+                    {d}
+                    {hasRec && !isSel && !isFuture && (
+                      <span style={{position:'absolute',bottom:'1px',left:'50%',
+                        transform:'translateX(-50%)',width:'5px',height:'5px',
+                        borderRadius:'50%',background:'#2d8a2d',display:'block',
+                        boxShadow:'0 0 0 1px #fff'}}/>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>,
         document.body
@@ -612,51 +1133,152 @@ function FarmView({ t, lang, setRoute }) {
   const today = new Date().toLocaleDateString('en-CA');
   const isES  = lang === 'es';
 
+  /* Bloquea el scroll de la página mientras FarmView está montado.
+     Hay que bloquearlo en <html> (documentElement) porque ahí vive
+     el "root scroller" en la mayoría de browsers — body.overflow
+     solo no es suficiente. */
+  React.useEffect(function() {
+    var html  = document.documentElement;
+    var body  = document.body;
+    var prevH = html.style.overflow;
+    var prevB = body.style.overflow;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    return function() {
+      html.style.overflow = prevH;
+      body.style.overflow = prevB;
+    };
+  }, []);
+
   const [farmEmps,  setFarmEmps]  = React.useState(getFarmEmployees);
   const [daily,     setDaily]     = React.useState(getFarmDaily);
   const [viewDate,  setViewDate]  = React.useState(today);
   const [searchQ,   setSearchQ]   = React.useState(false);
   const [searchVal, setSearchVal] = React.useState('');
   const [flash,     setFlash]     = React.useState(null);
+  const [draft,     setDraft]     = React.useState(function() { return getFarmDaily()[today] || {}; });
+  const [isDirty,   setIsDirty]   = React.useState(false);
+
+  const flashTimerRef = React.useRef(null);
+
+  /* Cuando cambia la fecha sincroniza el draft; también cuando daily cambia
+     (p.ej. después de removeFromFarm) para no guardar empleados fantasma */
+  React.useEffect(function() {
+    setDraft(daily[viewDate] || {});
+    setIsDirty(false);
+  }, [viewDate, daily]);
+
+  /* Limpia el timer de flash al desmontar */
+  React.useEffect(function() {
+    return function() { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); };
+  }, []);
 
   const canManage = typeof userHasPermission === 'function' && userHasPermission('farm');
 
-  const dayRecords          = daily[viewDate] || {};
-  const farmEmployeeObjects = farmEmps.map(id => EMPLOYEES.find(e => e.id === id)).filter(Boolean);
-  const presentCount        = farmEmployeeObjects.filter(e => dayRecords[e.id]).length;
-  const absentCount         = farmEmployeeObjects.length - presentCount;
-  const totalCount          = farmEmployeeObjects.length;
+  /* useMemo evita O(n×m) en cada render */
+  const farmEmployeeObjects = React.useMemo(function() {
+    return farmEmps.map(function(id) { return EMPLOYEES.find(function(e) { return e.id === id; }); }).filter(Boolean);
+  }, [farmEmps]);
 
-  const isToday             = viewDate === today;
+  const presentCount = React.useMemo(function() {
+    return farmEmployeeObjects.filter(function(e) { return !!draft[e.id]; }).length;
+  }, [farmEmployeeObjects, draft]);
 
-  const showFlash = (msg) => { setFlash(msg); setTimeout(() => setFlash(null), 2000); };
+  const absentCount  = farmEmployeeObjects.length - presentCount;
+  const totalCount   = farmEmployeeObjects.length;
+  const sceneWorkers = farmEmployeeObjects.slice(0, MAX_FARM_SCENE);
+  const isToday      = viewDate === today;
+
+  const showFlash = function(msg) {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setFlash(msg);
+    flashTimerRef.current = setTimeout(function() { setFlash(null); }, 2000);
+  };
 
   const togglePresent = (empId) => {
-    const records = { ...daily };
-    if (!records[viewDate]) records[viewDate] = {};
-    records[viewDate] = { ...records[viewDate] };
-    if (records[viewDate][empId]) {
-      delete records[viewDate][empId];
-      if (!Object.keys(records[viewDate]).length) delete records[viewDate];
-    } else {
-      records[viewDate][empId] = true;
-    }
-    setDaily(records);
-    saveFarmDaily(records);
+    var next = Object.assign({}, draft);
+    if (next[empId]) delete next[empId];
+    else next[empId] = true;
+    setDraft(next);
+    setIsDirty(true);
   };
 
   const markAllPresent = () => {
-    const records = { ...daily, [viewDate]: {} };
-    farmEmployeeObjects.forEach(e => { records[viewDate][e.id] = true; });
-    setDaily(records);
-    saveFarmDaily(records);
+    var next = {};
+    farmEmployeeObjects.forEach(function(e) { next[e.id] = true; });
+    setDraft(next);
+    setIsDirty(true);
   };
 
   const clearAll = () => {
-    const records = { ...daily };
-    delete records[viewDate];
+    setDraft({});
+    setIsDirty(true);
+  };
+
+  const saveAttendance = function() {
+    /* 1 — Guardar en farmDaily filtrando solo empleados activos (evita IDs fantasma) */
+    var filteredDraft = {};
+    farmEmployeeObjects.forEach(function(e) { if (draft[e.id]) filteredDraft[e.id] = true; });
+    var records = Object.assign({}, daily);
+    if (!Object.keys(filteredDraft).length) delete records[viewDate];
+    else records[viewDate] = filteredDraft;
     setDaily(records);
     saveFarmDaily(records);
+
+    /* 2 — Puente: sincronizar con historial de asistencia/ausencias del dashboard */
+    var att = {};
+    var abs = {};
+    try { att = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}'); } catch(ex) {}
+    try { abs = JSON.parse(localStorage.getItem('uasd_absences')          || '{}'); } catch(ex) {}
+
+    var baseTs = Date.now();
+    farmEmployeeObjects.forEach(function(emp, idx) {
+      var attKey   = emp.id + ':' + viewDate;
+      var presente = !!filteredDraft[emp.id];
+
+      if (presente) {
+        /* Quitar ausencia de finca si existía */
+        if (abs[emp.id]) {
+          abs[emp.id] = abs[emp.id].filter(function(a) {
+            return !(a.date === viewDate && a.source === 'finca');
+          });
+          if (!abs[emp.id].length) delete abs[emp.id];
+        }
+        /* Añadir presencia solo si no hay registro manual previo */
+        if (!att[attKey] || att[attKey].source === 'finca') {
+          var hora = viewDate === today
+            ? new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+            : '—';
+          att[attKey] = { empId: emp.id, date: viewDate, time: hora, late: false, source: 'finca' };
+        }
+      } else {
+        /* Quitar presencia de finca si existía */
+        if (att[attKey] && att[attKey].source === 'finca') delete att[attKey];
+        /* Añadir ausencia solo si no hay ausencia de finca ya registrada para ese día */
+        var absArr   = abs[emp.id] || [];
+        var yaExiste = absArr.some(function(a) { return a.date === viewDate && a.source === 'finca'; });
+        if (!yaExiste) {
+          abs[emp.id] = absArr.concat([{
+            id: baseTs * 100 + idx,   /* garantiza unicidad aunque varios idx coincidan en ms */
+            date: viewDate,
+            justified: false,
+            justifyNote: '',
+            source: 'finca'
+          }]);
+        }
+      }
+    });
+
+    localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
+    localStorage.setItem('uasd_absences',          JSON.stringify(abs));
+
+    setIsDirty(false);
+    showFlash(isES ? 'Asistencia guardada' : 'Attendance saved');
+  };
+
+  const cancelAttendance = () => {
+    setDraft(daily[viewDate] || {});
+    setIsDirty(false);
   };
 
   const addToFarm = (empId) => {
@@ -668,26 +1290,33 @@ function FarmView({ t, lang, setRoute }) {
     showFlash(isES ? 'Empleado agregado a la finca' : 'Employee added to farm');
   };
 
-  const removeFromFarm = (empId) => {
-    const list = farmEmps.filter(id => id !== empId);
+  const removeFromFarm = function(empId) {
+    var list = farmEmps.filter(function(id) { return id !== empId; });
     setFarmEmps(list);
     saveFarmEmployees(list);
-    const records = { ...daily };
-    Object.keys(records).forEach(date => {
+    var records = Object.assign({}, daily);
+    Object.keys(records).forEach(function(date) {
       if (records[date] && records[date][empId]) {
-        records[date] = { ...records[date] };
+        records[date] = Object.assign({}, records[date]);
         delete records[date][empId];
         if (!Object.keys(records[date]).length) delete records[date];
       }
     });
     setDaily(records);
     saveFarmDaily(records);
+    /* Limpiar también el draft para que no queden IDs fantasma */
+    setDraft(function(prev) {
+      var next = Object.assign({}, prev);
+      delete next[empId];
+      return next;
+    });
     showFlash(isES ? 'Empleado removido de la finca' : 'Employee removed from farm');
   };
 
   const navDate = (offset) => {
     if (offset > 0 && viewDate >= today) return;
-    const d = new Date(viewDate);
+    const [y, m, day] = viewDate.split('-').map(Number);
+    const d = new Date(y, m - 1, day);   /* hora local, evita desfase UTC */
     d.setDate(d.getDate() + offset);
     const next = d.toLocaleDateString('en-CA');
     if (next > today) return;
@@ -704,13 +1333,19 @@ function FarmView({ t, lang, setRoute }) {
       : date.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   };
 
-  const availableEmps     = EMPLOYEES.filter(e => !farmEmps.includes(e.id) && e.status !== 'inactive');
-  const filteredAvailable = searchVal
-    ? availableEmps.filter(e =>
-        e.name.toLowerCase().includes(searchVal.toLowerCase()) ||
-        e.id.toLowerCase().includes(searchVal.toLowerCase()) ||
-        e.cedula.includes(searchVal))
-    : availableEmps;
+  const availableEmps = React.useMemo(function() {
+    return EMPLOYEES.filter(function(e) { return !farmEmps.includes(e.id) && e.status !== 'inactive'; });
+  }, [farmEmps]);
+
+  const filteredAvailable = React.useMemo(function() {
+    if (!searchVal) return availableEmps;
+    var q = searchVal.toLowerCase();
+    return availableEmps.filter(function(e) {
+      return e.name.toLowerCase().includes(q) ||
+             e.id.toLowerCase().includes(q)   ||
+             e.cedula.includes(searchVal);
+    });
+  }, [availableEmps, searchVal]);
 
   return (
     <div className="page" style={{animation:'body-in .28s cubic-bezier(0.33,1,0.68,1) both'}}>
@@ -731,16 +1366,17 @@ function FarmView({ t, lang, setRoute }) {
 
         {/* LEFT — Roster */}
         <div className="activity-map__left" style={{gap:0}}>
-          {/* Wrapper fit-content: la búsqueda hereda el ancho de la fila de botones */}
-          <div style={{display:'inline-flex',flexDirection:'column',gap:'10px',
-            width:'fit-content',maxWidth:'100%',paddingBottom:'14px'}}>
-            <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-              <span className="activity-map__label" style={{margin:0}}>
-                {isES?'Trabajadores':'Farm workers'}
-                <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
-                  ({totalCount})
-                </span>
+          <div style={{display:'flex',flexDirection:'column',gap:'10px',
+            width:'100%',paddingBottom:'14px'}}>
+            {/* Fila 1: etiqueta */}
+            <span className="activity-map__label" style={{margin:0}}>
+              {isES?'Trabajadores':'Farm workers'}
+              <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
+                ({totalCount})
               </span>
+            </span>
+            {/* Fila 2: botones de acción */}
+            <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
               {canManage && (
                 <button
                   className={`kpi__pill kpi__pill--btn${searchQ?' kpi__pill--btn--close':''}`}
@@ -752,14 +1388,16 @@ function FarmView({ t, lang, setRoute }) {
               )}
               {totalCount>0 && (
                 <button
-                  style={{padding:'7px 13px',fontSize:'12px',gap:'6px',minWidth:'130px',justifyContent:'center'}}
+                  style={{padding:'7px 13px',fontSize:'12px',gap:'6px',
+                    minWidth:'130px',justifyContent:'center'}}
                   className={presentCount===totalCount ? 'kpi__pill kpi__pill--btn' : 'kpi__pill kpi__pill--up'}
                   onClick={presentCount===totalCount ? clearAll : markAllPresent}>
-                  <Icon name={presentCount===totalCount ? 'x' : 'check'} size={14}/>
+                  <Icon name={presentCount===totalCount ? 'x' : 'check'} size={14} stroke={presentCount===totalCount ? 1.6 : 2.4}/>
                   {presentCount===totalCount ? (isES?'Limpiar':'Clear') : t.farm_all_present}
                 </button>
               )}
             </div>
+
 
           {searchQ && (
             <div style={{width:'100%'}}>
@@ -808,11 +1446,26 @@ function FarmView({ t, lang, setRoute }) {
           ) : (
             <div style={{display:'flex',flexDirection:'column'}}>
               {farmEmployeeObjects.map((emp,idx) => {
-                const present = !!dayRecords[emp.id];
+                const present = !!draft[emp.id];
+                const offScene = idx >= MAX_FARM_SCENE;
                 return (
-                  <div key={emp.id} className="audit-entry role-assignee-row"
+                  <div key={emp.id}>
+                  {offScene && idx === MAX_FARM_SCENE && (
+                    <div style={{display:'flex',alignItems:'center',gap:'8px',
+                      padding:'10px 0 6px',opacity:.6}}>
+                      <div style={{flex:1,height:'1px',background:'var(--ink-200)'}}/>
+                      <span style={{fontSize:'10px',fontWeight:600,fontFamily:'var(--font-sans)',
+                        color:'var(--ink-400)',textTransform:'uppercase',letterSpacing:'.06em',
+                        whiteSpace:'nowrap'}}>
+                        {isES ? 'Solo en lista · no aparece en escena' : 'List only · not shown in scene'}
+                      </span>
+                      <div style={{flex:1,height:'1px',background:'var(--ink-200)'}}/>
+                    </div>
+                  )}
+                  <div className="audit-entry role-assignee-row"
                     style={{alignItems:'center',padding:'14px 0',
-                      borderTop: idx > 0 ? '1px solid var(--ink-100)' : 'none'}}>
+                      borderTop: idx === 0 || idx === MAX_FARM_SCENE ? 'none' : '1px solid var(--ink-100)',
+                      opacity: offScene ? 0.7 : 1}}>
                     <div style={{width:'38px',height:'38px',borderRadius:'50%',flexShrink:0,
                       display:'grid',placeItems:'center',fontSize:'13px',fontWeight:700,
                       background:'var(--ink-200)',color:'var(--ink-600)'}}>
@@ -856,29 +1509,47 @@ function FarmView({ t, lang, setRoute }) {
                       </div>
                     )}
                   </div>
+                  </div>
                 );
               })}
             </div>
           )}
+
+          {/* Cancelar / Guardar — al fondo del panel, solo cuando hay cambios */}
+          {isDirty && canManage && (
+            <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',
+              paddingTop:'14px',borderTop:'1px solid var(--ink-100)',marginTop:'6px',
+              animation:'body-in .18s cubic-bezier(0.33,1,0.68,1) both'}}>
+              <button className="btn btn--ghost" onClick={cancelAttendance}
+                style={{padding:'7px 14px',fontSize:'12px'}}>
+                {isES ? 'Cancelar' : 'Cancel'}
+              </button>
+              <button className="btn btn--primary" onClick={saveAttendance}
+                style={{padding:'7px 14px',fontSize:'12px'}}>
+                {isES ? 'Guardar' : 'Save'}
+              </button>
+            </div>
+          )}
+
         </div>
 
         {/* RIGHT — Scene + controls */}
 
-        <div className="act-panel" style={{display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden',position:'relative'}}>
+        <div className="act-panel" style={{display:'flex',flexDirection:'column',minWidth:0,overflow:'clip',position:'relative'}}>
 
           {!isToday && (
             <div style={{position:'absolute',top:'10px',right:'14px',zIndex:10,
               width:'34px',height:'34px',display:'flex',alignItems:'center',justifyContent:'center'}}>
               {/* Ondas expansivas */}
               <div style={{position:'absolute',width:'34px',height:'34px',borderRadius:'50%',
-                background:'var(--ink-800)',opacity:.35,
-                animation:'rippleWave 1.8s ease-out infinite'}}/>
+                background:'#4a6fa5',
+                animation:'rippleWave 3s ease-out infinite'}}/>
               <div style={{position:'absolute',width:'34px',height:'34px',borderRadius:'50%',
-                background:'var(--ink-800)',opacity:.25,
-                animation:'rippleWave 1.8s ease-out infinite',animationDelay:'.6s'}}/>
+                background:'#4a6fa5',
+                animation:'rippleWave 3s ease-out infinite',animationDelay:'1s'}}/>
               <div style={{position:'absolute',width:'34px',height:'34px',borderRadius:'50%',
-                background:'var(--ink-800)',opacity:.15,
-                animation:'rippleWave 1.8s ease-out infinite',animationDelay:'1.2s'}}/>
+                background:'#4a6fa5',
+                animation:'rippleWave 3s ease-out infinite',animationDelay:'2s'}}/>
               {/* Botón central */}
               <button type="button" onClick={() => setViewDate(today)}
                 title={isES ? 'Volver a hoy' : 'Back to today'}
@@ -914,8 +1585,7 @@ function FarmView({ t, lang, setRoute }) {
               ].map(function(item){
                 return (
                   <div key={item.label} style={{display:'flex',alignItems:'center',gap:'7px',
-                    background:item.bg,borderRadius:'999px',padding:'5px 12px 5px 8px'}}>
-                    <div style={{width:'8px',height:'8px',borderRadius:'50%',background:item.dot,flexShrink:0}}/>
+                    background:item.bg,borderRadius:'999px',padding:'5px 12px'}}>
                     <span style={{fontFamily:'var(--font-mono)',fontSize:'14px',fontWeight:800,color:item.color,lineHeight:1}}>{item.val}</span>
                     <span style={{fontFamily:'var(--font-sans)',fontSize:'10px',fontWeight:600,
                       color:item.color,opacity:.7,letterSpacing:'.04em',textTransform:'uppercase'}}>{item.label}</span>
@@ -926,24 +1596,16 @@ function FarmView({ t, lang, setRoute }) {
             {/* Contenedor escena */}
             <div style={{position:'relative'}}>
               <FarmScene
-                workers={farmEmployeeObjects}
-                dayRecords={dayRecords}
+                workers={sceneWorkers}
+                dayRecords={draft}
                 onToggle={togglePresent}
                 presentCount={presentCount}
                 absentCount={absentCount}
-                totalCount={totalCount}
+                totalCount={sceneWorkers.length}
                 isES={isES}
                 viewDate={viewDate}
               />
             </div>
-            {totalCount>0 && (
-              <p style={{margin:'10px 0 0',fontSize:'11.5px',color:'var(--ink-300)',
-                fontFamily:'var(--font-sans)',textAlign:'center'}}>
-                {isES
-                  ? 'Haz clic en el trabajador para registrar su asistencia'
-                  : 'Click a worker to toggle attendance'}
-              </p>
-            )}
           </div>
         </div>
       </div>
