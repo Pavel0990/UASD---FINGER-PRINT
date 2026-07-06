@@ -2644,14 +2644,14 @@ tr.table__row--selected .table__actions {
 .dp-cal__arrow {
   background: none; border: 1px solid var(--ink-200); border-radius: 8px;
   width: 28px; height: 28px; display: grid; place-items: center;
-  font-size: 16px; color: var(--ink-600); cursor: pointer; line-height: 1;
+  font-family: var(--font-sans); font-size: 16px; color: var(--ink-600); cursor: pointer; line-height: 1;
   transition: background .12s, color .12s, border-color .12s;
 }
 .dp-cal__arrow:hover { background: var(--ink-600); color: #fff; border-color: var(--ink-600); }
-.dp-cal__month { font-size: 13px; font-weight: 600; color: var(--ink-800); }
+.dp-cal__month { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--ink-800); }
 .dp-cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .dp-cal__dow {
-  text-align: center; font-size: 9.5px; font-weight: 700;
+  font-family: var(--font-sans); text-align: center; font-size: 9.5px; font-weight: 700;
   color: var(--ink-600); text-transform: uppercase; letter-spacing: .05em; padding: 4px 0 6px;
 }
 .dp-cal__day {

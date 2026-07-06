@@ -495,10 +495,13 @@ function DomPlane() {
         <path d="M8,20 Q18,11 30,11 L88,11 Q103,11 107,20 Q103,29 88,29 L30,29 Q18,29 8,20Z"
           fill="none" stroke="rgba(255,255,255,.3)" strokeWidth="1"/>
 
-        {/* Nickname en el ala */}
-        <text x="47" y="38" textAnchor="middle"
-          fontSize="5" fontFamily="sans-serif" fontWeight="700"
-          fill="rgba(0,0,0,0.55)" letterSpacing="0.3">@_09pavo</text>
+        {/* Nickname — livery del ala, estilo aerolínea */}
+        <text x="53" y="34" textAnchor="middle"
+          fontSize="6.5" fontFamily="var(--font-sans)" fontWeight="900"
+          fill="rgba(255,255,255,.92)"
+          stroke="rgba(0,0,0,.35)" strokeWidth="0.6" paintOrder="stroke fill"
+          letterSpacing="0.9"
+          transform="rotate(-8,53,34)">@_09pavo</text>
 
         {/* Ventanillas */}
         {[34,43,52,66,75,84,93].map(x => (
@@ -511,6 +514,7 @@ function DomPlane() {
     </div>
   );
 }
+
 
 
 /* ── Animated farm scene ── */
@@ -738,6 +742,7 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         <rect x="64" y="46" width="14" height="12" rx="2" fill="#d4a870"/>
         <line x1="71" y1="46" x2="71" y2="58" stroke="rgba(0,0,0,.25)" strokeWidth="1"/>
         <line x1="64" y1="52" x2="78" y2="52" stroke="rgba(0,0,0,.25)" strokeWidth="1"/>
+
       </svg>
 
 {/* Cultivos — grama central */}
@@ -918,8 +923,6 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         <circle cx="55" cy="66" r="3"   fill="#555"/>
       </svg>
 
-
-
       {/* Trabajadores — cada uno en su zona de la escena */}
       {totalCount === 0 ? (
         <div style={{position:'absolute',bottom:'42px',left:0,right:0,textAlign:'center',
@@ -954,8 +957,9 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
 
 /* ── Farm date navigator with calendar popup ── */
 function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, rosterOpen }) {
-  const [open,   setOpen]   = React.useState(false);
-  const [calPos, setCalPos] = React.useState({ top: 0, centerX: 0 });
+  const [open,     setOpen]     = React.useState(false);
+  const [calReady, setCalReady] = React.useState(false);
+  const [calPos,   setCalPos]   = React.useState({ top: 0, centerX: 0 });
   const navRef  = React.useRef(null); /* fila completa ‹ fecha › — ancla para centrar */
   const trigRef = React.useRef(null); /* solo el pill — para outside-click */
   const calRef  = React.useRef(null); /* popup */
@@ -976,9 +980,7 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
     setMonth(p.m); setYear(p.y);
   }, [viewDate]);
 
-  /* Centra el popup bajo la fila ‹ fecha ›.
-     Se llama sincrónicamente en el click para que open y calPos
-     cambien en un solo render (sin frame intermedio en 0,0). */
+  /* Centra el popup bajo la fila ‹ fecha ›. */
   const computePos = function() {
     var trig = trigRef.current;
     if (!trig) return;
@@ -986,44 +988,54 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
     var panel = trig.closest('.act-panel');
     var rawX;
     if (panel) {
-      var pr = panel.getBoundingClientRect();   /* un solo reflow */
+      var pr = panel.getBoundingClientRect();
       rawX = pr.left + pr.width / 2;
     } else {
       rawX = tr.left + tr.width / 2;
     }
-    /* Clamp para que el calendario no salga del viewport en pantallas estrechas */
     var calW    = 284;
     var half    = calW / 2;
     var centerX = Math.max(half + 8, Math.min(rawX, window.innerWidth - half - 8));
     setCalPos({ top: tr.bottom + 8, centerX: centerX });
   };
 
+  /* Calcula posición en useEffect — getBoundingClientRect corre DESPUÉS del
+     commit de React, no durante el click, evitando el reflow síncrono que
+     causaba el salto de 1px en la escena de la finca */
+  React.useEffect(function() {
+    if (open) {
+      computePos();
+      setCalReady(true);
+    } else {
+      setCalReady(false);
+    }
+  }, [open]);
 
-  /* Reposiciona el calendario si el roster o el sidebar admin cambia de tamaño */
+
+  /* Reposiciona el calendario siguiendo la transición del panel */
+  var trackTransition = React.useCallback(function(duration) {
+    var start = Date.now();
+    var tick = function() {
+      computePos();
+      if (Date.now() - start < duration) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, []);
+
   React.useEffect(function() {
     if (!open) return;
-    computePos();
+    trackTransition(420); /* roster: .38s */
   }, [rosterOpen]);
 
   React.useEffect(function() {
     if (!open) return;
-    var targets = [
-      document.querySelector('.admin-panel__sidebar'),
-      trigRef.current && trigRef.current.closest('[style*="width"]')
-    ].filter(Boolean);
-    if (!targets.length) return;
-    var ro = new ResizeObserver(function() { computePos(); });
-    targets.forEach(function(t) { ro.observe(t); });
-    return function() { ro.disconnect(); };
+    var panel = document.querySelector('.admin-panel');
+    if (!panel) return;
+    var mo = new MutationObserver(function() { trackTransition(480); }); /* sidebar: .44s */
+    mo.observe(panel, { attributes: true, attributeFilter: ['class'] });
+    return function() { mo.disconnect(); };
   }, [open]);
 
-  /* Bloquea scroll del body sin pisar el lock del admin-panel */
-  React.useEffect(function() {
-    if (!open) return;
-    var prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return function() { document.body.style.overflow = prev; };
-  }, [open]);
 
   /* Cierra con clic fuera o Escape */
   React.useEffect(function() {
@@ -1076,7 +1088,8 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
 
       <div ref={trigRef}>
         <button type="button" tabIndex={-1}
-          onClick={function(){ computePos(); setOpen(function(o){ return !o; }); }}
+          onMouseDown={function(e){ e.preventDefault(); }}
+          onClick={function(){ setOpen(function(o){ return !o; }); }}
           className="farm-date-pill"
           style={{display:'flex',alignItems:'center',gap:'7px',
             background: open ? 'var(--ink-100)' : 'transparent',
@@ -1084,7 +1097,8 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
             borderRadius:'8px',padding:'6px 14px',cursor:'pointer',
             transition:'background .15s,border-color .2s,box-shadow .2s',
             fontFamily:'var(--font-sans)',fontWeight:700,fontSize:'14px',
-            color:'var(--ink-800)',whiteSpace:'nowrap',lineHeight:1.2}}>
+            color:'var(--ink-800)',whiteSpace:'nowrap',lineHeight:1.2,
+            height:'32px',boxSizing:'border-box'}}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" style={{opacity:.55,flexShrink:0}}>
             <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -1101,16 +1115,17 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
         disabled={isToday}
         style={isToday ? {opacity:.28,cursor:'not-allowed'} : {}}>›</button>
 
-      {open && ReactDOM.createPortal(
-        /* onMouseDown:preventDefault cubre todos los botones del popup */
-        <div onMouseDown={function(e){ e.preventDefault(); }}
+      {ReactDOM.createPortal(
+        /* Siempre montado: la capa compositor existe antes de que open sea true,
+           así no hay recomposición de capas cuando se abre el calendario → sin salto. */
+        <div onMouseDown={function(e){ if (open) e.preventDefault(); }}
           style={{position:'fixed',top:calPos.top,left:calPos.centerX,
-                  transform:'translateX(-50%)',zIndex:9999}}>
+                  transform:'translateX(-50%)',zIndex:9999,
+                  pointerEvents: (open && calReady) ? 'auto' : 'none',
+                  visibility: (open && calReady) ? 'visible' : 'hidden'}}>
           <div ref={calRef} className="dp-cal"
             style={{boxShadow:'0 16px 48px rgba(0,0,0,.18)',
-              /* Reemplaza dp-open (que usa translateY) por fadeIn puro:
-                 evita la ilusión de que la finca "sube" al abrir */
-              animation:'fadeIn .14s ease both'}}>
+              animation:'none'}}>
             <div className="dp-cal__nav">
               <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevYear}>«</button>
               <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevMo}>‹</button>
@@ -1221,6 +1236,7 @@ function FarmView({ t, lang, setRoute }) {
     return getScheduledPresence(objs);
   });
   const [isDirty, setIsDirty] = React.useState(false);
+  const [confirmOverwrite, setConfirmOverwrite] = React.useState(false);
 
   const flashTimerRef = React.useRef(null);
 
@@ -1236,6 +1252,7 @@ function FarmView({ t, lang, setRoute }) {
       setDraft({});
     }
     setIsDirty(false);
+    setConfirmOverwrite(false);
   }, [viewDate, daily]);
 
   /* Limpia el timer de flash al desmontar */
@@ -1258,6 +1275,7 @@ function FarmView({ t, lang, setRoute }) {
   const totalCount   = farmEmployeeObjects.length;
   const sceneWorkers = farmEmployeeObjects.slice(0, MAX_FARM_SCENE);
   const isToday      = viewDate === today;
+  const isAlreadySaved = !!(daily[viewDate] && Object.keys(daily[viewDate]).length);
 
   const showFlash = function(msg) {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
@@ -1343,12 +1361,14 @@ function FarmView({ t, lang, setRoute }) {
     localStorage.setItem('uasd_absences',          JSON.stringify(abs));
 
     setIsDirty(false);
+    setConfirmOverwrite(false);
     showFlash(isES ? 'Asistencia guardada' : 'Attendance saved');
   };
 
   const cancelAttendance = () => {
     setDraft(daily[viewDate] || {});
     setIsDirty(false);
+    setConfirmOverwrite(false);
   };
 
   const addToFarm = (empId) => {
@@ -1586,17 +1606,20 @@ function FarmView({ t, lang, setRoute }) {
 
           {/* Cancelar / Guardar */}
           {isDirty && canManage && (
-            <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',
+            <div style={{display:'flex',flexDirection:'column',gap:'8px',
               paddingTop:'14px',borderTop:'1px solid var(--ink-100)',marginTop:'6px',
               animation:'body-in .18s cubic-bezier(0.33,1,0.68,1) both'}}>
-              <button className="btn btn--ghost" onClick={cancelAttendance}
-                style={{padding:'7px 14px',fontSize:'12px'}}>
-                {isES ? 'Cancelar' : 'Cancel'}
-              </button>
-              <button className="btn btn--primary" onClick={saveAttendance}
-                style={{padding:'7px 14px',fontSize:'12px'}}>
-                {isES ? 'Guardar' : 'Save'}
-              </button>
+              <div style={{display:'flex',justifyContent:'flex-end',gap:'8px'}}>
+                <button className="btn btn--ghost" onClick={cancelAttendance}
+                  style={{padding:'7px 14px',fontSize:'12px'}}>
+                  {isES ? 'Cancelar' : 'Cancel'}
+                </button>
+                <button className="btn btn--primary"
+                  onClick={function(){ isAlreadySaved ? setConfirmOverwrite(true) : saveAttendance(); }}
+                  style={{padding:'7px 14px',fontSize:'12px'}}>
+                  {isES ? 'Guardar' : 'Save'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -1606,7 +1629,7 @@ function FarmView({ t, lang, setRoute }) {
               whiteSpace:'nowrap',pointerEvents:'none',
               background:'var(--ink-800)',color:'var(--cream-100)',
               padding:'10px 18px',borderRadius:'999px',
-              fontSize:'12px',fontWeight:600,letterSpacing:'0.04em',
+              fontFamily:'var(--font-sans)',fontSize:'12px',fontWeight:600,letterSpacing:'0.04em',
               animation:'flashFincaLife 2s ease both'}}>
               <Icon name="check" size={13} stroke={3.2}/>
               {flash}
@@ -1626,21 +1649,21 @@ function FarmView({ t, lang, setRoute }) {
               width:'34px',height:'34px',display:'flex',alignItems:'center',justifyContent:'center'}}>
               {/* Ondas expansivas */}
               <div style={{position:'absolute',width:'34px',height:'34px',borderRadius:'50%',
-                background:'#4a6fa5',
-                animation:'rippleWave 3s ease-out infinite'}}/>
+                background:'var(--ink-700)',
+                animation:'rippleWave 5s ease-out infinite'}}/>
               <div style={{position:'absolute',width:'34px',height:'34px',borderRadius:'50%',
-                background:'#4a6fa5',
-                animation:'rippleWave 3s ease-out infinite',animationDelay:'1s'}}/>
+                background:'var(--ink-700)',
+                animation:'rippleWave 5s ease-out infinite',animationDelay:'1.67s'}}/>
               <div style={{position:'absolute',width:'34px',height:'34px',borderRadius:'50%',
-                background:'#4a6fa5',
-                animation:'rippleWave 3s ease-out infinite',animationDelay:'2s'}}/>
+                background:'var(--ink-700)',
+                animation:'rippleWave 5s ease-out infinite',animationDelay:'3.33s'}}/>
               {/* Botón central */}
               <button type="button" onClick={() => setViewDate(today)}
                 title={isES ? 'Volver a hoy' : 'Back to today'}
                 style={{position:'relative',width:'34px',height:'34px',borderRadius:'50%',
                   background:'var(--ink-800)',color:'var(--cream-100)',border:'none',cursor:'pointer',
                   fontFamily:'var(--font-sans)',fontSize:'9px',fontWeight:800,
-                  letterSpacing:'.05em',textTransform:'uppercase',
+                  letterSpacing:'.03em',
                   display:'flex',alignItems:'center',justifyContent:'center',
                   boxShadow:'0 2px 10px rgba(22,27,51,.45)'}}>
                 {isES ? 'Hoy' : 'Now'}
@@ -1649,7 +1672,7 @@ function FarmView({ t, lang, setRoute }) {
           )}
 
           {/* Date navigator centered */}
-          <div className="audit-toolbar" style={{padding:'14px 24px',justifyContent:'center',borderBottom:'1px solid var(--ink-100)'}}
+          <div className="audit-toolbar" style={{padding:'14px 24px',justifyContent:'center',borderBottom:'1px solid var(--ink-100)',flexShrink:0}}
             onDoubleClick={function(e){ e.stopPropagation(); }}>
             <FarmDateNav
               viewDate={viewDate}
@@ -1695,6 +1718,36 @@ function FarmView({ t, lang, setRoute }) {
           </div>
         </div>
       </div>
+
+      {/* Modal sobreescribir registro ya guardado */}
+      {confirmOverwrite && (
+        <div className="edit-overlay" onClick={function(){setConfirmOverwrite(false);}}>
+          <div className="del-confirm" onClick={function(e){e.stopPropagation();}}>
+            <div className="del-confirm__hero">
+              <div className="del-confirm__icon">
+                <Icon name="edit" size={40} stroke={1.6}/>
+              </div>
+              <div className="del-confirm__title">
+                {isES ? '¿Sobreescribir registro?' : 'Overwrite record?'}
+              </div>
+              <div className="del-confirm__sub">
+                {isES
+                  ? 'Este día ya fue registrado. Al confirmar se sobreescribirá.'
+                  : 'This day already has saved attendance. Confirming will replace the existing record.'}
+              </div>
+              <div className="del-confirm__id mono">{fmtDate(viewDate)}</div>
+            </div>
+            <div className="del-confirm__foot">
+              <button className="btn btn--ghost" onClick={function(){setConfirmOverwrite(false);}}>
+                {isES ? 'Cancelar' : 'Cancel'}
+              </button>
+              <button className="btn btn--danger" onClick={saveAttendance}>
+                <Icon name="edit" size={14}/> {isES ? 'Sobreescribir' : 'Overwrite'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
