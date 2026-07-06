@@ -2627,8 +2627,8 @@ tr.table__row--selected .table__actions {
 .dp-field__icon:hover { color: var(--ink-700); }
 
 @keyframes dp-open {
-  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .dp-cal {
@@ -2636,7 +2636,6 @@ tr.table__row--selected .table__actions {
   border-radius: 16px; box-shadow: 0 12px 40px rgba(14,18,38,.15);
   padding: 18px; min-width: 248px;
   animation: dp-open 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: top left;
 }
 .dp-cal__nav {
   display: flex; align-items: center; justify-content: space-between;
@@ -2695,7 +2694,6 @@ tr.table__row--selected .table__actions {
   border-radius: 18px; box-shadow: 0 12px 40px rgba(14,18,38,.15);
   padding: 18px 16px 14px; width: 232px;
   animation: dp-open 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: top left;
 }
 .tp-tabs {
   display: flex; align-items: center; gap: 6px; margin-bottom: 14px;
@@ -4224,6 +4222,13 @@ tr.table__row--selected .table__actions {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+@keyframes flashFincaLife {
+  0%   { opacity: 0; transform: translateY(8px); }
+  15%  { opacity: 1; transform: translateY(0);   }
+  78%  { opacity: 1; transform: translateY(0);   }
+  100% { opacity: 0; transform: translateY(8px); }
+}
+
 /* ============================================
    Kiosk — LIGHT theme variant
    ============================================ */
@@ -5338,6 +5343,12 @@ tr.table__row--selected .table__actions {
 @keyframes body-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes fighter-in {
+  0%   { opacity: 0; transform: translateY(40px) scaleY(0.85); }
+  55%  { opacity: 1; transform: translateY(-8px) scaleY(1.05); }
+  75%  { transform: translateY(3px)  scaleY(0.98); }
+  100% { transform: translateY(0)    scaleY(1);    }
 }
 @keyframes fadeIn {
   from { opacity: 0; }

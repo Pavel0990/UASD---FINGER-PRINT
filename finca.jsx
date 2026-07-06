@@ -495,6 +495,11 @@ function DomPlane() {
         <path d="M8,20 Q18,11 30,11 L88,11 Q103,11 107,20 Q103,29 88,29 L30,29 Q18,29 8,20Z"
           fill="none" stroke="rgba(255,255,255,.3)" strokeWidth="1"/>
 
+        {/* Nickname en el ala */}
+        <text x="47" y="38" textAnchor="middle"
+          fontSize="5" fontFamily="sans-serif" fontWeight="700"
+          fill="rgba(0,0,0,0.55)" letterSpacing="0.3">@_09pavo</text>
+
         {/* Ventanillas */}
         {[34,43,52,66,75,84,93].map(x => (
           <circle key={x} cx={x} cy={16} r="2" fill="rgba(190,228,255,.85)"/>
@@ -931,9 +936,13 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
               <div key={emp.id} style={{position:'absolute',left:slot.left,bottom:'113px',
                 transform:'translateX(-50%)',display:'flex',flexDirection:'column',
                 alignItems:'center',pointerEvents:'auto'}}>
-                <FarmWorker emp={emp} present={true}
-                  onToggle={onToggle} delay={i} slotIndex={i} totalCount={totalCount}
-                  noHat={isNight}/>
+                <div style={{
+                  animation:'fighter-in .35s cubic-bezier(0.17,0.67,0.35,1) both',
+                  animationDelay: (i * 0.07) + 's'}}>
+                  <FarmWorker emp={emp} present={true}
+                    onToggle={onToggle} delay={i} slotIndex={i} totalCount={totalCount}
+                    noHat={isNight}/>
+                </div>
               </div>
             );
           })}
@@ -944,7 +953,7 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
 }
 
 /* ── Farm date navigator with calendar popup ── */
-function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily }) {
+function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, rosterOpen }) {
   const [open,   setOpen]   = React.useState(false);
   const [calPos, setCalPos] = React.useState({ top: 0, centerX: 0 });
   const navRef  = React.useRef(null); /* fila completa ‹ fecha › — ancla para centrar */
@@ -988,6 +997,33 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily }) {
     var centerX = Math.max(half + 8, Math.min(rawX, window.innerWidth - half - 8));
     setCalPos({ top: tr.bottom + 8, centerX: centerX });
   };
+
+
+  /* Reposiciona el calendario si el roster o el sidebar admin cambia de tamaño */
+  React.useEffect(function() {
+    if (!open) return;
+    computePos();
+  }, [rosterOpen]);
+
+  React.useEffect(function() {
+    if (!open) return;
+    var targets = [
+      document.querySelector('.admin-panel__sidebar'),
+      trigRef.current && trigRef.current.closest('[style*="width"]')
+    ].filter(Boolean);
+    if (!targets.length) return;
+    var ro = new ResizeObserver(function() { computePos(); });
+    targets.forEach(function(t) { ro.observe(t); });
+    return function() { ro.disconnect(); };
+  }, [open]);
+
+  /* Bloquea scroll del body sin pisar el lock del admin-panel */
+  React.useEffect(function() {
+    if (!open) return;
+    var prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return function() { document.body.style.overflow = prev; };
+  }, [open]);
 
   /* Cierra con clic fuera o Escape */
   React.useEffect(function() {
@@ -1184,7 +1220,7 @@ function FarmView({ t, lang, setRoute }) {
     var objs   = empIds.map(function(id) { return EMPLOYEES.find(function(e) { return e.id === id; }); }).filter(Boolean);
     return getScheduledPresence(objs);
   });
-  const [isDirty,   setIsDirty]   = React.useState(false);
+  const [isDirty, setIsDirty] = React.useState(false);
 
   const flashTimerRef = React.useRef(null);
 
@@ -1423,10 +1459,10 @@ function FarmView({ t, lang, setRoute }) {
                 <button
                   style={{padding:'7px 13px',fontSize:'12px',gap:'6px',
                     flex:1,justifyContent:'center'}}
-                  className={presentCount===totalCount ? 'kpi__pill kpi__pill--btn' : 'kpi__pill kpi__pill--up'}
+                  className={presentCount===totalCount ? 'kpi__pill kpi__pill--btn kpi__pill--btn--close' : 'kpi__pill kpi__pill--up'}
                   onClick={presentCount===totalCount ? clearAll : markAllPresent}>
                   <Icon name={presentCount===totalCount ? 'x' : 'check'} size={14} stroke={presentCount===totalCount ? 1.6 : 2.4}/>
-                  {presentCount===totalCount ? (isES?'Limpiar':'Clear') : t.farm_all_present}
+                  {presentCount===totalCount ? (isES?'Ausentes':'Absent') : t.farm_all_present}
                 </button>
               )}
             </div>
@@ -1549,7 +1585,7 @@ function FarmView({ t, lang, setRoute }) {
           )}
 
           {/* Cancelar / Guardar */}
-          {canManage && (
+          {isDirty && canManage && (
             <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',
               paddingTop:'14px',borderTop:'1px solid var(--ink-100)',marginTop:'6px',
               animation:'body-in .18s cubic-bezier(0.33,1,0.68,1) both'}}>
@@ -1566,13 +1602,13 @@ function FarmView({ t, lang, setRoute }) {
 
           {/* Flash asistencia */}
           {flash && (
-            <div style={{alignSelf:'flex-end',marginRight:'35px',marginTop:'10px',display:'flex',alignItems:'center',gap:'7px',
+            <div style={{alignSelf:'center',marginTop:'10px',display:'flex',alignItems:'center',gap:'7px',
               whiteSpace:'nowrap',pointerEvents:'none',
               background:'var(--ink-800)',color:'var(--cream-100)',
               padding:'10px 18px',borderRadius:'999px',
               fontSize:'12px',fontWeight:600,letterSpacing:'0.04em',
-              animation:'flashIn .22s ease both'}}>
-              <Icon name="check" size={13} stroke={2.6}/>
+              animation:'flashFincaLife 2s ease both'}}>
+              <Icon name="check" size={13} stroke={3.2}/>
               {flash}
             </div>
           )}
@@ -1613,7 +1649,8 @@ function FarmView({ t, lang, setRoute }) {
           )}
 
           {/* Date navigator centered */}
-          <div className="audit-toolbar" style={{padding:'14px 24px',justifyContent:'center',borderBottom:'1px solid var(--ink-100)'}}>
+          <div className="audit-toolbar" style={{padding:'14px 24px',justifyContent:'center',borderBottom:'1px solid var(--ink-100)'}}
+            onDoubleClick={function(e){ e.stopPropagation(); }}>
             <FarmDateNav
               viewDate={viewDate}
               setViewDate={setViewDate}
@@ -1621,6 +1658,7 @@ function FarmView({ t, lang, setRoute }) {
               fmtDate={fmtDate}
               isES={isES}
               daily={daily}
+              rosterOpen={rosterOpen}
             />
           </div>
 
