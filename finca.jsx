@@ -498,8 +498,8 @@ function DomPlane() {
         {/* Nickname — livery del ala, estilo aerolínea */}
         <text x="53" y="34" textAnchor="middle"
           fontSize="6.5" fontFamily="var(--font-sans)" fontWeight="900"
-          fill="rgba(255,255,255,.92)"
-          stroke="rgba(0,0,0,.35)" strokeWidth="0.6" paintOrder="stroke fill"
+          fill="rgba(0,0,0,.92)"
+          stroke="rgba(255,255,255,.4)" strokeWidth="0.6" paintOrder="stroke fill"
           letterSpacing="0.9"
           transform="rotate(-8,53,34)">@_09pavo</text>
 
