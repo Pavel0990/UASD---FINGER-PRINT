@@ -103,7 +103,7 @@ function getStarsAlpha(h) {
  * Slot 0: junto a la palma izquierda → regar (le echa agua al coco).
  */
 const FARM_SLOTS = [
-  { left:'10%', act:'regar'      }, // 1 — riega la mata de coco (palma izq)
+  { left:'7%',  act:'regar'      }, // 1 — riega la mata de coco (palma izq)
   { left:'25%', act:'arar'       }, // 2 — ara el campo izquierdo
   { left:'40%', act:'machetear'  }, // 3 — corta con machete en el centro
   { left:'54%', act:'cargar'  }, // 4 — acarrea por el camino
@@ -176,7 +176,7 @@ function StrawHat({ cx, cy }) {
 function FigArar({ s, c, t, p, noHat }) {
   var armAnim = {
     animation: 'w-hoe 2.2s linear infinite',
-    animationPlayState: p ? 'running' : 'paused',
+    animationPlayState: 'running',
     transformBox: 'fill-box', transformOrigin: '30% 15%'
   };
   return (
@@ -211,7 +211,7 @@ function FigArar({ s, c, t, p, noHat }) {
 function FigSembrar({ s, c, t, p, noHat }) {
   var armAnim = {
     animation: 'w-plant 2.8s linear infinite',
-    animationPlayState: p ? 'running' : 'paused',
+    animationPlayState: 'running',
     transformBox: 'fill-box', transformOrigin: '50% 5%'
   };
   return (
@@ -245,7 +245,7 @@ function FigSembrar({ s, c, t, p, noHat }) {
 function FigRegar({ s, c, t, p, noHat }) {
   var canAnim = {
     animation: 'w-pour 3.2s linear infinite',
-    animationPlayState: p ? 'running' : 'paused',
+    animationPlayState: 'running',
     transformBox: 'fill-box', transformOrigin: '15% 40%'
   };
   return (
@@ -285,7 +285,7 @@ function FigRegar({ s, c, t, p, noHat }) {
 function FigRevisar({ s, c, t, p, female, noHat }) {
   var clipAnim = {
     animation: 'w-inspect 2.6s linear infinite',
-    animationPlayState: p ? 'running' : 'paused',
+    animationPlayState: 'running',
     transformBox: 'fill-box', transformOrigin: '20% 30%'
   };
   return (
@@ -350,7 +350,7 @@ function FigRevisar({ s, c, t, p, female, noHat }) {
 function FigMachete({ s, c, t, p, noHat }) {
   var armAnim = {
     animation: 'w-machete 2.2s linear infinite',
-    animationPlayState: p ? 'running' : 'paused',
+    animationPlayState: 'running',
     transformBox: 'fill-box', transformOrigin: '4% 88%'
   };
   return (
@@ -390,7 +390,7 @@ function FigMachete({ s, c, t, p, noHat }) {
 function FigCargar({ s, c, t, p, noHat }) {
   var bodyAnim = {
     animation: 'w-carry 1.9s ease-in-out infinite',
-    animationPlayState: p ? 'running' : 'paused',
+    animationPlayState: 'running',
     transformBox: 'fill-box', transformOrigin: '50% 60%'
   };
   return (
@@ -424,21 +424,17 @@ function FarmWorker({ emp, present, onToggle, delay, slotIndex, totalCount, noHa
   const isFemale  = emp.gender === 'F';
   const act       = isFemale ? 'revisar' : slot.act;
   const sz        = totalCount > 9 ? 24 : totalCount > 6 ? 28 : totalCount > 4 ? 32 : 36;
-  const skin      = present ? '#d4956a' : '#999';
-  const cloth     = present ? CLOTH_COLS[slotIndex % CLOTH_COLS.length] : '#777';
-  const hat       = present ? '#c8a050' : '#888';
+  const skin      = '#d4956a';
+  const cloth     = CLOTH_COLS[slotIndex % CLOTH_COLS.length];
+  const hat       = '#c8a050';
   const firstName = emp.name.split(' ')[0];
 
   return (
     <div onClick={() => onToggle(emp.id)} title={emp.name}
       style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',
-        cursor:'pointer',userSelect:'none',
-        opacity: present ? 1 : 0.28,
-        filter:  present ? 'none' : 'grayscale(.95)',
-        transition:'opacity .3s,filter .3s',
-        animationPlayState: present ? 'running' : 'paused'}}>
+        cursor:'pointer',userSelect:'none'}}>
       <svg width={sz} height={Math.round(sz*1.27)} viewBox="0 0 44 56"
-        style={{overflow:'visible', animationPlayState: present ? 'running' : 'paused'}}>
+        style={{overflow:'visible'}}>
         {act === 'arar'       && <FigArar     s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
         {act === 'sembrar'    && <FigSembrar  s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
         {act === 'machetear'  && <FigMachete  s={skin} c={cloth} t={hat} p={present} noHat={noHat}/>}
@@ -768,69 +764,70 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         viewBox="0 0 800 42" preserveAspectRatio="none">
 
         {/* Rieles izquierdos (hasta la puerta) */}
-        <line x1="0"   y1="13" x2="345" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
-        <line x1="0"   y1="27" x2="345" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
+        <line x1="0"   y1="13" x2="397" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
+        <line x1="0"   y1="27" x2="397" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
         {/* Rieles derechos (desde la puerta) */}
-        <line x1="465" y1="13" x2="800" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
-        <line x1="465" y1="27" x2="800" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
+        <line x1="517" y1="13" x2="800" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
+        <line x1="517" y1="27" x2="800" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
 
-        {/* Posts normales — saltamos la zona de la puerta (x 340–465) */}
+        {/* Posts normales — saltamos la zona de la puerta (x 332–524) */}
         {Array.from({length:17}).map((_,i) => {
           var x = i*50+4;
-          if (x >= 340 && x <= 465) return null;
+          if (x >= 332 && x <= 524) return null;
           return <rect key={i} x={x} y="5" width="7" height="34" rx="2" fill="#7a5c34" opacity=".9"/>;
         })}
 
         {/* ── Puerta de establo ── */}
 
         {/* Poste izquierdo (bisagra) */}
-        <rect x="337" y="-4" width="11" height="50" rx="2" fill="#7a5c34" opacity=".95"/>
-        <rect x="338" y="-4" width="3"  height="50" rx="1" fill="#b09060" opacity=".28"/>
+        <rect x="389" y="-4" width="11" height="50" rx="2" fill="#7a5c34" opacity=".95"/>
+        <rect x="390" y="-4" width="3"  height="50" rx="1" fill="#b09060" opacity=".28"/>
 
         {/* Poste derecho (latch) */}
-        <rect x="461" y="-4" width="11" height="50" rx="2" fill="#7a5c34" opacity=".95"/>
-        <rect x="462" y="-4" width="3"  height="50" rx="1" fill="#b09060" opacity=".28"/>
+        <rect x="513" y="-4" width="11" height="50" rx="2" fill="#7a5c34" opacity=".95"/>
+        <rect x="514" y="-4" width="3"  height="50" rx="1" fill="#b09060" opacity=".28"/>
 
-        {isNight ? (
+        {(isNight || totalCount === 0) ? (
           <g>
             {/* Puerta CERRADA — panel recto llenando el vano */}
-            <rect x="348" y="-4" width="113" height="50" fill="#8b6e44"/>
+            <rect x="400" y="-4" width="113" height="50" fill="#8b6e44"/>
             {/* Sombra izquierda de grosor */}
-            <rect x="348" y="-4" width="9"   height="50" fill="#5a4020" opacity=".3"/>
+            <rect x="400" y="-4" width="9"   height="50" fill="#5a4020" opacity=".3"/>
             {/* 4 tablones horizontales cerrados */}
-            <line x1="348" y1="9"  x2="461" y2="9"  stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="348" y1="18" x2="461" y2="18" stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="348" y1="27" x2="461" y2="27" stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="348" y1="36" x2="461" y2="36" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="400" y1="9"  x2="513" y2="9"  stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="400" y1="18" x2="513" y2="18" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="400" y1="27" x2="513" y2="27" stroke="#6a5030" strokeWidth="2.5"/>
+            <line x1="400" y1="36" x2="513" y2="36" stroke="#6a5030" strokeWidth="2.5"/>
             {/* Z-brace */}
-            <line x1="350" y1="46" x2="459" y2="2" stroke="#5a4020" strokeWidth="3" strokeLinecap="round" opacity=".82"/>
+            <line x1="402" y1="46" x2="511" y2="2" stroke="#5a4020" strokeWidth="3" strokeLinecap="round" opacity=".82"/>
             {/* Bisagras */}
-            <rect x="344" y="4"  width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
-            <rect x="344" y="31" width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
-            <circle cx="349" cy="7"  r="2" fill="#555" opacity=".75"/>
-            <circle cx="349" cy="34" r="2" fill="#555" opacity=".75"/>
+            <rect x="396" y="4"  width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+            <rect x="396" y="31" width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+            <circle cx="401" cy="7"  r="2" fill="#555" opacity=".75"/>
+            <circle cx="401" cy="34" r="2" fill="#555" opacity=".75"/>
             {/* Candado */}
-            <rect x="396" y="14" width="14" height="12" rx="2.5" fill="#b8982a"/>
-            <path d="M399,14 Q399,8 403,8 Q407,8 407,14" fill="none" stroke="#b8982a" strokeWidth="3" strokeLinecap="round"/>
-            <circle cx="403" cy="20" r="2.5" fill="#7a6010"/>
-            <rect x="402" y="20" width="2" height="4" rx="1" fill="#7a6010"/>
+            <rect x="448" y="14" width="14" height="12" rx="2.5" fill="#b8982a"/>
+            <path d="M451,14 Q451,8 455,8 Q459,8 459,14" fill="none" stroke="#b8982a" strokeWidth="3" strokeLinecap="round"/>
+            <circle cx="455" cy="20" r="2.5" fill="#7a6010"/>
+            <rect x="454" y="20" width="2" height="4" rx="1" fill="#7a6010"/>
           </g>
         ) : (
           <g>
-            {/* Puerta ABIERTA ~60° */}
-            <path d="M346,3 L411,0 L411,39 L346,42Z" fill="#8b6e44"/>
-            <path d="M346,3 L355,3 L355,42 L346,42Z" fill="#5a4020" opacity=".3"/>
-            <line x1="346" y1="11" x2="411" y2="9"  stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="346" y1="20" x2="411" y2="18" stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="346" y1="29" x2="411" y2="27" stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="346" y1="38" x2="411" y2="36" stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="348" y1="40" x2="410" y2="2"  stroke="#5a4020" strokeWidth="3" strokeLinecap="round" opacity=".82"/>
-            <rect x="344" y="4"  width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
-            <rect x="344" y="31" width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
-            <circle cx="349" cy="7"  r="2" fill="#555" opacity=".75"/>
-            <circle cx="349" cy="34" r="2" fill="#555" opacity=".75"/>
-            <rect x="408" y="16" width="9" height="7" rx="2" fill="#888" opacity=".88"/>
-            <circle cx="412" cy="19.5" r="2.5" fill="#bbb" opacity=".85"/>
+            {/* Puerta ABIERTA como valla — panel doblado contra el poste izquierdo */}
+
+            {/* Rieles del panel de puerta (doblados, corren paralelos a la valla) */}
+            <line x1="332" y1="13" x2="389" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
+            <line x1="332" y1="27" x2="389" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
+
+            {/* Poste del panel — mismo paso de 50 u que la valla principal */}
+            <rect x="354" y="5" width="7" height="34" rx="2" fill="#7a5c34" opacity=".9"/>
+            <rect x="354" y="5" width="2" height="34" rx="1" fill="#b09060" opacity=".22"/>
+
+            {/* Bisagras conectando el panel al poste de bisagra */}
+            <rect x="385" y="7"  width="10" height="5" rx="1.5" fill="#888" opacity=".9"/>
+            <rect x="385" y="29" width="10" height="5" rx="1.5" fill="#888" opacity=".9"/>
+            <circle cx="390" cy="9.5"  r="1.8" fill="#555" opacity=".75"/>
+            <circle cx="390" cy="31.5" r="1.8" fill="#555" opacity=".75"/>
           </g>
         )}
       </svg>
@@ -928,18 +925,13 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
       ) : (
         <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,pointerEvents:'none',zIndex:3}}>
           {workers.map((emp,i) => {
+            if (!dayRecords[emp.id]) return null;
             var slot = FARM_SLOTS[i % FARM_SLOTS.length];
-            /*
-             * bottom del contenedor = fondo del label (si hay label) o fondo del SVG.
-             * Los pies están a ~3px del fondo del SVG (y=52 de 56 en el viewBox).
-             * Suelo en bottom:116px. Con label (~13px): 116-13-3=100. Sin label: 116-3=113.
-             */
-            var workerBottom = '113px';
             return (
-              <div key={emp.id} style={{position:'absolute',left:slot.left,bottom:workerBottom,
+              <div key={emp.id} style={{position:'absolute',left:slot.left,bottom:'113px',
                 transform:'translateX(-50%)',display:'flex',flexDirection:'column',
                 alignItems:'center',pointerEvents:'auto'}}>
-                <FarmWorker emp={emp} present={!!dayRecords[emp.id]}
+                <FarmWorker emp={emp} present={true}
                   onToggle={onToggle} delay={i} slotIndex={i} totalCount={totalCount}
                   noHat={isNight}/>
               </div>
@@ -1128,6 +1120,34 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily }) {
   );
 }
 
+/* Devuelve un draft {empId: true} con los empleados cuyo horario cubre el momento actual */
+function getScheduledPresence(farmEmpObjects) {
+  var now      = new Date();
+  var todayDay = now.getDay();
+  var nowMin   = now.getHours() * 60 + now.getMinutes();
+  var result   = {};
+  farmEmpObjects.forEach(function(emp) {
+    if (!emp || !emp.schedule || !emp.workDays) return;
+    if (emp.workDays.indexOf(todayDay) === -1) return;
+    var sep = emp.schedule.indexOf('—');
+    if (sep === -1) sep = emp.schedule.indexOf('–');
+    if (sep === -1) return;
+    var startStr = emp.schedule.substring(0, sep).trim();
+    var endStr   = emp.schedule.substring(sep + 1).trim();
+    var sM = /(\d+):(\d+)\s*(AM|PM)/i.exec(startStr);
+    var eM = /(\d+):(\d+)\s*(AM|PM)/i.exec(endStr);
+    if (!sM || !eM) return;
+    var sH = parseInt(sM[1]) % 12;
+    if (sM[3].toUpperCase() === 'PM') sH += 12;
+    var eH = parseInt(eM[1]) % 12;
+    if (eM[3].toUpperCase() === 'PM') eH += 12;
+    var startMin = sH * 60 + parseInt(sM[2]);
+    var endMin   = eH * 60 + parseInt(eM[2]);
+    if (nowMin >= startMin && nowMin <= endMin) result[emp.id] = true;
+  });
+  return result;
+}
+
 /* ── Main view ── */
 function FarmView({ t, lang, setRoute }) {
   const today = new Date().toLocaleDateString('en-CA');
@@ -1150,13 +1170,20 @@ function FarmView({ t, lang, setRoute }) {
     };
   }, []);
 
-  const [farmEmps,  setFarmEmps]  = React.useState(getFarmEmployees);
-  const [daily,     setDaily]     = React.useState(getFarmDaily);
-  const [viewDate,  setViewDate]  = React.useState(today);
-  const [searchQ,   setSearchQ]   = React.useState(false);
-  const [searchVal, setSearchVal] = React.useState('');
+  const [farmEmps,    setFarmEmps]    = React.useState(getFarmEmployees);
+  const [daily,       setDaily]       = React.useState(getFarmDaily);
+  const [viewDate,    setViewDate]    = React.useState(today);
+  const [searchQ,     setSearchQ]     = React.useState(false);
+  const [searchVal,   setSearchVal]   = React.useState('');
+  const [rosterOpen,  setRosterOpen]  = React.useState(true);
   const [flash,     setFlash]     = React.useState(null);
-  const [draft,     setDraft]     = React.useState(function() { return getFarmDaily()[today] || {}; });
+  const [draft,     setDraft]     = React.useState(function() {
+    var saved = getFarmDaily()[today];
+    if (saved) return saved;
+    var empIds = getFarmEmployees();
+    var objs   = empIds.map(function(id) { return EMPLOYEES.find(function(e) { return e.id === id; }); }).filter(Boolean);
+    return getScheduledPresence(objs);
+  });
   const [isDirty,   setIsDirty]   = React.useState(false);
 
   const flashTimerRef = React.useRef(null);
@@ -1164,7 +1191,14 @@ function FarmView({ t, lang, setRoute }) {
   /* Cuando cambia la fecha sincroniza el draft; también cuando daily cambia
      (p.ej. después de removeFromFarm) para no guardar empleados fantasma */
   React.useEffect(function() {
-    setDraft(daily[viewDate] || {});
+    var saved = daily[viewDate];
+    if (saved) {
+      setDraft(saved);
+    } else if (viewDate === today) {
+      setDraft(getScheduledPresence(farmEmployeeObjects));
+    } else {
+      setDraft({});
+    }
     setIsDirty(false);
   }, [viewDate, daily]);
 
@@ -1287,7 +1321,6 @@ function FarmView({ t, lang, setRoute }) {
     setFarmEmps(list);
     saveFarmEmployees(list);
     setSearchVal('');
-    showFlash(isES ? 'Empleado agregado a la finca' : 'Employee added to farm');
   };
 
   const removeFromFarm = function(empId) {
@@ -1310,7 +1343,6 @@ function FarmView({ t, lang, setRoute }) {
       delete next[empId];
       return next;
     });
-    showFlash(isES ? 'Empleado removido de la finca' : 'Employee removed from farm');
   };
 
   const navDate = (offset) => {
@@ -1356,16 +1388,17 @@ function FarmView({ t, lang, setRoute }) {
         </div>
       </div>
 
-      {flash && (
-        <div className="flash" style={{position:'fixed',bottom:'24px',left:'50%',transform:'translateX(-50%)',zIndex:1000}}>
-          {flash}
-        </div>
-      )}
 
-      <div className="activity-map" style={{gridTemplateColumns:'420px minmax(0,1fr)',gap:'16px'}}>
+      <div style={{display:'flex',gap:'16px',alignItems:'flex-start'}}>
 
-        {/* LEFT — Roster */}
-        <div className="activity-map__left" style={{gap:0}}>
+        {/* LEFT — Roster (collapsible) */}
+        <div style={{
+          flexShrink:0,
+          width: rosterOpen ? '420px' : '0',
+          minWidth: rosterOpen ? '420px' : '0',
+          overflow:'hidden',
+          transition:'width .38s cubic-bezier(0.4,0,0.2,1), min-width .38s cubic-bezier(0.4,0,0.2,1)'}}>
+        <div className="activity-map__left" style={{gap:0, width:'420px'}}>
           <div style={{display:'flex',flexDirection:'column',gap:'10px',
             width:'100%',paddingBottom:'14px'}}>
             {/* Fila 1: etiqueta */}
@@ -1376,11 +1409,11 @@ function FarmView({ t, lang, setRoute }) {
               </span>
             </span>
             {/* Fila 2: botones de acción */}
-            <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'10px',width:'100%'}}>
               {canManage && (
                 <button
                   className={`kpi__pill kpi__pill--btn${searchQ?' kpi__pill--btn--close':''}`}
-                  style={{padding:'7px 13px',fontSize:'12px',gap:'6px',minWidth:'130px',justifyContent:'center'}}
+                  style={{padding:'7px 13px',fontSize:'12px',gap:'6px',flex:1,justifyContent:'center'}}
                   onClick={() => { setSearchQ(p=>!p); setSearchVal(''); }}>
                   <Icon name={searchQ?'x':'userPlus'} size={14}/>
                   {searchQ?(isES?'Cerrar':'Close'):(isES?'Agregar':'Add')}
@@ -1389,7 +1422,7 @@ function FarmView({ t, lang, setRoute }) {
               {totalCount>0 && (
                 <button
                   style={{padding:'7px 13px',fontSize:'12px',gap:'6px',
-                    minWidth:'130px',justifyContent:'center'}}
+                    flex:1,justifyContent:'center'}}
                   className={presentCount===totalCount ? 'kpi__pill kpi__pill--btn' : 'kpi__pill kpi__pill--up'}
                   onClick={presentCount===totalCount ? clearAll : markAllPresent}>
                   <Icon name={presentCount===totalCount ? 'x' : 'check'} size={14} stroke={presentCount===totalCount ? 1.6 : 2.4}/>
@@ -1515,8 +1548,8 @@ function FarmView({ t, lang, setRoute }) {
             </div>
           )}
 
-          {/* Cancelar / Guardar — al fondo del panel, solo cuando hay cambios */}
-          {isDirty && canManage && (
+          {/* Cancelar / Guardar */}
+          {canManage && (
             <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',
               paddingTop:'14px',borderTop:'1px solid var(--ink-100)',marginTop:'6px',
               animation:'body-in .18s cubic-bezier(0.33,1,0.68,1) both'}}>
@@ -1531,11 +1564,26 @@ function FarmView({ t, lang, setRoute }) {
             </div>
           )}
 
-        </div>
+          {/* Flash asistencia */}
+          {flash && (
+            <div style={{alignSelf:'flex-end',marginRight:'35px',marginTop:'10px',display:'flex',alignItems:'center',gap:'7px',
+              whiteSpace:'nowrap',pointerEvents:'none',
+              background:'var(--ink-800)',color:'var(--cream-100)',
+              padding:'10px 18px',borderRadius:'999px',
+              fontSize:'12px',fontWeight:600,letterSpacing:'0.04em',
+              animation:'flashIn .22s ease both'}}>
+              <Icon name="check" size={13} stroke={2.6}/>
+              {flash}
+            </div>
+          )}
+
+        </div>{/* /activity-map__left */}
+        </div>{/* /roster collapse wrapper */}
 
         {/* RIGHT — Scene + controls */}
 
-        <div className="act-panel" style={{display:'flex',flexDirection:'column',minWidth:0,overflow:'clip',position:'relative'}}>
+        <div className="act-panel" style={{flex:1,minWidth:0,display:'flex',flexDirection:'column',overflow:'clip',position:'relative'}}
+          onDoubleClick={function(){ setRosterOpen(function(o){ return !o; }); }}>
 
           {!isToday && (
             <div style={{position:'absolute',top:'10px',right:'14px',zIndex:10,
