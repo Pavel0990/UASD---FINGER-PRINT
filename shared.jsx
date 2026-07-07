@@ -338,6 +338,8 @@ const I18N = {
     farm_no_employees: 'Sin empleados asignados',
     farm_no_emps_manage: 'Usa «Gestionar» para agregar personal a la finca.',
     farm_no_emps_admin: 'Contacta a un administrador para ser asignado.',
+    liceo_title:       'Liceo Experimental',
+    liceo_sub:         'Control de asistencia de estudiantes del liceo',
   },
   en: {
     appName: 'Biometric Attendance System',
@@ -673,6 +675,8 @@ const I18N = {
     farm_no_employees: 'No employees assigned',
     farm_no_emps_manage: 'Use «Manage» to add staff to the farm.',
     farm_no_emps_admin: 'Contact an administrator to be assigned.',
+    liceo_title:       'Experimental High School',
+    liceo_sub:         'Student attendance control for the school',
   }
 };
 
@@ -804,7 +808,7 @@ function getAccountContext() {
   const employee = EMPLOYEES.find(e => e.id === 'EMP-00601') || EMPLOYEES[0];
   const role = typeof getRoles === 'function'
     ? getRoles().find(r => r.id === 'role_admin') || null
-    : { name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm'] };
+    : { name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','liceo'] };
   return { employee, role, assignment: role ? { empId: employee?.id, roleId: role.id } : null };
 }
 
@@ -941,6 +945,11 @@ function UserMenu({ t, lang, account, setRoute, close, onAdmin }) {
           <Icon name="landPlot" size={15} /> {t.farm_title}
         </button>
         )}
+        {(typeof userHasPermission !== 'function' || userHasPermission('liceo')) && (
+        <button className="usermenu__action" onClick={() => { onAdmin('liceo'); }}>
+          <Icon name="award" size={15} /> {t.liceo_title}
+        </button>
+        )}
       </div>
     </div>);
 
@@ -1050,12 +1059,14 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
     return () => document.removeEventListener('keydown', onKey);
   }, [close]);
 
-  const canFarm = typeof userHasPermission === 'function' ? userHasPermission('farm') : true;
+  const canFarm  = typeof userHasPermission === 'function' ? userHasPermission('farm')  : true;
+  const canLiceo = typeof userHasPermission === 'function' ? userHasPermission('liceo') : true;
   const tabs = [
-    { id: 'account',   label: t.um_view,       icon: 'user'   },
-    ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'activity' }] : []),
+    { id: 'account',   label: t.um_view,       icon: 'user'      },
+    ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'activity'   }] : []),
     ...(canRoles ? [{ id: 'roles',     label: t.nav_roles,     icon: 'shieldUser' }] : []),
-    ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'landPlot' }] : []),
+    ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'landPlot'   }] : []),
+    ...(canLiceo ? [{ id: 'liceo',     label: t.liceo_title,   icon: 'award'      }] : []),
   ];
 
   return (
@@ -1102,7 +1113,8 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
             {tab === 'account'   && <AccountPanelContent t={t} lang={lang} setLang={setLang} />}
             {tab === 'changelog' && <ChangelogView t={t} setRoute={setRoute} />}
             {tab === 'roles'     && <RolesView t={t} setRoute={setRoute} onClose={close} />}
-            {tab === 'finca'     && <FarmView t={t} lang={lang} setRoute={setRoute} />}
+            {tab === 'finca'     && <FarmView  t={t} lang={lang} setRoute={setRoute} />}
+            {tab === 'liceo'     && <LiceoView t={t} lang={lang} setRoute={setRoute} />}
           </div>
         </div>
       </div>

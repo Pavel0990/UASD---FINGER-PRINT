@@ -110,9 +110,10 @@ function App() {
   // Keyboard shortcuts — work from any screen
   React.useEffect(() => {
     const canFarm    = typeof userHasPermission === 'function' && userHasPermission('farm');
+    const canLiceo   = typeof userHasPermission === 'function' && userHasPermission('liceo');
     const canEnroll  = typeof userHasPermission !== 'function' || userHasPermission('enroll');
     const canReports = typeof userHasPermission !== 'function' || userHasPermission('reports');
-    const map = { '1': 'dashboard', '2': canEnroll ? 'register' : undefined, '3': canReports ? 'reports' : undefined, '4': (typeof userHasPermission === 'function' && userHasPermission('roles')) ? 'roles' : undefined, '5': canFarm ? 'finca' : undefined };
+    const map = { '1': 'dashboard', '2': canEnroll ? 'register' : undefined, '3': canReports ? 'reports' : undefined, '4': (typeof userHasPermission === 'function' && userHasPermission('roles')) ? 'roles' : undefined, '5': canFarm ? 'finca' : undefined, '6': canLiceo ? 'liceo' : undefined };
     const onKey = (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
@@ -138,6 +139,7 @@ function App() {
       {visibleRoute === 'register'  && <RegisterView   t={t} setRoute={go} setFlash={setFlash} onRegister={(emp) => setAddedEmployees(prev => [...prev, emp])}/>}
       {visibleRoute === 'reports'   && <ReportsView    t={t} lang={lang} setRoute={go}/>}
       {visibleRoute === 'finca'     && <FarmView      t={t} lang={lang} setRoute={go}/>}
+      {visibleRoute === 'liceo'     && <LiceoView    t={t} lang={lang} setRoute={go}/>}
       </div>
 
 
@@ -147,7 +149,7 @@ function App() {
         <TweakSection label="Vista inicial"/>
         <TweakRadio label="Pantalla"
                     value={route}
-                    options={['kiosk','login','dashboard','register','reports','finca']}
+                    options={['kiosk','login','dashboard','register','reports','finca','liceo']}
                     onChange={(v) => go(v)}/>
         <TweakSection label="Terminal de marcaje"/>
         <TweakRadio label="Fondo del terminal"
