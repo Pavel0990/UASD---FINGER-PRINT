@@ -335,9 +335,9 @@ const I18N = {
     farm_title:        'Finca Experimental',
     farm_sub:          'Control de asistencia para trabajadores de la finca',
     farm_all_present:  'Todos presentes',
-    farm_no_employees: 'Sin empleados asignados',
-    farm_no_emps_manage: 'Usa «Gestionar» para agregar personal a la finca.',
-    farm_no_emps_admin: 'Contacta a un administrador para ser asignado.',
+    farm_no_employees: 'Sin personal asignado',
+    farm_no_emps_manage: 'Usa «Agregar» para asignar personal a la finca.',
+    farm_no_emps_admin: 'Contacta a un administrador para asignar personal.',
     liceo_title:       'Liceo Experimental',
     liceo_sub:         'Control de asistencia de estudiantes del liceo',
   },
@@ -672,9 +672,9 @@ const I18N = {
     farm_title:        'Experimental Farm',
     farm_sub:          'Attendance control for farm workers',
     farm_all_present:  'All present',
-    farm_no_employees: 'No employees assigned',
-    farm_no_emps_manage: 'Use «Manage» to add staff to the farm.',
-    farm_no_emps_admin: 'Contact an administrator to be assigned.',
+    farm_no_employees: 'No staff assigned',
+    farm_no_emps_manage: 'Use «Add» to assign workers to the farm.',
+    farm_no_emps_admin: 'Contact an administrator to assign staff.',
     liceo_title:       'Experimental High School',
     liceo_sub:         'Student attendance control for the school',
   }
@@ -764,6 +764,8 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     activity: <><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></>,
     upload: <><path d="M12 16V4M6 10l6-6 6 6M5 20h14" /></>,
     award: <><circle cx="12" cy="8" r="5" /><path d="M8.5 12.5 7 22l5-3 5 3-1.5-9.5" /><path d="m9.8 8 1.4 1.4L14.5 6" /></>,
+    school: <><path d="M14 21v-3a2 2 0 0 0-4 0v3"/><path d="M18 4.933V21"/><path d="m4 6 7.106-3.79a2 2 0 0 1 1.788 0L20 6"/><path d="m6 11-3.52 2.147a1 1 0 0 0-.48.854V19a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a1 1 0 0 0-.48-.853L18 11"/><path d="M6 4.933V21"/><circle cx="12" cy="9" r="2"/></>,
+    idCard: <><path d="M13.5 8h-3"/><path d="m15 2-1 2h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3"/><path d="M16.899 22A5 5 0 0 0 7.1 22"/><path d="m9 2 3 6"/><circle cx="12" cy="15" r="3"/></>,
     edit: <><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></>,
     trash: <><path d="M3 6h18M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M19 6l-1 14c0 1-1 2-2 2H8c-1 0-2-1-2-2L5 6" /></>,
     userPlus: <><circle cx="10" cy="8" r="4" /><path d="M2 21c0-4.4 3.6-8 8-8M19 11v6M16 14h6" /></>,
@@ -947,7 +949,7 @@ function UserMenu({ t, lang, account, setRoute, close, onAdmin }) {
         )}
         {(typeof userHasPermission !== 'function' || userHasPermission('liceo')) && (
         <button className="usermenu__action" onClick={() => { onAdmin('liceo'); }}>
-          <Icon name="award" size={15} /> {t.liceo_title}
+          <Icon name="school" size={15} /> {t.liceo_title}
         </button>
         )}
       </div>
@@ -1066,7 +1068,7 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
     ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'activity'   }] : []),
     ...(canRoles ? [{ id: 'roles',     label: t.nav_roles,     icon: 'shieldUser' }] : []),
     ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'landPlot'   }] : []),
-    ...(canLiceo ? [{ id: 'liceo',     label: t.liceo_title,   icon: 'award'      }] : []),
+    ...(canLiceo ? [{ id: 'liceo',     label: t.liceo_title,   icon: 'school'     }] : []),
   ];
 
   return (

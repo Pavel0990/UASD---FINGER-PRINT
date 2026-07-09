@@ -543,6 +543,8 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
 
   return (
     <div style={{position:'relative',width:'100%',
+      maxWidth:'960px',
+      marginLeft:'auto',marginRight:'auto',
       height:'340px',
       borderRadius:'var(--radius-lg)',
       overflow:'hidden',
@@ -774,11 +776,11 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         viewBox="0 0 800 42" preserveAspectRatio="none">
 
         {/* Rieles izquierdos (hasta la puerta) */}
-        <line x1="0"   y1="13" x2="397" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
-        <line x1="0"   y1="27" x2="397" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
+        <line x1="0"   y1="13" x2="397" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88" vectorEffect="non-scaling-stroke"/>
+        <line x1="0"   y1="27" x2="397" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78" vectorEffect="non-scaling-stroke"/>
         {/* Rieles derechos (desde la puerta) */}
-        <line x1="517" y1="13" x2="800" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
-        <line x1="517" y1="27" x2="800" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
+        <line x1="517" y1="13" x2="800" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88" vectorEffect="non-scaling-stroke"/>
+        <line x1="517" y1="27" x2="800" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78" vectorEffect="non-scaling-stroke"/>
 
         {/* Posts normales — saltamos la zona de la puerta (x 332–524) */}
         {Array.from({length:17}).map((_,i) => {
@@ -797,49 +799,59 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
         <rect x="513" y="-4" width="11" height="50" rx="2" fill="#7a5c34" opacity=".95"/>
         <rect x="514" y="-4" width="3"  height="50" rx="1" fill="#b09060" opacity=".28"/>
 
-        {(isNight || totalCount === 0) ? (
-          <g>
-            {/* Puerta CERRADA — panel recto llenando el vano */}
-            <rect x="400" y="-4" width="113" height="50" fill="#8b6e44"/>
-            {/* Sombra izquierda de grosor */}
-            <rect x="400" y="-4" width="9"   height="50" fill="#5a4020" opacity=".3"/>
-            {/* 4 tablones horizontales cerrados */}
-            <line x1="400" y1="9"  x2="513" y2="9"  stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="400" y1="18" x2="513" y2="18" stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="400" y1="27" x2="513" y2="27" stroke="#6a5030" strokeWidth="2.5"/>
-            <line x1="400" y1="36" x2="513" y2="36" stroke="#6a5030" strokeWidth="2.5"/>
-            {/* Z-brace */}
-            <line x1="402" y1="46" x2="511" y2="2" stroke="#5a4020" strokeWidth="3" strokeLinecap="round" opacity=".82"/>
-            {/* Bisagras */}
-            <rect x="396" y="4"  width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
-            <rect x="396" y="31" width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
-            <circle cx="401" cy="7"  r="2" fill="#555" opacity=".75"/>
-            <circle cx="401" cy="34" r="2" fill="#555" opacity=".75"/>
-            {/* Candado */}
-            <rect x="448" y="14" width="14" height="12" rx="2.5" fill="#b8982a"/>
-            <path d="M451,14 Q451,8 455,8 Q459,8 459,14" fill="none" stroke="#b8982a" strokeWidth="3" strokeLinecap="round"/>
-            <circle cx="455" cy="20" r="2.5" fill="#7a6010"/>
-            <rect x="454" y="20" width="2" height="4" rx="1" fill="#7a6010"/>
-          </g>
-        ) : (
-          <g>
-            {/* Puerta ABIERTA como valla — panel doblado contra el poste izquierdo */}
-
-            {/* Rieles del panel de puerta (doblados, corren paralelos a la valla) */}
-            <line x1="332" y1="13" x2="389" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88"/>
-            <line x1="332" y1="27" x2="389" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78"/>
-
-            {/* Poste del panel — mismo paso de 50 u que la valla principal */}
-            <rect x="354" y="5" width="7" height="34" rx="2" fill="#7a5c34" opacity=".9"/>
-            <rect x="354" y="5" width="2" height="34" rx="1" fill="#b09060" opacity=".22"/>
-
-            {/* Bisagras conectando el panel al poste de bisagra */}
-            <rect x="385" y="7"  width="10" height="5" rx="1.5" fill="#888" opacity=".9"/>
-            <rect x="385" y="29" width="10" height="5" rx="1.5" fill="#888" opacity=".9"/>
-            <circle cx="390" cy="9.5"  r="1.8" fill="#555" opacity=".75"/>
-            <circle cx="390" cy="31.5" r="1.8" fill="#555" opacity=".75"/>
-          </g>
-        )}
+        {(function() {
+          var gateOpen = !(isNight || totalCount === 0);
+          var ease = 'transform .75s cubic-bezier(0.4,0,0.2,1), opacity .55s ease';
+          return (
+            <g>
+              {/* Panel CERRADO — pivota desde la bisagra izquierda al abrir */}
+              <g style={{
+                transform: gateOpen
+                  ? 'perspective(300px) rotateY(88deg)'
+                  : 'perspective(300px) rotateY(0deg)',
+                transformBox: 'fill-box',
+                transformOrigin: 'left center',
+                transition: ease,
+                opacity: gateOpen ? 0 : 1
+              }}>
+                <rect x="400" y="-4" width="113" height="50" fill="#8b6e44"/>
+                <rect x="400" y="-4" width="9"   height="50" fill="#5a4020" opacity=".3"/>
+                <line x1="400" y1="9"  x2="513" y2="9"  stroke="#6a5030" strokeWidth="2.5" vectorEffect="non-scaling-stroke"/>
+                <line x1="400" y1="18" x2="513" y2="18" stroke="#6a5030" strokeWidth="2.5" vectorEffect="non-scaling-stroke"/>
+                <line x1="400" y1="27" x2="513" y2="27" stroke="#6a5030" strokeWidth="2.5" vectorEffect="non-scaling-stroke"/>
+                <line x1="400" y1="36" x2="513" y2="36" stroke="#6a5030" strokeWidth="2.5" vectorEffect="non-scaling-stroke"/>
+                <line x1="402" y1="46" x2="511" y2="2" stroke="#5a4020" strokeWidth="3" strokeLinecap="round" opacity=".82" vectorEffect="non-scaling-stroke"/>
+                <rect x="396" y="4"  width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+                <rect x="396" y="31" width="10" height="6" rx="1.5" fill="#888" opacity=".9"/>
+                <circle cx="401" cy="7"  r="2" fill="#555" opacity=".75"/>
+                <circle cx="401" cy="34" r="2" fill="#555" opacity=".75"/>
+                <rect x="448" y="14" width="14" height="12" rx="2.5" fill="#b8982a"/>
+                <path d="M451,14 Q451,8 455,8 Q459,8 459,14" fill="none" stroke="#b8982a" strokeWidth="3" strokeLinecap="round"/>
+                <circle cx="455" cy="20" r="2.5" fill="#7a6010"/>
+                <rect x="454" y="20" width="2" height="4" rx="1" fill="#7a6010"/>
+              </g>
+              {/* Panel ABIERTO — doblado contra el poste, entra desde la bisagra */}
+              <g style={{
+                transform: gateOpen
+                  ? 'perspective(300px) rotateY(0deg)'
+                  : 'perspective(300px) rotateY(-88deg)',
+                transformBox: 'fill-box',
+                transformOrigin: 'right center',
+                transition: ease,
+                opacity: gateOpen ? 1 : 0
+              }}>
+                <line x1="332" y1="13" x2="389" y2="13" stroke="#8b6e44" strokeWidth="2.8" opacity=".88" vectorEffect="non-scaling-stroke"/>
+                <line x1="332" y1="27" x2="389" y2="27" stroke="#8b6e44" strokeWidth="2.2" opacity=".78" vectorEffect="non-scaling-stroke"/>
+                <rect x="354" y="5" width="7" height="34" rx="2" fill="#7a5c34" opacity=".9"/>
+                <rect x="354" y="5" width="2" height="34" rx="1" fill="#b09060" opacity=".22"/>
+                <rect x="385" y="7"  width="10" height="5" rx="1.5" fill="#888" opacity=".9"/>
+                <rect x="385" y="29" width="10" height="5" rx="1.5" fill="#888" opacity=".9"/>
+                <circle cx="390" cy="9.5"  r="1.8" fill="#555" opacity=".75"/>
+                <circle cx="390" cy="31.5" r="1.8" fill="#555" opacity=".75"/>
+              </g>
+            </g>
+          );
+        })()}
       </svg>
 
       {/* Tractor de frente diagonal — mismo estilo que el granero */}
@@ -924,13 +936,7 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
       </svg>
 
       {/* Trabajadores — cada uno en su zona de la escena */}
-      {totalCount === 0 ? (
-        <div style={{position:'absolute',bottom:'42px',left:0,right:0,textAlign:'center',
-          fontFamily:'var(--font-sans)',fontSize:'12px',fontWeight:600,
-          color:'rgba(255,255,255,.45)',textShadow:'0 1px 3px rgba(0,0,0,.7)'}}>
-          {isES?'Sin trabajadores asignados':'No workers assigned'}
-        </div>
-      ) : (
+      {totalCount > 0 && (
         <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,pointerEvents:'none',zIndex:3}}>
           {workers.map((emp,i) => {
             if (!dayRecords[emp.id]) return null;
@@ -958,6 +964,7 @@ function FarmScene({ workers, dayRecords, onToggle, presentCount, absentCount, t
 /* ── Farm date navigator with calendar popup ── */
 function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, rosterOpen }) {
   const [open,     setOpen]     = React.useState(false);
+  const [picked,   setPicked]   = React.useState(false);
   const [calReady, setCalReady] = React.useState(false);
   const [calPos,   setCalPos]   = React.useState({ top: 0, centerX: 0 });
   const navRef  = React.useRef(null); /* fila completa ‹ fecha › — ancla para centrar */
@@ -1071,6 +1078,7 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
   var pick = function(d) {
     var iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     setViewDate(iso);
+    setPicked(true);
     setOpen(false);
   };
 
@@ -1089,7 +1097,7 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
       <div ref={trigRef}>
         <button type="button" tabIndex={-1}
           onMouseDown={function(e){ e.preventDefault(); }}
-          onClick={function(){ setOpen(function(o){ return !o; }); }}
+          onClick={function(){ setOpen(function(o){ if (!o) setPicked(false); return !o; }); }}
           className="farm-date-pill"
           style={{display:'flex',alignItems:'center',gap:'7px',
             background: open ? 'var(--ink-100)' : 'transparent',
@@ -1146,7 +1154,7 @@ function FarmDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ros
                 return (
                   <button tabIndex={-1} type="button" key={d}
                     disabled={isFuture}
-                    className={'dp-cal__day'+(isSel?' dp-cal__day--sel':'')+(isNow&&!isSel?' dp-cal__day--today':'')+(isFuture?' dp-cal__day--disabled':'')}
+                    className={'dp-cal__day'+(isSel?' dp-cal__day--sel':'')+(isNow&&!picked?' dp-cal__day--today':'')+(isFuture?' dp-cal__day--disabled':'')}
                     onClick={function(){ pick(d); }}
                     style={isFuture?{opacity:.28,cursor:'not-allowed'}:isSel?{}:hasRec?{
                       background:'#d4edda',color:'#1a5c1a',fontWeight:700,
@@ -1393,7 +1401,6 @@ function FarmView({ t, lang, setRoute }) {
     });
     setDaily(records);
     saveFarmDaily(records);
-    /* Limpiar también el draft para que no queden IDs fantasma */
     setDraft(function(prev) {
       var next = Object.assign({}, prev);
       delete next[empId];
@@ -1488,8 +1495,16 @@ function FarmView({ t, lang, setRoute }) {
             </div>
 
 
-          {searchQ && (
-            <div style={{width:'100%'}}>
+          <div style={{
+            maxHeight: searchQ ? '300px' : '0',
+            overflow: 'hidden',
+            transition: 'max-height .42s cubic-bezier(0.22,1,0.36,1)'}}>
+            <div style={{
+              opacity: searchQ ? 1 : 0,
+              transform: searchQ ? 'translateY(0)' : 'translateY(-10px)',
+              transition: 'opacity .32s ease, transform .4s cubic-bezier(0.22,1,0.36,1)',
+              paddingTop:'4px',
+              width:'100%',display:'flex',flexDirection:'column',gap:'6px'}}>
               <div className="toolbar__search" style={{width:'100%'}}>
                 <span className="toolbar__search-icon"><Icon name="search" size={15}/></span>
                 <input value={searchVal} onChange={e=>setSearchVal(e.target.value)}
@@ -1500,57 +1515,45 @@ function FarmView({ t, lang, setRoute }) {
                     <Icon name="x" size={13} stroke={2.4}/>
                   </button>
                 )}
-                {searchVal && (
-                  <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,right:0,background:'var(--paper)',
-                    border:'1px solid var(--ink-100)',borderRadius:'10px',zIndex:10,
-                    maxHeight:'200px',overflowY:'auto',boxShadow:'var(--shadow-md)'}}>
-                    {filteredAvailable.length===0 ? (
-                      <div style={{padding:'12px',fontSize:'13px',color:'var(--ink-300)',textAlign:'center'}}>
-                        {isES?'Sin resultados':'No results'}
-                      </div>
-                    ) : filteredAvailable.map(e=>(
-                      <button key={e.id} onClick={()=>addToFarm(e.id)}
-                        style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',
-                          fontSize:'13px',border:'none',background:'transparent',outline:'none',
-                          cursor:'pointer',transition:'background .1s'}}
-                        onMouseEnter={ev=>ev.currentTarget.style.background='var(--cream-50)'}
-                        onMouseLeave={ev=>ev.currentTarget.style.background='transparent'}>
-                        <div style={{fontWeight:600}}>{e.name}</div>
-                        <div style={{fontSize:'11px',color:'var(--ink-300)'}}><span className="mono">{e.id}</span> · {e.dept}</div>
-                      </button>
-                    ))}
+              </div>
+              <div style={{background:'var(--paper)',border:'1px solid var(--ink-100)',
+                borderRadius:'10px',maxHeight:'200px',overflowY:'auto',boxShadow:'var(--shadow-md)'}}>
+                {filteredAvailable.length===0 ? (
+                  <div style={{padding:'12px',fontSize:'13px',color:'var(--ink-300)',textAlign:'center'}}>
+                    {isES?'Sin resultados':'No results'}
                   </div>
-                )}
+                ) : filteredAvailable.map(e=>(
+                  <button key={e.id} onClick={()=>addToFarm(e.id)}
+                    style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',
+                      fontSize:'13px',border:'none',background:'transparent',outline:'none',
+                      cursor:'pointer',transition:'background .1s'}}
+                    onMouseEnter={ev=>ev.currentTarget.style.background='var(--cream-50)'}
+                    onMouseLeave={ev=>ev.currentTarget.style.background='transparent'}>
+                    <div style={{fontWeight:600}}>{e.name}</div>
+                    <div style={{fontSize:'11px',color:'var(--ink-300)'}}><span className="mono">{e.id}</span> · {e.dept}</div>
+                  </button>
+                ))}
               </div>
             </div>
-          )}
+          </div>
           </div>{/* fin wrapper fit-content */}
 
-          {totalCount===0 ? (
-            <div className="audit-empty">
-              <Icon name="users" size={24} stroke={1.2}/>
+          {totalCount === 0 && (
+            <div className="audit-empty" style={{animation:'body-in .2s ease both'}}>
+              <Icon name="idCard" size={24} stroke={1.2}/>
               <div className="audit-empty__title">{t.farm_no_employees}</div>
               <div className="audit-empty__sub">{canManage?t.farm_no_emps_manage:t.farm_no_emps_admin}</div>
             </div>
-          ) : (
+          )}
+
+          {totalCount > 0 && (
             <div style={{display:'flex',flexDirection:'column'}}>
               {farmEmployeeObjects.map((emp,idx) => {
                 const present = !!draft[emp.id];
                 const offScene = idx >= MAX_FARM_SCENE;
                 return (
-                  <div key={emp.id}>
-                  {offScene && idx === MAX_FARM_SCENE && (
-                    <div style={{display:'flex',alignItems:'center',gap:'8px',
-                      padding:'10px 0 6px',opacity:.6}}>
-                      <div style={{flex:1,height:'1px',background:'var(--ink-200)'}}/>
-                      <span style={{fontSize:'10px',fontWeight:600,fontFamily:'var(--font-sans)',
-                        color:'var(--ink-400)',textTransform:'uppercase',letterSpacing:'.06em',
-                        whiteSpace:'nowrap'}}>
-                        {isES ? 'Solo en lista · no aparece en escena' : 'List only · not shown in scene'}
-                      </span>
-                      <div style={{flex:1,height:'1px',background:'var(--ink-200)'}}/>
-                    </div>
-                  )}
+                  <div key={emp.id} style={{animation:'roster-in .32s cubic-bezier(0.22,1,0.36,1) both',
+                    animationDelay: (idx * 0.04) + 's'}}>
                   <div className="audit-entry role-assignee-row"
                     style={{alignItems:'center',padding:'14px 0',
                       borderTop: idx === 0 || idx === MAX_FARM_SCENE ? 'none' : '1px solid var(--ink-100)',

@@ -2180,6 +2180,36 @@ tr.table__row--selected .table__actions {
   color: var(--danger);
 }
 
+/* Eventualidad row + hover delete button */
+.ev-item {
+  position: relative;
+}
+.ev-item__del {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--ink-300);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s ease, background .12s ease, color .12s ease;
+}
+.ev-item:hover .ev-item__del,
+.ev-item__del--active {
+  opacity: 1 !important;
+}
+.ev-item__del:hover,
+.ev-item__del--active {
+  background: rgba(193,85,77,0.1);
+  color: var(--danger);
+}
+
 /* ============================================
    Edit employee modal
    ============================================ */
@@ -2532,6 +2562,33 @@ tr.table__row--selected .table__actions {
 .cbx-item--add:hover { background: var(--cream-100); color: var(--ink-900); }
 .cbx-item--add svg { flex-shrink: 0; }
 
+/* ComboBox option row with removable X */
+.cbx-opt { position: relative; }
+.cbx-opt--removable .cbx-item { padding-right: 32px; }
+.cbx-opt__del {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-300);
+  opacity: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+.cbx-opt:hover .cbx-opt__del { opacity: 1; }
+.cbx-opt__del:hover {
+  background: rgba(193,85,77,0.12);
+  color: var(--danger);
+}
+
 /* ============================================
    Phone Field
    ============================================ */
@@ -2660,7 +2717,8 @@ tr.table__row--selected .table__actions {
   border-radius: 50%; color: var(--ink-700); transition: background .1s, color .1s;
 }
 .dp-cal__day:hover { background: var(--cream-100); color: var(--ink-900); }
-.dp-cal__day--today { font-weight: 700; color: var(--ink-800); }
+.dp-cal__day--today { font-weight: 700; color: var(--ink-800); box-shadow: inset 0 0 0 1.5px var(--ink-800); }
+.dp-cal__day--today.dp-cal__day--sel { color: #fff !important; box-shadow: 0 2px 8px rgba(26,31,58,.25); }
 .dp-cal__day--sel {
   background: var(--ink-800) !important; color: #fff !important;
   font-weight: 700; box-shadow: 0 2px 8px rgba(26,31,58,.25);
@@ -5344,11 +5402,29 @@ tr.table__row--selected .table__actions {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0);   }
 }
+@keyframes roster-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes flag-breeze {
+  0%   { transform: rotate(-3deg)   skewY(-1deg);   }
+  18%  { transform: rotate(-5.5deg) skewY(1.2deg);  }
+  38%  { transform: rotate(-2.5deg) skewY(-2.5deg); }
+  58%  { transform: rotate(-6deg)   skewY(0.8deg);  }
+  76%  { transform: rotate(-3.5deg) skewY(-1.8deg); }
+  92%  { transform: rotate(-4.5deg) skewY(0.5deg);  }
+  100% { transform: rotate(-3deg)   skewY(-1deg);   }
+}
 @keyframes fighter-in {
   0%   { opacity: 0; transform: translateY(40px) scaleY(0.85); }
   55%  { opacity: 1; transform: translateY(-8px) scaleY(1.05); }
   75%  { transform: translateY(3px)  scaleY(0.98); }
   100% { transform: translateY(0)    scaleY(1);    }
+}
+@keyframes fighter-out {
+  0%   { opacity: 1; transform: translateY(0)    scaleY(1)    scaleX(1);    }
+  35%  { opacity: 1; transform: translateY(10px) scaleY(0.82) scaleX(1.08); }
+  100% { opacity: 0; transform: translateY(38px) scaleY(0.05) scaleX(1.25); }
 }
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -5848,4 +5924,23 @@ tr.table__row--selected .table__actions {
   0.55% { left:108%; opacity:1; }
   0.7%  { left:108%; opacity:0; }
   100%  { left:108%; opacity:0; }
+}
+
+/* ── Print: Reporte de Faltas por Semanas ── */
+@media print {
+  .topbar                    { display: none !important; }
+  .page > *:not(.faltas-semanales-report) { display: none !important; }
+
+  .print-hide                { display: none !important; }
+  .print-report-header       { display: block !important; }
+
+  .faltas-semanales-report   { margin-top: 0 !important; }
+
+  .faltas-week-card          {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    page-break-inside: avoid;
+  }
+
+  body, .page { background: #fff !important; padding: 0 !important; }
 }

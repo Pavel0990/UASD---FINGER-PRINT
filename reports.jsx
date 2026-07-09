@@ -264,6 +264,8 @@ function ReportsView({ t, lang, setRoute }) {
         <StrikesReport   filterMonth={filterMonth} monthLabel={monthLabel}/>
         <EventualidadesReport filterMonth={filterMonth} monthLabel={monthLabel}/>
       </div>
+
+      <FaltasSemanalReport filterMonth={filterMonth} monthLabel={monthLabel}/>
     </div>
   );
 }
@@ -650,6 +652,224 @@ function EventualidadesReport({ filterMonth, monthLabel }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── FaltasSemanalReport ── */
+function FaltasSemanalReport({ filterMonth, monthLabel }) {
+  var absInit = function() {
+    try { return JSON.parse(localStorage.getItem('uasd_absences') || '{}'); } catch(e) { return {}; }
+  };
+  var absState = React.useState(absInit);
+  var absencesMap = absState[0];
+  var setAbsencesMap = absState[1];
+
+  React.useEffect(function() {
+    var sync = function() {
+      try { setAbsencesMap(JSON.parse(localStorage.getItem('uasd_absences') || '{}')); } catch(e) {}
+    };
+    window.addEventListener('storage', sync);
+    return function() { window.removeEventListener('storage', sync); };
+  }, []);
+
+  var weeks = React.useMemo(function() {
+    var ym = filterMonth || new Date().toISOString().slice(0, 7);
+    var year  = parseInt(ym.slice(0, 4), 10);
+    var month = parseInt(ym.slice(5, 7), 10) - 1;
+    var lastDay = new Date(year, month + 1, 0);
+    var weekMap = {};
+    var d = new Date(year, month, 1);
+    while (d <= lastDay) {
+      var dow = d.getDay();
+      if (dow >= 1 && dow <= 5) {
+        var mondayOffset = 1 - dow;
+        var monday = new Date(d);
+        monday.setDate(d.getDate() + mondayOffset);
+        var key = monday.getFullYear() + '-' +
+          String(monday.getMonth() + 1).padStart(2, '0') + '-' +
+          String(monday.getDate()).padStart(2, '0');
+        if (!weekMap[key]) weekMap[key] = [];
+        weekMap[key].push(new Date(d));
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return Object.keys(weekMap).sort().map(function(key) {
+      return { key: key, days: weekMap[key] };
+    });
+  }, [filterMonth]);
+
+  var emps = typeof EMPLOYEES !== 'undefined'
+    ? EMPLOYEES.filter(function(e) { return e.status !== 'inactive'; })
+    : [];
+
+  var DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+
+  function fmtDate(day) {
+    return day.getFullYear() + '-' +
+      String(day.getMonth() + 1).padStart(2, '0') + '-' +
+      String(day.getDate()).padStart(2, '0');
+  }
+
+  return (
+    <div className="faltas-semanales-report" style={{ marginTop: 28 }}>
+
+      {/* visible only when printing */}
+      <div className="print-report-header" style={{ display:'none', marginBottom:20 }}>
+        <div style={{ fontFamily:'var(--font-serif)', fontSize:22, fontWeight:700, color:'var(--ink-800)' }}>
+          UASD — Reporte de Faltas por Semanas
+        </div>
+        <div style={{ fontFamily:'var(--font-sans)', fontSize:12, color:'var(--ink-500)', marginTop:4 }}>
+          {monthLabel} · Generado el {new Date().toLocaleDateString('es-DO', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
+        </div>
+      </div>
+
+      {/* section header */}
+      <div className="print-hide" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+        <div>
+          <div style={{ fontFamily:'var(--font-sans)', fontSize:15, fontWeight:700, color:'var(--ink-800)', display:'flex', alignItems:'center', gap:8 }}>
+            <Icon name="calendar" size={15}/>
+            Reporte de faltas por semanas
+          </div>
+          <div style={{ fontFamily:'var(--font-sans)', fontSize:12, color:'var(--ink-400)', marginTop:3 }}>
+            {monthLabel} · faltas registradas por empleado
+          </div>
+        </div>
+        <button
+          onClick={function() { window.print(); }}
+          style={{
+            display:'flex', alignItems:'center', gap:7,
+            fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600,
+            color:'var(--ink-700)', background:'var(--paper)',
+            border:'1px solid var(--ink-200)', borderRadius:8,
+            padding:'7px 14px', cursor:'pointer'
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          Imprimir reporte
+        </button>
+      </div>
+
+      {/* legend */}
+      <div className="print-hide" style={{ display:'flex', alignItems:'center', gap:16, marginBottom:16, flexWrap:'wrap' }}>
+        {[
+          { bg:'rgba(34,197,94,0.10)',  color:'#16a34a',              sym:'✓', label:'Presente' },
+          { bg:'rgba(193,85,77,0.13)',  color:'var(--danger,#c1554d)', sym:'✕', label:'Ausente sin justificar' },
+          { bg:'rgba(200,160,0,0.14)',  color:'var(--gold-600,#b45309)',sym:'✕', label:'Ausente justificado' },
+        ].map(function(item, i) {
+          return (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:6, fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-500)' }}>
+              <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:20, height:20, borderRadius:'50%', background:item.bg, color:item.color, fontWeight:700, fontSize:12 }}>{item.sym}</span>
+              {item.label}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* weeks */}
+      {weeks.length === 0 ? (
+        <div style={{ padding:'24px', textAlign:'center', fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)' }}>
+          Sin datos para este período.
+        </div>
+      ) : weeks.map(function(week, wi) {
+        var d0 = week.days[0];
+        var dN = week.days[week.days.length - 1];
+        var rangeLabel = d0.getDate() + ' — ' + dN.getDate();
+
+        return (
+          <div key={week.key} className="chart-card faltas-week-card" style={{ marginBottom:16, overflow:'hidden', pageBreakInside:'avoid' }}>
+            <div style={{ padding:'9px 16px', background:'var(--ink-800)', color:'var(--paper)', display:'flex', alignItems:'center', gap:12 }}>
+              <span style={{ fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', opacity:0.5 }}>
+                Semana {wi + 1}
+              </span>
+              <span style={{ fontFamily:'var(--font-mono)', fontSize:13, fontWeight:600 }}>
+                {rangeLabel}
+              </span>
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign:'left', padding:'8px 16px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)', minWidth:190, whiteSpace:'nowrap' }}>
+                      Empleado
+                    </th>
+                    {week.days.map(function(day) {
+                      var dow = day.getDay() - 1;
+                      return (
+                        <th key={fmtDate(day)} style={{ textAlign:'center', padding:'6px 8px', fontFamily:'var(--font-sans)', fontSize:10, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)', minWidth:52 }}>
+                          <div>{DAY_NAMES[dow]}</div>
+                          <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', marginTop:2, fontWeight:600, letterSpacing:0, textTransform:'none' }}>
+                            {day.getDate()}
+                          </div>
+                        </th>
+                      );
+                    })}
+                    <th style={{ textAlign:'center', padding:'8px 12px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>
+                      Faltas
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emps.map(function(emp, ei) {
+                    var empAbs = absencesMap[emp.id] || [];
+                    var dayCells = week.days.map(function(day) {
+                      var ds = fmtDate(day);
+                      var found = null;
+                      for (var i = 0; i < empAbs.length; i++) {
+                        if (empAbs[i].date === ds) { found = empAbs[i]; break; }
+                      }
+                      return { ds: ds, abs: found };
+                    });
+                    var absCount = dayCells.filter(function(c) { return c.abs !== null; }).length;
+
+                    return (
+                      <tr key={emp.id} style={{ background: ei % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.018)' }}>
+                        <td style={{ padding:'9px 16px', borderBottom:'1px solid var(--ink-100)', whiteSpace:'nowrap' }}>
+                          <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{emp.name}</div>
+                          <div style={{ fontFamily:'var(--font-sans)', fontSize:10, color:'var(--ink-400)', marginTop:1 }}>{emp.dept}</div>
+                        </td>
+                        {dayCells.map(function(cell) {
+                          var isAbsent  = cell.abs !== null;
+                          var justified = isAbsent && cell.abs.justified;
+                          return (
+                            <td key={cell.ds} style={{ textAlign:'center', padding:'8px 4px', borderBottom:'1px solid var(--ink-100)' }}>
+                              {isAbsent ? (
+                                <span title={justified ? 'Ausencia justificada' : 'Ausencia sin justificar'} style={{
+                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                  width:24, height:24, borderRadius:'50%',
+                                  background: justified ? 'rgba(200,160,0,0.14)' : 'rgba(193,85,77,0.13)',
+                                  color: justified ? 'var(--gold-600,#b45309)' : 'var(--danger,#c1554d)',
+                                  fontWeight:700, fontSize:13
+                                }}>✕</span>
+                              ) : (
+                                <span style={{
+                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                  width:24, height:24, borderRadius:'50%',
+                                  background:'rgba(34,197,94,0.10)', color:'#16a34a',
+                                  fontWeight:700, fontSize:13
+                                }}>✓</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td style={{ textAlign:'center', padding:'8px 12px', borderBottom:'1px solid var(--ink-100)' }}>
+                          {absCount > 0
+                            ? <span className="badge badge--err" style={{ fontSize:11 }}>{absCount}</span>
+                            : <span className="badge badge--ok"  style={{ fontSize:11 }}>0</span>
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

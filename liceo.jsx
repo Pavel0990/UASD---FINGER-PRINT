@@ -14,67 +14,60 @@ function saveLiceoDaily(data) { localStorage.setItem(LICEO_DAILY_KEY, JSON.strin
 
 /* ── Liceo slots (posiciones en el patio) ── */
 const LICEO_SLOTS = [
-  { left:'6%',  act:'leer'     },
-  { left:'20%', act:'caminar'  },
-  { left:'33%', act:'escribir' },
-  { left:'46%', act:'hablar'   },
-  { left:'60%', act:'leer'     },
-  { left:'13%', act:'escribir' },
-  { left:'27%', act:'hablar'   },
-  { left:'40%', act:'leer'     },
-  { left:'53%', act:'caminar'  },
-  { left:'67%', act:'escribir' },
+  { act:'leer',          actF:'mLeer'     },
+  { act:'escribir',      actF:'mEscribir' },
+  { act:'hablar',        actF:'mHablar'   },
+  { act:'caminar',       actF:'mCaminar'  },
+  { act:'traje',         actF:'mLeer'     },
+  { act:'trajesombrero', actF:'mHablar'   },
+  { act:'leer',          actF:'mEscribir' },
+  { act:'escribir',      actF:'mCaminar'  },
+  { act:'trajesombrero', actF:'mLeer'     },
+  { act:'caminar',       actF:'mEscribir' },
 ];
 
 const LICEO_SHIRT_COLS = ['#2050a8','#1a3c80','#2858b0','#1e4490','#24509a'];
+const LICEO_BLOUSE_COLS = ['#8a2060','#205880','#386830','#7a3020','#405090'];
 const MAX_LICEO_SCENE  = LICEO_SLOTS.length;
 
 /* ── Figured students (viewBox "0 0 44 56") ── */
 
 /* Leer — estudiante con libro abierto */
 function FigLeer({ s, c }) {
-  var bookAnim = {
+  var docAnim = {
     animation: 'w-inspect 3s ease-in-out infinite',
     transformBox: 'fill-box', transformOrigin: '20% 50%'
   };
   return (
     <g>
-      {/* Cabeza */}
       <circle cx="20" cy="10" r="6.5" fill={s}/>
-      {/* Cabello */}
       <ellipse cx="20" cy="5" rx="6" ry="3" fill="#1a0a08"/>
+      {/* Corbata */}
+      <path d="M20,16 L19,20 L20,23 L21,20 Z" fill="#b02020"/>
+      <path d="M19.5,16 L20.5,16 L21,18 L19,18 Z" fill="#c03030"/>
       {/* Torso */}
       <path d="M20,16 L20,32" stroke={c} strokeWidth="6" strokeLinecap="round"/>
-      {/* Libro — sostenido frente al cuerpo */}
-      <g style={bookAnim}>
-        {/* Brazo izquierdo */}
-        <line x1="17" y1="20" x2="8" y2="26" stroke={s} strokeWidth="4" strokeLinecap="round"/>
-        {/* Brazo derecho */}
+      {/* Informe/carpeta sostenido frente al cuerpo */}
+      <g style={docAnim}>
+        <line x1="17" y1="20" x2="8"  y2="26" stroke={s} strokeWidth="4" strokeLinecap="round"/>
         <line x1="23" y1="20" x2="33" y2="26" stroke={s} strokeWidth="4" strokeLinecap="round"/>
-        {/* Libro abierto */}
-        <rect x="5" y="22" width="11" height="14" rx="1.5" fill="#fff8e8" stroke="#ccc" strokeWidth="1"/>
-        <rect x="16" y="22" width="11" height="14" rx="1.5" fill="#fff8e8" stroke="#ccc" strokeWidth="1"/>
-        {/* Lomo del libro */}
-        <line x1="16" y1="22" x2="16" y2="36" stroke="#b8a060" strokeWidth="1.8"/>
-        {/* Renglones */}
-        <line x1="7"  y1="27" x2="14" y2="27" stroke="#ccc" strokeWidth="1"/>
-        <line x1="7"  y1="30" x2="14" y2="30" stroke="#ccc" strokeWidth="1"/>
-        <line x1="7"  y1="33" x2="14" y2="33" stroke="#ccc" strokeWidth="1"/>
-        <line x1="18" y1="27" x2="25" y2="27" stroke="#ccc" strokeWidth="1"/>
-        <line x1="18" y1="30" x2="25" y2="30" stroke="#ccc" strokeWidth="1"/>
-        <line x1="18" y1="33" x2="25" y2="33" stroke="#ccc" strokeWidth="1"/>
+        {/* Carpeta izq (tapa) */}
+        <rect x="5"  y="22" width="11" height="14" rx="1" fill="#3a5a80" stroke="#2a4060" strokeWidth=".8"/>
+        {/* Páginas der */}
+        <rect x="16" y="22" width="11" height="14" rx="1" fill="#f4f4f4" stroke="#ccc" strokeWidth=".8"/>
+        <line x1="18" y1="27" x2="25" y2="27" stroke="#bbb" strokeWidth=".9"/>
+        <line x1="18" y1="30" x2="25" y2="30" stroke="#bbb" strokeWidth=".9"/>
+        <line x1="18" y1="33" x2="23" y2="33" stroke="#bbb" strokeWidth=".9"/>
       </g>
-      {/* Piernas */}
       <line x1="20" y1="32" x2="14" y2="46" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
       <line x1="20" y1="32" x2="26" y2="46" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
-      {/* Zapatos */}
       <line x1="14" y1="46" x2="9"  y2="51" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
       <line x1="26" y1="46" x2="31" y2="51" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
     </g>
   );
 }
 
-/* Escribir — estudiante con cuaderno */
+/* Escribir — empleado con portapapeles */
 function FigEscribir({ s, c }) {
   var armAnim = {
     animation: 'w-plant 2.4s ease-in-out infinite',
@@ -82,29 +75,27 @@ function FigEscribir({ s, c }) {
   };
   return (
     <g>
-      {/* Cabeza inclinada */}
       <circle cx="18" cy="12" r="6.5" fill={s}/>
-      {/* Cabello */}
       <ellipse cx="18" cy="7" rx="5.5" ry="3" fill="#1a0a08"/>
-      {/* Mochila en la espalda */}
-      <rect x="23" y="19" width="7" height="10" rx="2" fill="#e8a030"/>
-      <line x1="24" y1="19" x2="24" y2="29" stroke="#c87820" strokeWidth="1"/>
+      {/* Corbata */}
+      <path d="M18,19 L17,23 L18,26 L19,23 Z" fill="#204090"/>
+      <path d="M17.5,19 L18.5,19 L19,21 L17,21 Z" fill="#2858b0"/>
       {/* Torso inclinado */}
       <path d="M18,18 Q16,26 15,32" stroke={c} strokeWidth="6" fill="none" strokeLinecap="round"/>
-      {/* Brazo izquierdo sostiene cuaderno */}
+      {/* Brazo izq sostiene portapapeles */}
       <line x1="16" y1="22" x2="7" y2="28" stroke={s} strokeWidth="4" strokeLinecap="round"/>
-      {/* Cuaderno */}
-      <rect x="2" y="24" width="9" height="12" rx="1.5" fill="#d0e8ff" stroke="#88aacc" strokeWidth="1"/>
-      <line x1="4" y1="28" x2="9" y2="28" stroke="#88aacc" strokeWidth="1"/>
-      <line x1="4" y1="31" x2="9" y2="31" stroke="#88aacc" strokeWidth="1"/>
-      {/* Brazo derecho + lápiz ANIMADO */}
+      {/* Portapapeles */}
+      <rect x="2" y="23" width="9" height="13" rx="1" fill="#e8e8e8" stroke="#aaa" strokeWidth=".8"/>
+      <rect x="4.5" y="21.5" width="4" height="2.5" rx="1" fill="#777"/>
+      <line x1="3.5" y1="28" x2="10" y2="28" stroke="#bbb" strokeWidth=".8"/>
+      <line x1="3.5" y1="31" x2="10" y2="31" stroke="#bbb" strokeWidth=".8"/>
+      <line x1="3.5" y1="34" x2="7.5" y2="34" stroke="#bbb" strokeWidth=".8"/>
+      {/* Brazo der + bolígrafo ANIMADO */}
       <g style={armAnim}>
         <line x1="18" y1="20" x2="27" y2="24" stroke={s} strokeWidth="4" strokeLinecap="round"/>
-        {/* Lápiz */}
-        <line x1="26" y1="23" x2="24" y2="33" stroke="#f0c040" strokeWidth="3" strokeLinecap="round"/>
-        <line x1="24" y1="33" x2="23" y2="36" stroke="#ffe0a0" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="26" y1="23" x2="24" y2="33" stroke="#1a2a60" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="24" y1="33" x2="23.5" y2="35.5" stroke="#c0c0c0" strokeWidth="2" strokeLinecap="round"/>
       </g>
-      {/* Piernas */}
       <line x1="15" y1="32" x2="10" y2="46" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
       <line x1="15" y1="32" x2="21" y2="46" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
       <line x1="10" y1="46" x2="6"  y2="51" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
@@ -113,7 +104,7 @@ function FigEscribir({ s, c }) {
   );
 }
 
-/* Caminar — estudiante caminando */
+/* Caminar — empleado con maletín */
 function FigCaminar({ s, c }) {
   var bodyAnim = {
     animation: 'w-carry 1.9s ease-in-out infinite',
@@ -121,19 +112,22 @@ function FigCaminar({ s, c }) {
   };
   return (
     <g style={bodyAnim}>
-      {/* Mochila */}
-      <rect x="23" y="17" width="7" height="10" rx="2" fill="#e83030"/>
-      <line x1="24" y1="17" x2="24" y2="27" stroke="#b82020" strokeWidth="1"/>
-      {/* Cabeza */}
       <circle cx="20" cy="11" r="6.5" fill={s}/>
-      {/* Cabello */}
       <ellipse cx="20" cy="6" rx="6" ry="3" fill="#1a0a08"/>
+      {/* Corbata */}
+      <path d="M20,17 L19,21 L20,24 L21,21 Z" fill="#802080"/>
+      <path d="M19.5,17 L20.5,17 L21,19 L19,19 Z" fill="#9030a0"/>
       {/* Torso */}
       <path d="M20,17 L20,32" stroke={c} strokeWidth="6" strokeLinecap="round"/>
-      {/* Brazos alternados */}
+      {/* Brazo izq libre */}
       <line x1="18" y1="22" x2="10" y2="30" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+      {/* Brazo der con maletín */}
       <line x1="22" y1="22" x2="30" y2="28" stroke={s} strokeWidth="4" strokeLinecap="round"/>
-      {/* Piernas caminando */}
+      {/* Maletín */}
+      <rect x="28" y="28" width="10" height="8" rx="1.5" fill="#5a3a18" stroke="#3a2410" strokeWidth=".8"/>
+      <rect x="30.5" y="26.5" width="5" height="2.5" rx="1" fill="none" stroke="#3a2410" strokeWidth="1"/>
+      <line x1="28" y1="32" x2="38" y2="32" stroke="#3a2410" strokeWidth=".6"/>
+      {/* Piernas */}
       <line x1="20" y1="32" x2="13" y2="46" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
       <line x1="20" y1="32" x2="27" y2="44" stroke={c} strokeWidth="4.5" strokeLinecap="round"/>
       <line x1="13" y1="46" x2="8"  y2="51" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
@@ -142,7 +136,7 @@ function FigCaminar({ s, c }) {
   );
 }
 
-/* Hablar — estudiante conversando */
+/* Hablar — empleado conversando */
 function FigHablar({ s, c, female }) {
   var nod = {
     animation: 'w-inspect 2.8s ease-in-out infinite',
@@ -165,6 +159,9 @@ function FigHablar({ s, c, female }) {
           <ellipse cx="20" cy="6" rx="6" ry="3" fill="#1a0a08"/>
         </g>
       )}
+      {/* Corbata */}
+      <path d="M20,17 L19,21 L20,24 L21,21 Z" fill="#1a6a30"/>
+      <path d="M19.5,17 L20.5,17 L21,19 L19,19 Z" fill="#2a8040"/>
       {/* Torso */}
       <path d="M20,17 L20,33" stroke={c} strokeWidth="6" strokeLinecap="round"/>
       {/* Brazos con gesto de hablar ANIMADO */}
@@ -184,175 +181,576 @@ function FigHablar({ s, c, female }) {
   );
 }
 
+/* Traje — empleado de pie con traje y corbata */
+function FigTraje({ s, c }) {
+  return (
+    <g>
+      <circle cx="20" cy="10" r="6.5" fill={s}/>
+      <ellipse cx="20" cy="5" rx="5.5" ry="3" fill="#1a0a08"/>
+      {/* Solapa chaqueta */}
+      <path d="M14,17 L20,22 L26,17 L24,17 L20,19.5 L16,17Z" fill="#12182e"/>
+      {/* Corbata */}
+      <path d="M20,17 L19,21 L20,24.5 L21,21 Z" fill="#b02020"/>
+      <path d="M19.5,17 L20.5,17 L21,19 L19,19 Z" fill="#c83030"/>
+      {/* Torso traje */}
+      <path d="M20,17 L20,33" stroke="#12182e" strokeWidth="7" strokeLinecap="round"/>
+      {/* Brazos */}
+      <line x1="16" y1="20" x2="10" y2="30" stroke="#12182e" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="24" y1="20" x2="30" y2="30" stroke="#12182e" strokeWidth="4" strokeLinecap="round"/>
+      <circle cx="9.5"  cy="31" r="2.2" fill={s}/>
+      <circle cx="30.5" cy="31" r="2.2" fill={s}/>
+      {/* Pantalón */}
+      <line x1="20" y1="33" x2="14" y2="47" stroke="#0e1420" strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="20" y1="33" x2="26" y2="47" stroke="#0e1420" strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="14" y1="47" x2="9"  y2="52" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="26" y1="47" x2="31" y2="52" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
+    </g>
+  );
+}
+
+/* Traje + sombrero negro + maletín */
+function FigTrajeSombrero({ s, c }) {
+  var bodyAnim = { animation:'w-carry 1.9s ease-in-out infinite', transformBox:'fill-box', transformOrigin:'50% 60%' };
+  return (
+    <g style={bodyAnim}>
+      {/* Sombrero negro (fedora) */}
+      <rect x="12" y="3"   width="16" height="6.5" rx="1.5" fill="#111111"/>
+      <rect x="9"  y="8.5" width="22" height="3"   rx="1.5" fill="#1a1a1a"/>
+      <rect x="12" y="6.5" width="16" height="1.8" fill="#2a2a2a"/>
+      {/* Cabeza */}
+      <circle cx="20" cy="13" r="6.5" fill={s}/>
+      <ellipse cx="20" cy="8.5" rx="5.5" ry="3" fill="#1a0a08"/>
+      {/* Solapa */}
+      <path d="M14,20 L20,25 L26,20 L24,20 L20,22 L16,20Z" fill="#12182e"/>
+      {/* Corbata */}
+      <path d="M20,20 L19,24 L20,27 L21,24 Z" fill="#204090"/>
+      <path d="M19.5,20 L20.5,20 L21,22 L19,22 Z" fill="#2858b0"/>
+      {/* Torso */}
+      <path d="M20,20 L20,34" stroke="#12182e" strokeWidth="7" strokeLinecap="round"/>
+      {/* Brazo izq */}
+      <line x1="16" y1="23" x2="10" y2="31" stroke="#12182e" strokeWidth="4" strokeLinecap="round"/>
+      <circle cx="9.5" cy="32" r="2.2" fill={s}/>
+      {/* Brazo der + maletín */}
+      <line x1="24" y1="23" x2="30" y2="29" stroke="#12182e" strokeWidth="4" strokeLinecap="round"/>
+      <rect x="28" y="29" width="10" height="8" rx="1.5" fill="#2a1a08" stroke="#110a00" strokeWidth=".8"/>
+      <rect x="30.5" y="27.5" width="5" height="2.5" rx="1" fill="none" stroke="#110a00" strokeWidth="1"/>
+      <line x1="28" y1="33" x2="38" y2="33" stroke="#110a00" strokeWidth=".6"/>
+      {/* Pantalón */}
+      <line x1="20" y1="34" x2="13" y2="47" stroke="#0e1420" strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="20" y1="34" x2="27" y2="45" stroke="#0e1420" strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="13" y1="47" x2="8"  y2="52" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="27" y1="45" x2="32" y2="50" stroke="#1a1a1a" strokeWidth="4" strokeLinecap="round"/>
+    </g>
+  );
+}
+
+/* ── Figuras femeninas de oficina ── */
+function _FemHead({ s }) {
+  return (
+    <g>
+      <ellipse cx="20" cy="6.5" rx="8" ry="5" fill="#1a0a08"/>
+      <circle  cx="20" cy="11"  r="6.5"        fill={s}/>
+      <path d="M12,13 Q9,18 11,23"  stroke="#1a0a08" strokeWidth="3.8" fill="none" strokeLinecap="round"/>
+      <path d="M28,13 Q31,18 29,23" stroke="#1a0a08" strokeWidth="3.8" fill="none" strokeLinecap="round"/>
+    </g>
+  );
+}
+function _FemSkirt({ c }) {
+  return (
+    <g>
+      <path d="M16,33 L12,48 L28,48 L24,33Z" fill={c} opacity=".85"/>
+      <line x1="13" y1="48" x2="10" y2="54" stroke="#1a1a1a" strokeWidth="3.5" strokeLinecap="round"/>
+      <line x1="27" y1="48" x2="30" y2="54" stroke="#1a1a1a" strokeWidth="3.5" strokeLinecap="round"/>
+    </g>
+  );
+}
+
+/* Mujer — leyendo informe */
+function FigMujerLeer({ s, c }) {
+  var docAnim = { animation:'w-inspect 3s ease-in-out infinite', transformBox:'fill-box', transformOrigin:'20% 50%' };
+  return (
+    <g>
+      <_FemHead s={s}/>
+      <circle cx="20" cy="19" r="1.3" fill="#c8902a" opacity=".9"/>
+      <path d="M20,17 L20,33" stroke={c} strokeWidth="6" strokeLinecap="round"/>
+      <g style={docAnim}>
+        <line x1="17" y1="21" x2="8"  y2="27" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        <line x1="23" y1="21" x2="33" y2="27" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        <rect x="5"  y="23" width="11" height="13" rx="1" fill="#8a3060" stroke="#6a2050" strokeWidth=".8"/>
+        <rect x="16" y="23" width="11" height="13" rx="1" fill="#f4f4f4" stroke="#ccc" strokeWidth=".8"/>
+        <line x1="18" y1="28" x2="25" y2="28" stroke="#bbb" strokeWidth=".9"/>
+        <line x1="18" y1="31" x2="25" y2="31" stroke="#bbb" strokeWidth=".9"/>
+        <line x1="18" y1="34" x2="23" y2="34" stroke="#bbb" strokeWidth=".9"/>
+      </g>
+      <_FemSkirt c={c}/>
+    </g>
+  );
+}
+
+/* Mujer — escribiendo en portapapeles */
+function FigMujerEscribir({ s, c }) {
+  var armAnim = { animation:'w-plant 2.4s ease-in-out infinite', transformBox:'fill-box', transformOrigin:'50% 20%' };
+  return (
+    <g>
+      <_FemHead s={s}/>
+      <circle cx="18" cy="19" r="1.3" fill="#c8902a" opacity=".9"/>
+      <path d="M18,17 Q16,25 15,33" stroke={c} strokeWidth="6" fill="none" strokeLinecap="round"/>
+      <line x1="16" y1="22" x2="7"  y2="28" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+      <rect x="2" y="24" width="9" height="13" rx="1" fill="#e8e8e8" stroke="#aaa" strokeWidth=".8"/>
+      <rect x="4.5" y="22.5" width="4" height="2.5" rx="1" fill="#888"/>
+      <line x1="3.5" y1="29" x2="10" y2="29" stroke="#bbb" strokeWidth=".8"/>
+      <line x1="3.5" y1="32" x2="10" y2="32" stroke="#bbb" strokeWidth=".8"/>
+      <g style={armAnim}>
+        <line x1="18" y1="21" x2="27" y2="25" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        <line x1="26" y1="24" x2="24" y2="34" stroke="#1a2a60" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="24" y1="34" x2="23.5" y2="36.5" stroke="#c0c0c0" strokeWidth="2" strokeLinecap="round"/>
+      </g>
+      <_FemSkirt c={c}/>
+    </g>
+  );
+}
+
+/* Mujer — caminando con bolso */
+function FigMujerCaminar({ s, c }) {
+  var bodyAnim = { animation:'w-carry 1.9s ease-in-out infinite', transformBox:'fill-box', transformOrigin:'50% 60%' };
+  return (
+    <g style={bodyAnim}>
+      <_FemHead s={s}/>
+      <circle cx="20" cy="19" r="1.3" fill="#c8902a" opacity=".9"/>
+      <path d="M20,17 L20,33" stroke={c} strokeWidth="6" strokeLinecap="round"/>
+      <line x1="17" y1="22" x2="10" y2="30" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+      {/* Bolso de mano */}
+      <line x1="23" y1="22" x2="30" y2="27" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+      <rect x="28" y="27" width="8" height="7" rx="2" fill="#7a3020" stroke="#5a2010" strokeWidth=".8"/>
+      <path d="M30,27 Q32,24 34,27" fill="none" stroke="#5a2010" strokeWidth="1.2"/>
+      <_FemSkirt c={c}/>
+    </g>
+  );
+}
+
+/* Mujer — conversando */
+function FigMujerHablar({ s, c }) {
+  var nod = { animation:'w-inspect 2.8s ease-in-out infinite', transformBox:'fill-box', transformOrigin:'50% 10%' };
+  return (
+    <g>
+      <_FemHead s={s}/>
+      <circle cx="20" cy="19" r="1.3" fill="#c8902a" opacity=".9"/>
+      <path d="M20,17 L20,33" stroke={c} strokeWidth="6" strokeLinecap="round"/>
+      <g style={nod}>
+        <line x1="17" y1="21" x2="9"  y2="27" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        <line x1="23" y1="21" x2="31" y2="27" stroke={s} strokeWidth="4" strokeLinecap="round"/>
+        <circle cx="8"  cy="28" r="2.5" fill={s}/>
+        <circle cx="32" cy="28" r="2.5" fill={s}/>
+      </g>
+      <_FemSkirt c={c}/>
+    </g>
+  );
+}
+
 function LiceoStudent({ emp, onToggle, slotIndex, totalCount }) {
   var slot     = LICEO_SLOTS[slotIndex % LICEO_SLOTS.length];
   var isFemale = emp.gender === 'F';
-  var act      = isFemale ? 'hablar' : slot.act;
-  var sz       = totalCount > 9 ? 24 : totalCount > 6 ? 28 : totalCount > 4 ? 32 : 36;
+  var act      = isFemale ? slot.actF : slot.act;
+  var sz = totalCount > 9 ? 28 : totalCount > 6 ? 34 : totalCount > 4 ? 39 : 44;
   var skin     = '#d4956a';
-  var shirt    = LICEO_SHIRT_COLS[slotIndex % LICEO_SHIRT_COLS.length];
+  var shirt    = isFemale
+    ? LICEO_BLOUSE_COLS[slotIndex % LICEO_BLOUSE_COLS.length]
+    : LICEO_SHIRT_COLS[slotIndex  % LICEO_SHIRT_COLS.length];
 
   return (
     <div onClick={function() { onToggle(emp.id); }} title={emp.name}
       style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',
         cursor:'pointer',userSelect:'none'}}>
       <svg width={sz} height={Math.round(sz*1.27)} viewBox="0 0 44 56" style={{overflow:'visible'}}>
-        {act === 'leer'     && <FigLeer     s={skin} c={shirt}/>}
-        {act === 'escribir' && <FigEscribir s={skin} c={shirt}/>}
-        {act === 'caminar'  && <FigCaminar  s={skin} c={shirt}/>}
-        {act === 'hablar'   && <FigHablar   s={skin} c={shirt} female={isFemale}/>}
+        {act === 'leer'          && <FigLeer          s={skin} c={shirt}/>}
+        {act === 'escribir'      && <FigEscribir      s={skin} c={shirt}/>}
+        {act === 'caminar'       && <FigCaminar       s={skin} c={shirt}/>}
+        {act === 'hablar'        && <FigHablar        s={skin} c={shirt}/>}
+        {act === 'traje'         && <FigTraje         s={skin} c={shirt}/>}
+        {act === 'trajesombrero' && <FigTrajeSombrero s={skin} c={shirt}/>}
+        {act === 'mLeer'         && <FigMujerLeer     s={skin} c={shirt}/>}
+        {act === 'mEscribir'     && <FigMujerEscribir s={skin} c={shirt}/>}
+        {act === 'mCaminar'      && <FigMujerCaminar  s={skin} c={shirt}/>}
+        {act === 'mHablar'       && <FigMujerHablar   s={skin} c={shirt}/>}
       </svg>
     </div>
   );
 }
 
 /* ── Edificio del Liceo ── */
-function LiceoBuilding() {
+function LiceoBuilding({ flagUp, clock }) {
+  var _h   = clock ? clock.getHours() % 12 : 0;
+  var _m   = clock ? clock.getMinutes()     : 0;
+  var _s   = clock ? clock.getSeconds()     : 0;
+  var hourDeg   = _h * 30 + _m * 0.5;
+  var minuteDeg = _m * 6;
+  var secondDeg = _s * 6;
   return (
-    <svg style={{position:'absolute',bottom:'113px',right:'3%',width:'116px',height:'110px',overflow:'visible'}}
-      viewBox="0 0 116 110">
-      {/* Asta bandera */}
-      <line x1="10" y1="10" x2="10" y2="110" stroke="#888" strokeWidth="2.5"/>
-      {/* Bandera RD */}
-      <g>
-        <rect x="10" y="10" width="26" height="16" fill="#002D62"/>
-        <rect x="23" y="10" width="13" height="16" fill="#CF142B"/>
-        <rect x="10" y="18" width="26" height="8"  fill="#002D62"/>
-        <rect x="23" y="18" width="13" height="8"  fill="#CF142B"/>
-        {/* Cruz blanca */}
-        <rect x="10" y="16" width="26" height="2.5" fill="#fff"/>
-        <rect x="21" y="10" width="2.5" height="16" fill="#fff"/>
+    <svg style={{position:'absolute',bottom:'113px',right:'0%',width:'248px',height:'192px',overflow:'visible',
+      filter:'drop-shadow(0 12px 32px rgba(0,0,0,.45))'}}
+      viewBox="0 0 248 192">
+
+      {/* ── DEFS: gradiente tubo ── */}
+      <defs>
+        <linearGradient id="liceoPoleLG" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%"   stopColor="#3a5060"/>
+          <stop offset="28%"  stopColor="#b8ccd6"/>
+          <stop offset="52%"  stopColor="#9ab0bc"/>
+          <stop offset="100%" stopColor="#2a3c48"/>
+        </linearGradient>
+      </defs>
+
+      {/* ── BANDERA RD — hacia la izquierda, animación brisa ── */}
+      {/* extremo libre=izq (x=-52), enganche=der (x=6), alto y=16..52 */}
+      <g style={{opacity: flagUp ? 1 : 0, transition:'opacity 90s linear'}}>
+        <g style={{animation:'flag-breeze 3.5s ease-in-out infinite',
+                   transformBox:'fill-box', transformOrigin:'right center'}}>
+          <rect x="-52" y="16" width="58" height="36" fill="#002D62"/>
+          <rect x="-23" y="16" width="29" height="18" fill="#CE1126"/>
+          <rect x="-52" y="34" width="29" height="18" fill="#CE1126"/>
+          <rect x="-52" y="31" width="58" height="6"  fill="#fff"/>
+          <rect x="-26" y="16" width="6"  height="36" fill="#fff"/>
+        </g>
       </g>
-      {/* ── Edificio principal ── */}
-      {/* Cornisa / techo plano */}
-      <rect x="32" y="0" width="84" height="8" rx="1" fill="#1a3060"/>
-      {/* Pared principal */}
-      <rect x="32" y="8" width="84" height="102" fill="#dce8f5"/>
-      {/* Sombra lateral izquierda */}
-      <rect x="32" y="8" width="10" height="102" fill="rgba(0,0,0,.08)"/>
-      {/* Franja institucional horizontal */}
-      <rect x="32" y="8" width="84" height="12" fill="#1e4080"/>
-      {/* Texto LICEO EXPERIMENTAL */}
-      <text x="74" y="17.5" textAnchor="middle"
-        fontSize="5.5" fontFamily="var(--font-sans)" fontWeight="800"
-        fill="#fff" letterSpacing="0.6">LICEO EXPERIMENTAL</text>
-      {/* Fila superior de ventanas */}
-      {[39,57,75,93].map(function(x) {
-        return (
-          <g key={x}>
-            <rect x={x} y="26" width="12" height="16" rx="2" fill="#b8d8f0"/>
-            <line x1={x+6} y1="26" x2={x+6} y2="42" stroke="rgba(0,0,0,.15)" strokeWidth="1"/>
-            <line x1={x}   y1="34" x2={x+12} y2="34" stroke="rgba(0,0,0,.15)" strokeWidth="1"/>
-            {/* Marco de ventana */}
-            <rect x={x} y="26" width="12" height="16" rx="2" fill="none" stroke="#8ab0cc" strokeWidth="1"/>
-          </g>
-        );
-      })}
-      {/* Fila inferior de ventanas (saltamos la puerta central) */}
-      {[39,57,93].map(function(x) {
-        return (
-          <g key={x}>
-            <rect x={x} y="52" width="12" height="16" rx="2" fill="#b8d8f0"/>
-            <line x1={x+6} y1="52" x2={x+6} y2="68" stroke="rgba(0,0,0,.15)" strokeWidth="1"/>
-            <line x1={x}   y1="60" x2={x+12} y2="60" stroke="rgba(0,0,0,.15)" strokeWidth="1"/>
-            <rect x={x} y="52" width="12" height="16" rx="2" fill="none" stroke="#8ab0cc" strokeWidth="1"/>
-          </g>
-        );
-      })}
-      {/* Puerta principal */}
-      <rect x="69" y="74" width="18" height="36" rx="2" fill="#1a3060"/>
-      {/* Arco de la puerta */}
-      <path d="M69,76 Q78,66 87,76" fill="#162850"/>
-      {/* Pomo */}
-      <circle cx="85" cy="92" r="1.5" fill="#d4a020"/>
-      {/* Escalones */}
-      <rect x="65" y="108" width="26" height="3" rx="1" fill="#bac8d8"/>
-      <rect x="62" y="110" width="32" height="2" rx="1" fill="#aab8c8"/>
+
+      {/* ── ASTA (tubo metálico) — siempre visible ── */}
+      <rect x="14" y="16" width="5"   height="176" rx="2.5" fill="rgba(0,0,0,.22)"/>
+      <rect x="6"  y="12" width="9"   height="180" rx="4.5" fill="url(#liceoPoleLG)"/>
+      <rect x="8.5" y="12" width="2.5" height="180" rx="1.25" fill="rgba(255,255,255,.20)"/>
+      <rect x="2"  y="188" width="19" height="6"   rx="3"   fill="#7a9098"/>
+      <rect x="0"  y="193" width="23" height="4"   rx="2"   fill="#5a7080"/>
+      <circle cx="10.5" cy="14" r="7"   fill="#9a7010"/>
+      <circle cx="10.5" cy="12" r="6"   fill="#c8a030"/>
+      <circle cx="10"   cy="10" r="3.5" fill="#ecc840" opacity=".85"/>
+      {/* Cuerda */}
+      <line x1="6" y1="16" x2="6" y2="52" stroke="#d4aa40" strokeWidth="1.2" opacity=".55"/>
+
+      {/* ── FUNDACIÓN ── */}
+      <rect x="24" y="178" width="224" height="14" rx="1" fill="#c8c0b0"/>
+      <rect x="24" y="178" width="224" height="5"  rx="1" fill="#d8d0c0"/>
+
+      {/* ══ ALA IZQUIERDA ══ */}
+      <rect x="24"  y="54" width="72" height="124" fill="#c0572e"/>
+      <rect x="24"  y="54" width="9"  height="124" fill="rgba(0,0,0,.14)"/>
+      <rect x="92"  y="54" width="5"  height="124" fill="rgba(255,255,255,.08)"/>
+      <rect x="24"  y="48" width="72" height="8"   rx="1" fill="#f4ede0"/>
+      <rect x="24"  y="44" width="72" height="6"   rx="1" fill="#282a38"/>
+      {/* Ventanas superiores ala izq */}
+      {[33,57].map(function(x) { return (
+        <g key={'liu'+x}>
+          <rect x={x}   y="64" width="22" height="32" rx="2.5" fill="#f4ede0"/>
+          <path d={'M'+x+','+77+' Q'+(x+11)+','+63+' '+(x+22)+','+77} fill="#f4ede0"/>
+          <rect x={x+2} y="69" width="18" height="24" rx="1.5" fill="#90cce8"/>
+          <path d={'M'+(x+2)+','+69+' Q'+(x+11)+','+57+' '+(x+20)+','+69} fill="#90cce8"/>
+          <line x1={x+11} y1="69" x2={x+11} y2="93" stroke="#f4ede0" strokeWidth="1.8"/>
+          <rect x={x-1} y="96"  width="24" height="3.5" rx="1" fill="#d8d0c4"/>
+        </g>
+      ); })}
+      {/* Ventanas inferiores ala izq */}
+      {[33,57].map(function(x) { return (
+        <g key={'lil'+x}>
+          <rect x={x}   y="116" width="22" height="28" rx="2"   fill="#f4ede0"/>
+          <rect x={x+2} y="118" width="18" height="24" rx="1.5" fill="#90cce8"/>
+          <line x1={x+11} y1="118" x2={x+11} y2="142" stroke="#f4ede0" strokeWidth="1.8"/>
+          <line x1={x}    y1="130" x2={x+22} y2="130" stroke="#f4ede0" strokeWidth="1.8"/>
+          <rect x={x-1}  y="144" width="24" height="3.5" rx="1" fill="#d8d0c4"/>
+        </g>
+      ); })}
+
+      {/* ══ ALA DERECHA ══ ═*/}
+      <rect x="152" y="54" width="72" height="124" fill="#c0572e"/>
+      <rect x="215" y="54" width="9"  height="124" fill="rgba(0,0,0,.14)"/>
+      <rect x="148" y="54" width="5"  height="124" fill="rgba(255,255,255,.08)"/>
+      <rect x="152" y="48" width="72" height="8"   rx="1" fill="#f4ede0"/>
+      <rect x="152" y="44" width="72" height="6"   rx="1" fill="#282a38"/>
+      {/* Ventanas superiores ala der */}
+      {[159,183].map(function(x) { return (
+        <g key={'riu'+x}>
+          <rect x={x}   y="64" width="22" height="32" rx="2.5" fill="#f4ede0"/>
+          <path d={'M'+x+','+77+' Q'+(x+11)+','+63+' '+(x+22)+','+77} fill="#f4ede0"/>
+          <rect x={x+2} y="69" width="18" height="24" rx="1.5" fill="#90cce8"/>
+          <path d={'M'+(x+2)+','+69+' Q'+(x+11)+','+57+' '+(x+20)+','+69} fill="#90cce8"/>
+          <line x1={x+11} y1="69" x2={x+11} y2="93" stroke="#f4ede0" strokeWidth="1.8"/>
+          <rect x={x-1}  y="96" width="24" height="3.5" rx="1" fill="#d8d0c4"/>
+        </g>
+      ); })}
+      {/* Ventanas inferiores ala der */}
+      {[159,183].map(function(x) { return (
+        <g key={'ril'+x}>
+          <rect x={x}   y="116" width="22" height="28" rx="2"   fill="#f4ede0"/>
+          <rect x={x+2} y="118" width="18" height="24" rx="1.5" fill="#90cce8"/>
+          <line x1={x+11} y1="118" x2={x+11} y2="142" stroke="#f4ede0" strokeWidth="1.8"/>
+          <line x1={x}    y1="130" x2={x+22} y2="130" stroke="#f4ede0" strokeWidth="1.8"/>
+          <rect x={x-1}  y="144" width="24" height="3.5" rx="1" fill="#d8d0c4"/>
+        </g>
+      ); })}
+
+      {/* ══ BLOQUE CENTRAL ══ */}
+      <rect x="88" y="46" width="72" height="132" fill="#c0572e"/>
+      {/* Cornisa central */}
+      <rect x="84" y="42" width="80" height="8" rx="1" fill="#f4ede0"/>
+      {/* Franja náutica (entablatura) */}
+      <rect x="84" y="42" width="80" height="18" fill="#1a2e5a"/>
+      <text x="124" y="53.5" textAnchor="middle"
+        fontSize="6" fontFamily="'Cinzel', serif" fontWeight="900"
+        fill="#ffffff" stroke="#0d1a36" strokeWidth="1" paintOrder="stroke fill"
+        style={{filter:'drop-shadow(0 0 2px rgba(0,0,0,.9))'}}>LICEO EXPERIMENTAL</text>
+
+      {/* ══ PEDIMENTO ══ */}
+      <polygon points="84,42 164,42 124,8" fill="#f4ede0"/>
+      <polygon points="84,42 164,42 124,8" fill="none" stroke="#d8d0c4" strokeWidth="1.8"/>
+      <polygon points="88,40 160,40 124,14" fill="none" stroke="#c8c0b4" strokeWidth=".8" opacity=".5"/>
+      {/* Reloj en el tímpano */}
+      <circle cx="124" cy="28" r="9"   fill="#1a2e5a" stroke="#f4ede0" strokeWidth="2"/>
+      <circle cx="124" cy="28" r="6.5" fill="#f8f4ee"/>
+      {/* Manecilla horas */}
+      <line x1="124" y1="28" x2="124" y2="24"
+        stroke="#1a2e5a" strokeWidth="1.6" strokeLinecap="round"
+        transform={'rotate('+hourDeg+',124,28)'}/>
+      {/* Manecilla minutos */}
+      <line x1="124" y1="28" x2="124" y2="22.5"
+        stroke="#1a2e5a" strokeWidth="1.2" strokeLinecap="round"
+        transform={'rotate('+minuteDeg+',124,28)'}/>
+      {/* Manecilla segundos */}
+      <line x1="124" y1="30" x2="124" y2="21.5"
+        stroke="#e03020" strokeWidth=".8" strokeLinecap="round"
+        transform={'rotate('+secondDeg+',124,28)'}/>
+      {/* Centro */}
+      <circle cx="124" cy="28" r=".9"  fill="#1a2e5a"/>
+
+      {/* ══ COLUMNAS DÓRICAS (4) ══ */}
+      {[96,108,131,144].map(function(x) { return (
+        <g key={'col'+x}>
+          <rect x={x-4} y="56"  width="10" height="5"   rx="1" fill="#f4ede0"/>
+          <rect x={x-3} y="61"  width="8"  height="102" rx="4" fill="#f8f4ee"/>
+          <rect x={x-1} y="61"  width="3"  height="102" rx="2" fill="rgba(255,255,255,.45)"/>
+          <rect x={x-4} y="163" width="10" height="5"   rx="1" fill="#f4ede0"/>
+          <rect x={x-5} y="168" width="12" height="4"   rx="1" fill="#e4ddd4"/>
+        </g>
+      ); })}
+
+      {/* ══ VENTANAS CENTRALES (2 arqueadas, piso superior) ══ */}
+      {[93,136].map(function(x) { return (
+        <g key={'cw'+x}>
+          <rect x={x}   y="62" width="20" height="34" rx="2.5" fill="#f4ede0"/>
+          <path d={'M'+x+','+75+' Q'+(x+10)+','+61+' '+(x+20)+','+75} fill="#f4ede0"/>
+          <rect x={x+2} y="68" width="16" height="25" rx="1.5" fill="#90cce8"/>
+          <path d={'M'+(x+2)+','+68+' Q'+(x+10)+','+55+' '+(x+18)+','+68} fill="#90cce8"/>
+          <rect x={x-1} y="96" width="22" height="3.5" rx="1" fill="#d8d0c4"/>
+        </g>
+      ); })}
+
+      {/* ══ PUERTA PRINCIPAL ══ */}
+      <rect x="113" y="130" width="22" height="48" rx="2.5" fill="#1a2e5a"/>
+      <path d="M113,144 Q124,122 135,144" fill="#1a2e5a"/>
+      {/* Vidrio del arco */}
+      <path d="M115,144 Q124,126 133,144" fill="#90cce8" opacity=".7"/>
+      {/* Paneles */}
+      <rect x="115" y="147" width="8"  height="16" rx="1.5" fill="rgba(255,255,255,.1)"/>
+      <rect x="125" y="147" width="8"  height="16" rx="1.5" fill="rgba(255,255,255,.1)"/>
+      {/* Manijas */}
+      <circle cx="122" cy="162" r="2" fill="#c9a840"/>
+      <circle cx="126" cy="162" r="2" fill="#c9a840"/>
+      {/* Umbral */}
+      <rect x="112" y="178" width="24" height="3" rx="1" fill="#b0a898"/>
+      {/* Placa del letrero */}
+      <rect x="104" y="160" width="40" height="11" rx="2" fill="#1a2e5a"/>
+      <text x="124" y="168" textAnchor="middle"
+        fontSize="4.2" fontFamily="'Cinzel', serif" fontWeight="900"
+        fill="#ffffff" stroke="#0d1a36" strokeWidth="1" paintOrder="stroke fill"
+        style={{filter:'drop-shadow(0 0 2px rgba(0,0,0,.9))'}}>UASD · EST. 1538</text>
+
+      {/* ══ ESCALONES AMPLIA ══ */}
+      <rect x="104" y="172" width="40" height="4"  rx="1" fill="#d0c8b8"/>
+      <rect x="100" y="176" width="48" height="4"  rx="1" fill="#c8c0b0"/>
+      <rect x="96"  y="180" width="56" height="4"  rx="1" fill="#c0b8a8"/>
+      <rect x="92"  y="184" width="64" height="4"  rx="1" fill="#b8b0a0"/>
+      <rect x="88"  y="188" width="72" height="4"  rx="1" fill="#b0a898"/>
+
+      {/* ══ TEXTURA DE LADRILLO (líneas de mortero) ══ */}
+      {[68,84,100,116,132,148,164].map(function(y) { return (
+        <g key={'bx'+y}>
+          <line x1="24"  y1={y} x2="92"  y2={y} stroke="#a04020" strokeWidth=".6" opacity=".22"/>
+          <line x1="152" y1={y} x2="224" y2={y} stroke="#a04020" strokeWidth=".6" opacity=".22"/>
+          <line x1="88"  y1={y} x2="160" y2={y} stroke="#a04020" strokeWidth=".6" opacity=".16"/>
+        </g>
+      ); })}
     </svg>
   );
 }
 
-/* ── Bus escolar ── */
+/* ── Bus escolar Sims 4 style ── */
 function SchoolBus() {
   return (
-    <svg style={{position:'absolute',bottom:'113px',left:'3%',
-      width:'96px',height:'58px',overflow:'visible',
-      filter:'drop-shadow(0 4px 8px rgba(0,0,0,.3))'}}
-      viewBox="0 0 96 58">
-      {/* Cuerpo principal */}
-      <rect x="4" y="8" width="84" height="38" rx="4" fill="#f5c518"/>
-      {/* Frente redondeado */}
-      <rect x="4" y="8" width="12" height="38" rx="4" fill="#e8b210"/>
+    <svg style={{position:'absolute',bottom:'113px',left:'2%',
+      width:'104px',height:'62px',overflow:'visible',
+      filter:'drop-shadow(0 6px 14px rgba(0,0,0,.38))'}}
+      viewBox="0 0 104 62">
+      {/* Sombra del bus */}
+      <ellipse cx="52" cy="62" rx="46" ry="4" fill="rgba(0,0,0,.2)"/>
       {/* Techo */}
-      <rect x="4" y="4" width="84" height="8" rx="3" fill="#e0aa08"/>
-      {/* Techo barra de seguridad */}
-      <rect x="8" y="2" width="76" height="4" rx="2" fill="#c89808"/>
-      {/* Franjas negras */}
-      <rect x="4" y="26" width="84" height="3" fill="#1a1a1a" opacity=".18"/>
-      {/* Ventanas */}
-      {[20,36,52,68].map(function(x) {
+      <rect x="6" y="4"  width="90" height="10" rx="4" fill="#e8b208"/>
+      {/* Barra de emergencia en techo */}
+      <rect x="10" y="2" width="82" height="4"  rx="2" fill="#d4a206"/>
+      {/* Cuerpo principal */}
+      <rect x="6" y="10" width="90" height="38" rx="3" fill="#f5c518"/>
+      {/* Frente redondeado */}
+      <path d="M6,10 Q6,48 10,48 L6,48 Z" fill="#e0aa08"/>
+      <rect x="6" y="10" width="10" height="38" rx="3" fill="#e8b208"/>
+      {/* Tira negra lateral */}
+      <rect x="6" y="28" width="90" height="4" fill="#1a1820" opacity=".22"/>
+      {/* Ventanas con marco blanco */}
+      {[22,38,54,70].map(function(x) { return (
+        <g key={x}>
+          <rect x={x-1} y="12" width="16" height="13" rx="2.5" fill="#f8f8f8"/>
+          <rect x={x}   y="13" width="14" height="11" rx="2"   fill="#70c0e8"/>
+        </g>
+      ); })}
+      {/* Ventana conductor */}
+      <rect x="9"  y="12" width="9" height="11" rx="2" fill="#70c0e8"/>
+      {/* Franja UASD */}
+      <rect x="16" y="34" width="72" height="12" rx="0" fill="#1a2e5a"/>
+      <text x="52" y="43" textAnchor="middle"
+        fontSize="7" fontFamily="var(--font-sans)" fontWeight="900"
+        fill="#ffffff" stroke="#0d1a36" strokeWidth="1" paintOrder="stroke fill"
+        style={{filter:'drop-shadow(0 0 2px rgba(0,0,0,.9))'}}>UASD</text>
+      {/* Puerta lateral */}
+      <rect x="89" y="18" width="6" height="22" rx="1" fill="#d4a006"/>
+      <line x1="92" y1="18" x2="92" y2="40" stroke="#b88c04" strokeWidth="1.2"/>
+      <circle cx="90" cy="29" r="1.5" fill="#f8f4ee"/>
+      {/* Faro delantero */}
+      <rect x="6"  y="16" width="5" height="7"  rx="1.5" fill="#fff8c0"/>
+      <rect x="6"  y="34" width="5" height="5"  rx="1"   fill="#ff5044" opacity=".9"/>
+      {/* Parachoques */}
+      <rect x="4"  y="42" width="12" height="6" rx="2" fill="#c8c0b0"/>
+      <rect x="88" y="42" width="12" height="6" rx="2" fill="#c8c0b0"/>
+      {/* Ruedas */}
+      <circle cx="24" cy="50" r="10"  fill="#1a1820"/>
+      <circle cx="24" cy="50" r="7.5" fill="#282630"/>
+      <circle cx="24" cy="50" r="4"   fill="#3a3848"/>
+      <circle cx="24" cy="50" r="1.5" fill="#888"/>
+      <circle cx="78" cy="50" r="10"  fill="#1a1820"/>
+      <circle cx="78" cy="50" r="7.5" fill="#282630"/>
+      <circle cx="78" cy="50" r="4"   fill="#3a3848"/>
+      <circle cx="78" cy="50" r="1.5" fill="#888"/>
+      {/* Detalles ruedas */}
+      {[0,60,120,180,240,300].map(function(deg) {
+        var rad = deg * Math.PI / 180;
+        var r = 6;
         return (
-          <rect key={x} x={x} y="12" width="14" height="12" rx="2" fill="#78c8ea" opacity=".9"/>
+          <line key={deg}
+            x1={24 + r*0.4*Math.cos(rad)} y1={50 + r*0.4*Math.sin(rad)}
+            x2={24 + r*Math.cos(rad)}      y2={50 + r*Math.sin(rad)}
+            stroke="#555" strokeWidth="1.2"/>
         );
       })}
-      {/* Ventana del conductor */}
-      <rect x="8" y="12" width="8" height="10" rx="2" fill="#78c8ea" opacity=".85"/>
-      {/* Texto UASD */}
-      <text x="52" y="37" textAnchor="middle"
-        fontSize="6" fontFamily="var(--font-sans)" fontWeight="900"
-        fill="#1a3060" letterSpacing="1">UASD</text>
-      {/* Puerta */}
-      <rect x="82" y="18" width="5" height="20" rx="1" fill="#c89808"/>
-      <line x1="82" y1="28" x2="87" y2="28" stroke="#a07808" strokeWidth="1"/>
-      {/* Faros delanteros */}
-      <rect x="4" y="14" width="5" height="6" rx="1.5" fill="#ffe870"/>
-      <rect x="4" y="30" width="5" height="4" rx="1" fill="#ff4444" opacity=".8"/>
-      {/* Ruedas */}
-      <circle cx="22" cy="48" r="10" fill="#181818"/>
-      <circle cx="22" cy="48" r="7"  fill="#282828"/>
-      <circle cx="22" cy="48" r="3"  fill="#555"/>
-      <circle cx="72" cy="48" r="10" fill="#181818"/>
-      <circle cx="72" cy="48" r="7"  fill="#282828"/>
-      <circle cx="72" cy="48" r="3"  fill="#555"/>
-      {/* Llantas detalles */}
-      <line x1="22" y1="38" x2="22" y2="58" stroke="#3a3a3a" strokeWidth="1.5"/>
-      <line x1="12" y1="48" x2="32" y2="48" stroke="#3a3a3a" strokeWidth="1.5"/>
-      <line x1="72" y1="38" x2="72" y2="58" stroke="#3a3a3a" strokeWidth="1.5"/>
-      <line x1="62" y1="48" x2="82" y2="48" stroke="#3a3a3a" strokeWidth="1.5"/>
+      {[0,60,120,180,240,300].map(function(deg) {
+        var rad = deg * Math.PI / 180;
+        var r = 6;
+        return (
+          <line key={deg}
+            x1={78 + r*0.4*Math.cos(rad)} y1={50 + r*0.4*Math.sin(rad)}
+            x2={78 + r*Math.cos(rad)}      y2={50 + r*Math.sin(rad)}
+            stroke="#555" strokeWidth="1.2"/>
+        );
+      })}
     </svg>
   );
 }
 
-/* ── Árbol (reemplaza la palma) ── */
+/* ── Árbol Sims 4 style — roble americano ── */
 function SchoolTree({ style }) {
   return (
-    <svg style={style} viewBox="0 0 50 90">
+    <svg style={style} viewBox="0 0 60 100">
+      {/* Sombra en suelo */}
+      <ellipse cx="30" cy="97" rx="14" ry="4" fill="rgba(0,0,0,.18)"/>
       {/* Tronco */}
-      <rect x="21" y="60" width="8" height="30" rx="3" fill="#7a5530"/>
+      <rect x="25" y="68" width="10" height="32" rx="5" fill="#6b4726"/>
+      <rect x="27" y="68" width="4"  height="32" rx="3" fill="#7d5530"/>
+      {/* Copa base (sombra) */}
+      <ellipse cx="30" cy="46" rx="26" ry="32" fill="#1d6820"/>
       {/* Copa exterior */}
-      <ellipse cx="25" cy="40" rx="22" ry="28" fill="#2a7028"/>
+      <ellipse cx="30" cy="42" rx="25" ry="30" fill="#2a8228"/>
       {/* Copa media */}
-      <ellipse cx="25" cy="36" rx="18" ry="24" fill="#338530"/>
-      {/* Copa interior */}
-      <ellipse cx="25" cy="32" rx="13" ry="18" fill="#3d9838"/>
-      {/* Brillo */}
-      <ellipse cx="20" cy="24" rx="7" ry="8" fill="rgba(255,255,255,.08)"/>
+      <ellipse cx="30" cy="38" rx="21" ry="26" fill="#349e30"/>
+      {/* Lóbulos del roble */}
+      <circle cx="12" cy="42" r="12" fill="#2e9028"/>
+      <circle cx="48" cy="42" r="12" fill="#2e9028"/>
+      <circle cx="20" cy="22" r="13" fill="#34a830"/>
+      <circle cx="40" cy="22" r="13" fill="#34a830"/>
+      <circle cx="30" cy="16" r="14" fill="#3ab834"/>
+      {/* Copa interior clara */}
+      <ellipse cx="30" cy="32" rx="14" ry="18" fill="#3ec838"/>
+      {/* Brillo superior */}
+      <ellipse cx="24" cy="20" rx="8"  ry="10" fill="rgba(255,255,255,.12)"/>
     </svg>
+  );
+}
+
+/* ── Avión vinilado — bandera RD ── */
+function DomPlane() {
+  return (
+    <div style={{
+      position:'absolute', top:'4%',
+      pointerEvents:'none', zIndex:8,
+      animation:'planeFly 1800s linear infinite',
+      animationDelay:'10s', animationFillMode:'backwards',
+    }}>
+      <svg width="115" height="40" viewBox="0 0 115 40"
+        style={{overflow:'visible', filter:'drop-shadow(0 3px 10px rgba(0,0,0,.45))'}}>
+        <defs>
+          <clipPath id="dp-fuse-liceo">
+            <path d="M8,20 Q18,11 30,11 L88,11 Q103,11 107,20 Q103,29 88,29 L30,29 Q18,29 8,20Z"/>
+          </clipPath>
+        </defs>
+        {/* Estelas de condensación */}
+        <line x1="-55" y1="18" x2="8" y2="17" stroke="rgba(255,255,255,.55)" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="-50" y1="23" x2="8" y2="22" stroke="rgba(255,255,255,.35)" strokeWidth="1.5" strokeLinecap="round"/>
+        {/* Estabilizador vertical (cola) */}
+        <path d="M15,11 L24,1 L28,11Z" fill="#d8d8d8"/>
+        {/* Estabilizadores horizontales */}
+        <path d="M12,20 L26,14 L28,20Z" fill="#d8d8d8"/>
+        <path d="M12,20 L26,26 L28,20Z" fill="#d8d8d8"/>
+        {/* Ala principal */}
+        <path d="M38,27 L22,40 L72,40 L76,27Z" fill="#c4c4c4"/>
+        {/* Motor */}
+        <ellipse cx="42" cy="40" rx="13" ry="4.5" fill="#aaaaaa"/>
+        {/* Fuselaje — bandera dominicana en vinilo */}
+        <g clipPath="url(#dp-fuse-liceo)">
+          <rect x="0"  y="0"  width="58" height="20" fill="#002D62"/>
+          <rect x="58" y="20" width="115" height="40" fill="#002D62"/>
+          <rect x="58" y="0"  width="115" height="20" fill="#CF142B"/>
+          <rect x="0"  y="20" width="58"  height="40" fill="#CF142B"/>
+          <rect x="0"  y="18" width="115" height="4"  fill="white"/>
+          <rect x="55" y="0"  width="6"   height="40" fill="white"/>
+        </g>
+        {/* Contorno del fuselaje */}
+        <path d="M8,20 Q18,11 30,11 L88,11 Q103,11 107,20 Q103,29 88,29 L30,29 Q18,29 8,20Z"
+          fill="none" stroke="rgba(255,255,255,.3)" strokeWidth="1"/>
+        {/* Nickname — livery del ala */}
+        <text x="53" y="34" textAnchor="middle"
+          fontSize="6.5" fontFamily="var(--font-sans)" fontWeight="900"
+          fill="rgba(0,0,0,.92)"
+          stroke="rgba(255,255,255,.4)" strokeWidth="0.6" paintOrder="stroke fill"
+          letterSpacing="0.9"
+          transform="rotate(-8,53,34)">@_09pavo</text>
+        {/* Ventanillas */}
+        {[34,43,52,66,75,84,93].map(function(x) {
+          return <circle key={x} cx={x} cy={16} r="2" fill="rgba(190,228,255,.85)"/>;
+        })}
+        {/* Toque de luz en la nariz */}
+        <path d="M98,14 Q107,16 109,20" stroke="rgba(255,255,255,.3)" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+      </svg>
+    </div>
   );
 }
 
 /* ── Animated liceo scene ── */
 function LiceoScene({ workers, dayRecords, onToggle, presentCount, absentCount, totalCount, isES, viewDate }) {
-  const [clock, setClock] = React.useState(function() { return new Date(); });
+  const [clock,      setClock]      = React.useState(function() { return new Date(); });
   React.useEffect(function() {
-    var intervalId;
-    var now   = new Date();
-    var delay = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-    var timeoutId = setTimeout(function() {
-      setClock(new Date());
-      intervalId = setInterval(function() { setClock(new Date()); }, 60000);
-    }, delay);
-    return function() { clearTimeout(timeoutId); clearInterval(intervalId); };
+    var intervalId = setInterval(function() { setClock(new Date()); }, 1000);
+    return function() { clearInterval(intervalId); };
   }, []);
 
   const hours     = clock.getHours() + clock.getMinutes() / 60;
@@ -365,6 +763,8 @@ function LiceoScene({ workers, dayRecords, onToggle, presentCount, absentCount, 
 
   return (
     <div style={{position:'relative',width:'100%',
+      maxWidth:'960px',
+      marginLeft:'auto',marginRight:'auto',
       height:'340px',
       borderRadius:'var(--radius-lg)',
       overflow:'hidden',
@@ -452,93 +852,93 @@ function LiceoScene({ workers, dayRecords, onToggle, presentCount, absentCount, 
       {/* Colinas de fondo */}
       <svg style={{position:'absolute',bottom:'115px',left:0,width:'100%',height:'90px'}}
         viewBox="0 0 800 90" preserveAspectRatio="none">
-        <path d="M0,90 Q180,8 360,48 Q540,88 720,20 Q760,6 800,32 L800,90Z" fill="rgba(42,80,28,.55)"/>
-        <path d="M0,90 Q160,34 340,62 Q500,88 660,40 Q730,24 800,55 L800,90Z" fill="rgba(32,65,20,.78)"/>
+        <path d="M0,90 Q180,8 360,48 Q540,88 720,20 Q760,6 800,32 L800,90Z" fill="rgba(30,80,18,.5)"/>
+        <path d="M0,90 Q160,34 340,62 Q500,88 660,40 Q730,24 800,55 L800,90Z" fill="rgba(22,65,12,.72)"/>
       </svg>
 
-      {/* Árboles */}
-      <SchoolTree style={{position:'absolute',bottom:'113px',left:'4%',width:'54px',height:'96px',overflow:'visible'}}/>
-      <SchoolTree style={{position:'absolute',bottom:'113px',left:'19%',width:'42px',height:'76px',overflow:'visible',opacity:.85}}/>
-      <SchoolTree style={{position:'absolute',bottom:'113px',right:'22%',width:'40px',height:'72px',overflow:'visible',opacity:.9}}/>
+      {/* ── SUELO — césped americano + acera ── */}
+      <div style={{position:'absolute',bottom:0,left:0,right:0,height:'116px',
+        background:'linear-gradient(180deg,#3a9830 0%,#2e7c26 35%,#226018 65%,#1a4c12 100%)'}}/>
+
+      {/* Acera de concreto (franja baja) */}
+      <div style={{position:'absolute',bottom:0,left:0,right:0,height:'38px',
+        background:'linear-gradient(180deg,#c8c4b8 0%,#b8b4a8 60%,#a8a498 100%)'}}/>
+
+      {/* Camino central de entrada (path paved walkway) */}
+      <svg style={{position:'absolute',bottom:'38px',left:0,width:'100%',height:'78px',
+        overflow:'visible',pointerEvents:'none'}}
+        viewBox="0 0 800 78" preserveAspectRatio="none">
+        {/* Camino hacia la entrada del edificio */}
+        <path d="M340,78 L420,78 L460,0 L300,0 Z" fill="#c8c2b2" opacity=".7"/>
+        <path d="M350,78 L410,78 L450,0 L310,0 Z" fill="#d0ccc0" opacity=".5"/>
+        {/* Líneas de losas */}
+        {[14,28,42,56].map(function(y) { return (
+          <line key={y} x1="305" y1={y} x2="455" y2={y} stroke="rgba(0,0,0,.08)" strokeWidth="1.5"/>
+        ); })}
+      </svg>
+
+
+
+      {/* Árboles Sims 4 */}
+      <SchoolTree style={{position:'absolute',bottom:'113px',left:'2%',width:'58px',height:'104px',overflow:'visible'}}/>
+      <SchoolTree style={{position:'absolute',bottom:'113px',left:'17%',width:'46px',height:'82px',overflow:'visible',opacity:.9}}/>
+      <SchoolTree style={{position:'absolute',bottom:'113px',right:'28%',width:'44px',height:'78px',overflow:'visible',opacity:.9}}/>
+      <SchoolTree style={{position:'absolute',bottom:'113px',right:'25%',width:'34px',height:'60px',overflow:'visible',opacity:.7}}/>
 
       {/* Bus escolar */}
       <SchoolBus/>
 
+      {/* Avión vinilado */}
+      <DomPlane/>
+
       {/* Edificio del liceo */}
-      <LiceoBuilding/>
+      <LiceoBuilding flagUp={hours >= 7 && hours < 19} clock={clock}/>
 
-      {/* Patio — verja/cerca del liceo */}
-      <svg style={{position:'absolute',bottom:'65px',left:0,width:'100%',height:'42px',
-        overflow:'visible',pointerEvents:'none',zIndex:4}}
-        viewBox="0 0 800 42" preserveAspectRatio="none">
-        {/* Rieles */}
-        <line x1="0"   y1="10" x2="800" y2="10" stroke="#5a7090" strokeWidth="2.2" opacity=".7"/>
-        <line x1="0"   y1="20" x2="800" y2="20" stroke="#5a7090" strokeWidth="1.6" opacity=".55"/>
-        {/* Postes de verja */}
-        {Array.from({length:22}).map(function(_,i) {
-          var x = i*38+4;
-          return <rect key={i} x={x} y="3" width="5" height="34" rx="2" fill="#4a6080" opacity=".8"/>;
-        })}
-        {/* Portón central — abierto de día, cerrado de noche */}
-        {(isNight || totalCount === 0) ? (
-          <g>
-            <rect x="358" y="-4" width="84" height="50" fill="#3a5070" opacity=".9"/>
-            <line x1="358" y1="8"  x2="442" y2="8"  stroke="#2a4060" strokeWidth="2"/>
-            <line x1="358" y1="18" x2="442" y2="18" stroke="#2a4060" strokeWidth="2"/>
-            <line x1="358" y1="28" x2="442" y2="28" stroke="#2a4060" strokeWidth="2"/>
-            <line x1="358" y1="38" x2="442" y2="38" stroke="#2a4060" strokeWidth="2"/>
-            <circle cx="400" cy="22" r="4" fill="#d4a020"/>
-          </g>
-        ) : (
-          <g>
-            <line x1="310" y1="10" x2="358" y2="10" stroke="#5a7090" strokeWidth="2.2" opacity=".7"/>
-            <line x1="310" y1="20" x2="358" y2="20" stroke="#5a7090" strokeWidth="1.6" opacity=".55"/>
-            {Array.from({length:2}).map(function(_,i) {
-              return <rect key={i} x={310+i*24} y="3" width="5" height="34" rx="2" fill="#4a6080" opacity=".8"/>;
-            })}
-          </g>
-        )}
-      </svg>
-
-      {/* Suelo — patio de asfalto/cemento */}
-      <div style={{position:'absolute',bottom:0,left:0,right:0,height:'116px',
-        background:'linear-gradient(180deg,#8a9aaa 0%,#6a7a8a 40%,#5a6878 75%,#4a5868 100%)'}}/>
-
-      {/* Líneas del patio (canchas) */}
-      <svg style={{position:'absolute',bottom:0,left:0,width:'100%',height:'66px',
-        overflow:'visible',pointerEvents:'none',opacity:.15}}
-        viewBox="0 0 800 66" preserveAspectRatio="none">
-        <rect x="200" y="5" width="200" height="55" fill="none" stroke="#fff" strokeWidth="2"/>
-        <line x1="300" y1="5" x2="300" y2="60" stroke="#fff" strokeWidth="2"/>
-        <circle cx="300" cy="32" r="20" fill="none" stroke="#fff" strokeWidth="2"/>
-      </svg>
-
-      {/* Estudiantes — cada uno en su zona */}
-      {totalCount === 0 ? (
-        <div style={{position:'absolute',bottom:'42px',left:0,right:0,textAlign:'center',
-          fontFamily:'var(--font-sans)',fontSize:'12px',fontWeight:600,
-          color:'rgba(255,255,255,.45)',textShadow:'0 1px 3px rgba(0,0,0,.7)'}}>
-          {isES ? 'Sin estudiantes asignados' : 'No students assigned'}
-        </div>
-      ) : (
-        <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,pointerEvents:'none',zIndex:3}}>
-          {workers.map(function(emp, i) {
-            if (!dayRecords[emp.id]) return null;
-            var slot = LICEO_SLOTS[i % LICEO_SLOTS.length];
-            return (
-              <div key={emp.id} style={{position:'absolute',left:slot.left,bottom:'115px',
-                transform:'translateX(-50%)',display:'flex',flexDirection:'column',
-                alignItems:'center',pointerEvents:'auto'}}>
-                <div style={{
-                  animation:'fighter-in .35s cubic-bezier(0.17,0.67,0.35,1) both',
-                  animationDelay:(i*0.07)+'s'}}>
-                  <LiceoStudent emp={emp} onToggle={onToggle} slotIndex={i} totalCount={totalCount}/>
-                </div>
+      {/* Empleados — dos filas flex centradas en el espacio frente al edificio */}
+      {totalCount > 0 && (function() {
+        var front = [], back = [];
+        workers.forEach(function(emp, i) {
+          if (!dayRecords[emp.id]) return;
+          (i < 5 ? front : back).push({ emp: emp, i: i });
+        });
+        var rowStyle = function(bottom, z) {
+          return {
+            position:'absolute', left:'248px', right:0, bottom:bottom,
+            display:'flex', justifyContent:'space-evenly', alignItems:'flex-end',
+            pointerEvents:'none', zIndex:z
+          };
+        };
+        return (
+          <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,pointerEvents:'none',zIndex:3}}>
+            {front.length > 0 && (
+              <div style={rowStyle('58px', 6)}>
+                {front.map(function(e) {
+                  return (
+                    <div key={e.emp.id} style={{pointerEvents:'auto',
+                      animation:'fighter-in .35s cubic-bezier(0.17,0.67,0.35,1) both',
+                      animationDelay:(e.i*0.07)+'s'}}>
+                      <LiceoStudent emp={e.emp} onToggle={onToggle} slotIndex={e.i} totalCount={totalCount}/>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+            {back.length > 0 && (
+              <div style={rowStyle('92px', 4)}>
+                {back.map(function(e) {
+                  return (
+                    <div key={e.emp.id} style={{pointerEvents:'auto',
+                      animation:'fighter-in .35s cubic-bezier(0.17,0.67,0.35,1) both',
+                      animationDelay:(e.i*0.07)+'s'}}>
+                      <LiceoStudent emp={e.emp} onToggle={onToggle} slotIndex={e.i} totalCount={totalCount}/>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -546,6 +946,7 @@ function LiceoScene({ workers, dayRecords, onToggle, presentCount, absentCount, 
 /* ── Liceo date navigator ── */
 function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, rosterOpen }) {
   const [open,     setOpen]     = React.useState(false);
+  const [picked,   setPicked]   = React.useState(false);
   const [calReady, setCalReady] = React.useState(false);
   const [calPos,   setCalPos]   = React.useState({ top: 0, centerX: 0 });
   const navRef  = React.useRef(null);
@@ -631,6 +1032,7 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
   var pick = function(d) {
     var iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     setViewDate(iso);
+    setPicked(true);
     setOpen(false);
   };
 
@@ -647,7 +1049,7 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
       <div ref={trigRef}>
         <button type="button" tabIndex={-1}
           onMouseDown={function(e){ e.preventDefault(); }}
-          onClick={function(){ setOpen(function(o){ return !o; }); }}
+          onClick={function(){ setOpen(function(o){ if (!o) setPicked(false); return !o; }); }}
           className="farm-date-pill"
           style={{display:'flex',alignItems:'center',gap:'7px',
             background: open ? 'var(--ink-100)' : 'transparent',
@@ -701,7 +1103,7 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
                 return (
                   <button tabIndex={-1} type="button" key={d}
                     disabled={isFuture}
-                    className={'dp-cal__day'+(isSel?' dp-cal__day--sel':'')+(isNow&&!isSel?' dp-cal__day--today':'')+(isFuture?' dp-cal__day--disabled':'')}
+                    className={'dp-cal__day'+(isSel?' dp-cal__day--sel':'')+(isNow&&!picked?' dp-cal__day--today':'')+(isFuture?' dp-cal__day--disabled':'')}
                     onClick={function(){ pick(d); }}
                     style={isFuture?{opacity:.28,cursor:'not-allowed'}:isSel?{}:hasRec?{
                       background:'#d4edda',color:'#1a5c1a',fontWeight:700,
@@ -997,7 +1399,7 @@ function LiceoView({ t, lang, setRoute }) {
             width:'100%',paddingBottom:'14px'}}>
             {/* Fila 1: etiqueta */}
             <span className="activity-map__label" style={{margin:0}}>
-              {isES ? 'Personal asignado' : 'Assigned staff'}
+              {isES ? 'Personal' : 'Staff'}
               <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',textTransform:'none',letterSpacing:0}}>
                 ({totalCount})
               </span>
@@ -1025,8 +1427,16 @@ function LiceoView({ t, lang, setRoute }) {
               )}
             </div>
 
-            {searchQ && (
-              <div style={{width:'100%'}}>
+            <div style={{
+              maxHeight: searchQ ? '300px' : '0',
+              overflow: 'hidden',
+              transition: 'max-height .42s cubic-bezier(0.22,1,0.36,1)'}}>
+              <div style={{
+                opacity: searchQ ? 1 : 0,
+                transform: searchQ ? 'translateY(0)' : 'translateY(-10px)',
+                transition: 'opacity .32s ease, transform .4s cubic-bezier(0.22,1,0.36,1)',
+                paddingTop:'4px',
+                width:'100%',display:'flex',flexDirection:'column',gap:'6px'}}>
                 <div className="toolbar__search" style={{width:'100%'}}>
                   <span className="toolbar__search-icon"><Icon name="search" size={15}/></span>
                   <input value={searchVal} onChange={function(e){ setSearchVal(e.target.value); }}
@@ -1037,37 +1447,34 @@ function LiceoView({ t, lang, setRoute }) {
                       <Icon name="x" size={13} stroke={2.4}/>
                     </button>
                   )}
-                  {searchVal && (
-                    <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,right:0,background:'var(--paper)',
-                      border:'1px solid var(--ink-100)',borderRadius:'10px',zIndex:10,
-                      maxHeight:'200px',overflowY:'auto',boxShadow:'var(--shadow-md)'}}>
-                      {filteredAvailable.length === 0 ? (
-                        <div style={{padding:'12px',fontSize:'13px',color:'var(--ink-300)',textAlign:'center'}}>
-                          {isES ? 'Sin resultados' : 'No results'}
-                        </div>
-                      ) : filteredAvailable.map(function(e) {
-                        return (
-                          <button key={e.id} onClick={function(){ addToLiceo(e.id); }}
-                            style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',
-                              fontSize:'13px',border:'none',background:'transparent',outline:'none',
-                              cursor:'pointer',transition:'background .1s'}}
-                            onMouseEnter={function(ev){ ev.currentTarget.style.background='var(--cream-50)'; }}
-                            onMouseLeave={function(ev){ ev.currentTarget.style.background='transparent'; }}>
-                            <div style={{fontWeight:600}}>{e.name}</div>
-                            <div style={{fontSize:'11px',color:'var(--ink-300)'}}><span className="mono">{e.id}</span> · {e.dept}</div>
-                          </button>
-                        );
-                      })}
+                </div>
+                <div style={{background:'var(--paper)',border:'1px solid var(--ink-100)',
+                  borderRadius:'10px',maxHeight:'200px',overflowY:'auto',boxShadow:'var(--shadow-md)'}}>
+                  {filteredAvailable.length === 0 ? (
+                    <div style={{padding:'12px',fontSize:'13px',color:'var(--ink-300)',textAlign:'center'}}>
+                      {isES ? 'Sin resultados' : 'No results'}
                     </div>
-                  )}
+                  ) : filteredAvailable.map(function(e) {
+                    return (
+                      <button key={e.id} onClick={function(){ addToLiceo(e.id); }}
+                        style={{display:'block',width:'100%',textAlign:'left',padding:'10px 14px',
+                          fontSize:'13px',border:'none',background:'transparent',outline:'none',
+                          cursor:'pointer',transition:'background .1s'}}
+                        onMouseEnter={function(ev){ ev.currentTarget.style.background='var(--cream-50)'; }}
+                        onMouseLeave={function(ev){ ev.currentTarget.style.background='transparent'; }}>
+                        <div style={{fontWeight:600}}>{e.name}</div>
+                        <div style={{fontSize:'11px',color:'var(--ink-300)'}}><span className="mono">{e.id}</span> · {e.dept}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {totalCount === 0 ? (
-            <div className="audit-empty">
-              <Icon name="users" size={24} stroke={1.2}/>
+          {totalCount === 0 && (
+            <div className="audit-empty" style={{animation:'body-in .2s ease both'}}>
+              <Icon name="idCard" size={24} stroke={1.2}/>
               <div className="audit-empty__title">{isES ? 'Sin personal asignado' : 'No staff assigned'}</div>
               <div className="audit-empty__sub">
                 {canManage
@@ -1075,25 +1482,16 @@ function LiceoView({ t, lang, setRoute }) {
                   : (isES ? 'Contacta a un administrador para ser asignado.' : 'Contact an administrator to be assigned.')}
               </div>
             </div>
-          ) : (
+          )}
+
+          {totalCount > 0 && (
             <div style={{display:'flex',flexDirection:'column'}}>
               {liceoEmployeeObjects.map(function(emp, idx) {
-                var present  = !!draft[emp.id];
-                var offScene = idx >= MAX_LICEO_SCENE;
+                var present    = !!draft[emp.id];
+                var offScene   = idx >= MAX_LICEO_SCENE;
                 return (
-                  <div key={emp.id}>
-                  {offScene && idx === MAX_LICEO_SCENE && (
-                    <div style={{display:'flex',alignItems:'center',gap:'8px',
-                      padding:'10px 0 6px',opacity:.6}}>
-                      <div style={{flex:1,height:'1px',background:'var(--ink-200)'}}/>
-                      <span style={{fontSize:'10px',fontWeight:600,fontFamily:'var(--font-sans)',
-                        color:'var(--ink-400)',textTransform:'uppercase',letterSpacing:'.06em',
-                        whiteSpace:'nowrap'}}>
-                        {isES ? 'Solo en lista · no aparece en escena' : 'List only · not shown in scene'}
-                      </span>
-                      <div style={{flex:1,height:'1px',background:'var(--ink-200)'}}/>
-                    </div>
-                  )}
+                  <div key={emp.id} style={{animation:'roster-in .32s cubic-bezier(0.22,1,0.36,1) both',
+                    animationDelay: (idx * 0.04) + 's'}}>
                   <div className="audit-entry role-assignee-row"
                     style={{alignItems:'center',padding:'14px 0',
                       borderTop: idx === 0 || idx === MAX_LICEO_SCENE ? 'none' : '1px solid var(--ink-100)',

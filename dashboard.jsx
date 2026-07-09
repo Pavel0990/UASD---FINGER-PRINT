@@ -10,7 +10,9 @@ function fmtTimeParts(t) { return `${t.h}:${String(t.min).padStart(2,'0')} ${t.a
 
 /* ── ComboBoxField ───────────────────────────────────────────── */
 // requireSelection=true: only select/Agregar commit the value; typing alone does not
-function ComboBoxField({ value, onChange, options, maxLength, placeholder, requireSelection }) {
+// removableOptions: Set of option strings that show an X button
+// onRemoveOption(label): called when user clicks X on a removable option
+function ComboBoxField({ value, onChange, options, maxLength, placeholder, requireSelection, removableOptions, onRemoveOption }) {
   const [open, setOpen] = React.useState(false);
   const [q, setQ]       = React.useState(value || '');
   const wrapRef = React.useRef(null);
@@ -60,10 +62,21 @@ function ComboBoxField({ value, onChange, options, maxLength, placeholder, requi
         placeholder={placeholder || 'Seleccionar o agregar…'} />
       {showMenu && (
         <div className="cbx-menu" ref={menuRef} style={menuStyle}>
-          {filtered.map(o => (
-            <button key={o} type="button" className={`cbx-item${o===q?' cbx-item--sel':''}`}
-              onMouseDown={() => select(o)}>{o}</button>
-          ))}
+          {filtered.map(o => {
+            const isRemovable = removableOptions && removableOptions.has(o);
+            return (
+              <div key={o} className={'cbx-opt' + (isRemovable ? ' cbx-opt--removable' : '')}>
+                <button type="button" className={`cbx-item${o===q?' cbx-item--sel':''}`}
+                  onMouseDown={() => select(o)}>{o}</button>
+                {isRemovable && (
+                  <button type="button" className="cbx-opt__del"
+                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); if (onRemoveOption) onRemoveOption(o); }}>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+                  </button>
+                )}
+              </div>
+            );
+          })}
           {showAdd && (
             <button type="button" className="cbx-item cbx-item--add"
               onMouseDown={() => select(trimmed)}>
@@ -1308,23 +1321,65 @@ function toStorageDate(v) {
 }
 
 const EVENT_TYPE = {
-  eventualidad: { label_es: 'Trabajo extra',      label_en: 'Extra work',        cls: 'badge--ok' },
-  dia_libre:    { label_es: 'Día compensatorio',  label_en: 'Compensatory day',  cls: 'badge--warn' },
+  eventualidad: { label_es: 'Trabajo extra',      label_en: 'Extra work',        cls: 'badge--ok'      },
+  dia_libre:    { label_es: 'Día compensatorio',  label_en: 'Compensatory day',  cls: 'badge--warn'    },
+  permiso:      { label_es: 'Permiso',            label_en: 'Leave permit',      cls: 'badge--neutral' },
 };
 
 function EventualidadSection({ empId, lang }) {
-  const [map, setMap]     = React.useState(getEventualidades);
-  const [open, setOpen]   = React.useState(false);
-  const [date, setDate]   = React.useState('');
-  const [type, setType]   = React.useState('eventualidad');
-  const [motivo, setMotivo] = React.useState('');
-  const [err, setErr]     = React.useState({});
+  const [map, setMap]         = React.useState(getEventualidades);
+  const [customLabels, setCustomLabels] = React.useState(function() {
+    try { return JSON.parse(localStorage.getItem('uasd_event_type_labels') || '[]'); } catch(e) { return []; }
+  });
+  const [open, setOpen]       = React.useState(false);
+  const [date, setDate]       = React.useState('');
+  const [type, setType]       = React.useState('eventualidad');
+  const [motivo, setMotivo]   = React.useState('');
+  const [err, setErr]         = React.useState({});
   const [deletingEvId, setDeletingEvId] = React.useState(null);
-  const [hoveredEvId,  setHoveredEvId ] = React.useState(null);
+
 
   const items = (map[empId] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
 
   const usedEvDates = React.useMemo(() => new Set(items.map(x => x.date)), [items]);
+
+  const tLabel = (typeKey) => {
+    if (EVENT_TYPE[typeKey]) return lang === 'es' ? EVENT_TYPE[typeKey].label_es : EVENT_TYPE[typeKey].label_en;
+    return typeKey;
+  };
+
+  const typeOptions = React.useMemo(function() {
+    var builtin = Object.keys(EVENT_TYPE).map(function(k) {
+      return lang === 'es' ? EVENT_TYPE[k].label_es : EVENT_TYPE[k].label_en;
+    });
+    return builtin.concat(customLabels);
+  }, [customLabels, lang]);
+
+  const handleTypeChange = function(label) {
+    var trimmed = label.trim();
+    if (!trimmed) return;
+    var builtinKey = Object.keys(EVENT_TYPE).find(function(k) {
+      return (lang === 'es' ? EVENT_TYPE[k].label_es : EVENT_TYPE[k].label_en).toLowerCase() === trimmed.toLowerCase();
+    });
+    if (builtinKey) { setType(builtinKey); return; }
+    setType(trimmed);
+    if (!customLabels.some(function(l) { return l.toLowerCase() === trimmed.toLowerCase(); })) {
+      var updated = customLabels.concat([trimmed]);
+      localStorage.setItem('uasd_event_type_labels', JSON.stringify(updated));
+      setCustomLabels(updated);
+    }
+  };
+
+  const handleRemoveType = function(label) {
+    var updated = customLabels.filter(function(l) { return l !== label; });
+    localStorage.setItem('uasd_event_type_labels', JSON.stringify(updated));
+    setCustomLabels(updated);
+    if (type === label) setType('eventualidad');
+  };
+
+  const removableTypeOptions = React.useMemo(function() {
+    return new Set(customLabels);
+  }, [customLabels]);
 
   const reset = () => { setDate(''); setType('eventualidad'); setMotivo(''); setErr({}); };
 
@@ -1345,8 +1400,6 @@ function EventualidadSection({ empId, lang }) {
     const next = { ...map, [empId]: (map[empId] || []).filter(x => x.id !== id) };
     setMap(next); saveEventualidades(next);
   };
-
-  const tLabel = (typeKey) => lang === 'es' ? EVENT_TYPE[typeKey].label_es : EVENT_TYPE[typeKey].label_en;
 
   return (
     <div>
@@ -1374,22 +1427,16 @@ function EventualidadSection({ empId, lang }) {
             </div>
             <div className="field">
               <span className="field__label">{lang === 'es' ? 'Tipo' : 'Type'} <span className="field__req">*</span></span>
-              <div style={{ display:'flex', gap:8 }}>
-                {['eventualidad','dia_libre'].map(k => (
-                  <button key={k} type="button" onClick={() => setType(k)}
-                    style={{
-                      flex:1, padding:'9px 12px', textAlign:'center', cursor:'pointer',
-                      fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600,
-                      border: `1.5px solid ${type === k ? 'var(--ink-700)' : 'var(--ink-100)'}`,
-                      borderRadius:8,
-                      background: type === k ? 'var(--ink-700)' : '#fff',
-                      color: type === k ? '#fff' : 'var(--ink-500)',
-                      transition:'all .12s',
-                    }}>
-                    {tLabel(k)}
-                  </button>
-                ))}
-              </div>
+              <ComboBoxField
+                value={tLabel(type)}
+                options={typeOptions}
+                maxLength={50}
+                placeholder={lang === 'es' ? 'Seleccionar o agregar tipo…' : 'Select or add type…'}
+                onChange={handleTypeChange}
+                requireSelection
+                removableOptions={removableTypeOptions}
+                onRemoveOption={handleRemoveType}
+              />
             </div>
           </div>
           <div className={`field${err.motivo ? ' field--error' : ''}`}>
@@ -1397,8 +1444,12 @@ function EventualidadSection({ empId, lang }) {
             <input className="field__input" value={motivo}
               onChange={e => { setMotivo(e.target.value); setErr(p => ({...p, motivo: false})); }}
               placeholder={type === 'eventualidad'
-                ? (lang === 'es' ? 'Ej. Proyecto especial, sustitución…' : 'e.g. Special project, substitution…')
-                : (lang === 'es' ? 'Ej. Permiso personal, cita médica…' : 'e.g. Personal leave, medical appointment…')
+                ? (lang === 'es' ? 'Ej. Proyecto especial, sustitución…'   : 'e.g. Special project, substitution…')
+                : type === 'dia_libre'
+                ? (lang === 'es' ? 'Ej. Permiso personal, cita médica…'    : 'e.g. Personal leave, medical appointment…')
+                : type === 'permiso'
+                ? (lang === 'es' ? 'Ej. Cita médica, diligencia personal…' : 'e.g. Medical appointment, personal errand…')
+                : (lang === 'es' ? 'Descripción…' : 'Description…')
               } />
           </div>
           <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
@@ -1433,8 +1484,8 @@ function EventualidadSection({ empId, lang }) {
                   {g.items.map(ev => (
                     <div key={ev.id}>
                       <div
-                        onMouseEnter={e => { setHoveredEvId(ev.id); e.currentTarget.style.background='var(--cream-100)'; }}
-                        onMouseLeave={e => { setHoveredEvId(null); e.currentTarget.style.background='transparent'; }}
+                        onMouseEnter={e => { e.currentTarget.style.background='var(--cream-100)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background='transparent'; }}
                         style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 10px', borderRadius:8, background:'transparent', transition:'background .12s' }}>
                         <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0 }}>
                           {toDisplayDate(ev.date)}
@@ -1442,13 +1493,13 @@ function EventualidadSection({ empId, lang }) {
                         <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-300)', flexShrink:0 }}>
                           {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(ev.date).getDay()]}
                         </span>
-                        <span className={`badge ${EVENT_TYPE[ev.type]?.cls || 'badge--neutral'}`} style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>
+                        <span className={`badge ${EVENT_TYPE[ev.type] ? EVENT_TYPE[ev.type].cls : 'badge--neutral'}`} style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>
                           {tLabel(ev.type)}
                         </span>
                         <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                           {ev.motivo}
                         </span>
-                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: hoveredEvId === ev.id || deletingEvId === ev.id ? 1 : 0, transition:'opacity .15s' }}>
+                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: deletingEvId === ev.id ? 1 : 0, transition:'opacity .15s' }}>
                           <button onClick={() => setDeletingEvId(deletingEvId === ev.id ? null : ev.id)}
                             style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
