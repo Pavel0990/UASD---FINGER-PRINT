@@ -15,8 +15,10 @@ function fmtTimeParts(t) { return `${t.h}:${String(t.min).padStart(2,'0')} ${t.a
 function ComboBoxField({ value, onChange, options, maxLength, placeholder, requireSelection, removableOptions, onRemoveOption }) {
   const [open, setOpen] = React.useState(false);
   const [q, setQ]       = React.useState(value || '');
-  const wrapRef = React.useRef(null);
-  const menuRef = React.useRef(null);
+  const [pos, setPos]   = React.useState({ top: 0, left: 0, width: 0 });
+  const wrapRef  = React.useRef(null);
+  const menuRef  = React.useRef(null);
+  const inputRef = React.useRef(null);
 
   React.useEffect(() => { setQ(value || ''); }, [value]);
 
@@ -34,6 +36,12 @@ function ComboBoxField({ value, onChange, options, maxLength, placeholder, requi
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
+  const calcPos = () => {
+    if (!inputRef.current) return;
+    const r = inputRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+  };
+
   const select = (o) => { onChange(o); setQ(o); setOpen(false); };
 
   const handleChange = (e) => {
@@ -48,44 +56,48 @@ function ComboBoxField({ value, onChange, options, maxLength, placeholder, requi
     setTimeout(() => { setQ(value || ''); setOpen(false); }, 180);
   };
 
-  const menuStyle = { position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:1000 };
+  const handleFocus = () => { calcPos(); setOpen(true); };
 
   const trimmed = q.trim();
   const exactMatch = options.some(o => o.toLowerCase() === trimmed.toLowerCase());
   const showAdd = trimmed.length > 0 && !exactMatch;
   const showMenu = open && (filtered.length > 0 || showAdd);
 
+  const menuStyle = { position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 };
+
+  const menu = showMenu ? (
+    <div className="cbx-menu" ref={menuRef} style={menuStyle}>
+      {filtered.map(o => {
+        const isRemovable = removableOptions && removableOptions.has(o);
+        return (
+          <div key={o} className={'cbx-opt' + (isRemovable ? ' cbx-opt--removable' : '')}>
+            <button type="button" className={`cbx-item${o===q?' cbx-item--sel':''}`}
+              onMouseDown={() => select(o)}>{o}</button>
+            {isRemovable && (
+              <button type="button" className="cbx-opt__del"
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); if (onRemoveOption) onRemoveOption(o); }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {showAdd && (
+        <button type="button" className="cbx-item cbx-item--add"
+          onMouseDown={() => select(trimmed)}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Agregar "{trimmed}"
+        </button>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="cbx-wrap" ref={wrapRef} style={{position:'relative'}}>
-      <input className="field__input" value={q} maxLength={maxLength}
-        onChange={handleChange} onFocus={() => setOpen(true)} onBlur={handleBlur}
+      <input ref={inputRef} className="field__input" value={q} maxLength={maxLength}
+        onChange={handleChange} onFocus={handleFocus} onBlur={handleBlur}
         placeholder={placeholder || 'Seleccionar o agregar…'} />
-      {showMenu && (
-        <div className="cbx-menu" ref={menuRef} style={menuStyle}>
-          {filtered.map(o => {
-            const isRemovable = removableOptions && removableOptions.has(o);
-            return (
-              <div key={o} className={'cbx-opt' + (isRemovable ? ' cbx-opt--removable' : '')}>
-                <button type="button" className={`cbx-item${o===q?' cbx-item--sel':''}`}
-                  onMouseDown={() => select(o)}>{o}</button>
-                {isRemovable && (
-                  <button type="button" className="cbx-opt__del"
-                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); if (onRemoveOption) onRemoveOption(o); }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          {showAdd && (
-            <button type="button" className="cbx-item cbx-item--add"
-              onMouseDown={() => select(trimmed)}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Agregar "{trimmed}"
-            </button>
-          )}
-        </div>
-      )}
+      {showMenu && ReactDOM.createPortal(menu, document.body)}
     </div>
   );
 }
@@ -228,7 +240,7 @@ function EmailField({ value, onChange }) {
 }
 
 /* ── DatePickerField ─────────────────────────────────────────── */
-function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDates = null }) {
+function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDates = null, minDate = null }) {
   const [open,     setOpen    ] = React.useState(false);
   const [manual,   setManual  ] = React.useState(value || '');
   const [ageError, setAgeError] = React.useState(false);
@@ -267,11 +279,27 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
-  const maxAllowed = minAge > 0 ? new Date(now.getFullYear() - minAge, now.getMonth(), now.getDate()) : null;
-  const minAllowed = maxAge > 0 ? new Date(now.getFullYear() - maxAge, now.getMonth(), now.getDate()) : null;
-  const defaultYear = minAge > 0 ? now.getFullYear() - (minAge + 7) : now.getFullYear();
-  const [month, setMonth] = React.useState(() => sel ? sel.getMonth() : now.getMonth());
-  const [year,  setYear ] = React.useState(() => sel ? sel.getFullYear() : defaultYear);
+  const maxAllowed    = minAge > 0 ? new Date(now.getFullYear() - minAge, now.getMonth(), now.getDate()) : null;
+  const minAllowed    = maxAge > 0 ? new Date(now.getFullYear() - maxAge, now.getMonth(), now.getDate()) : null;
+  const minDateObj    = minDate ? new Date(minDate + 'T00:00:00') : null;
+  const defaultYear   = minAge > 0 ? now.getFullYear() - (minAge + 7) : now.getFullYear();
+  const [month, setMonth] = React.useState(() => {
+    if (sel) return sel.getMonth();
+    if (minDateObj) return minDateObj.getMonth();
+    return now.getMonth();
+  });
+  const [year,  setYear ] = React.useState(() => {
+    if (sel) return sel.getFullYear();
+    if (minDateObj) return minDateObj.getFullYear();
+    return defaultYear;
+  });
+  React.useEffect(() => {
+    if (minDate && !value) {
+      const md = new Date(minDate + 'T00:00:00');
+      setMonth(md.getMonth());
+      setYear(md.getFullYear());
+    }
+  }, [minDate]);
 
   React.useEffect(() => {
     if (document.activeElement !== manualRef.current) setManual(value || '');
@@ -383,7 +411,7 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
               const isSel = sel && sel.getDate()===d && sel.getMonth()===month && sel.getFullYear()===year;
               const isNow = now.getDate()===d && now.getMonth()===month && now.getFullYear()===year;
               const dayDate = new Date(year, month, d);
-              const isDisabled = (maxAllowed && dayDate > maxAllowed) || (minAllowed && dayDate < minAllowed);
+              const isDisabled = (maxAllowed && dayDate > maxAllowed) || (minAllowed && dayDate < minAllowed) || (minDateObj && dayDate < minDateObj);
               const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
               const isUsed = disabledDates && disabledDates.has(dateStr);
               return (
@@ -1299,6 +1327,227 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onUnjusti
 }
 
 
+/* ── DateRangePickerField ────────────────────────────────────── */
+function DateRangePickerField({ start, end, onChange, disabledDates }) {
+  const [open,     setOpen  ] = React.useState(false);
+  const [hover,    setHover ] = React.useState(null);
+  const [manual,   setManual] = React.useState('');
+  const [calPos,   setCalPos] = React.useState({ top: 0, left: 0, minWidth: 0 });
+  const [now, setNow] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const [month, setMonth] = React.useState(now.getMonth());
+  const [year,  setYear ] = React.useState(now.getFullYear());
+  const trigRef    = React.useRef(null);
+  const calRef     = React.useRef(null);
+  const manualRef  = React.useRef(null);
+
+  const startStr = toStorageDate(start) || '';
+  const endStr   = toStorageDate(end)   || '';
+  const awaiting = startStr && !endStr;
+
+  React.useEffect(() => {
+    if (document.activeElement !== manualRef.current) {
+      if (start && end && start !== end) setManual(start + ' — ' + end);
+      else if (start) setManual(start);
+      else setManual('');
+    }
+  }, [start, end]);
+
+  React.useEffect(() => {
+    if (!open || !trigRef.current) return;
+    const update = () => {
+      const r = trigRef.current.getBoundingClientRect();
+      const calH = calRef.current ? calRef.current.offsetHeight : 300;
+      const spaceBelow = window.innerHeight - r.bottom;
+      const top = spaceBelow >= calH + 8 ? r.bottom + 6 : r.top - calH - 6;
+      setCalPos({ top, left: r.left, minWidth: r.width });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e) => {
+      if (!trigRef.current?.contains(e.target) && !calRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown',' '].includes(e.key)
+          && e.target.tagName !== 'INPUT')
+        e.preventDefault();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const prevMo   = () => month === 0  ? (setMonth(11), setYear(y => y-1)) : setMonth(m => m-1);
+  const nextMo   = () => month === 11 ? (setMonth(0),  setYear(y => y+1)) : setMonth(m => m+1);
+  const prevYear = () => setYear(y => y - 1);
+  const nextYear = () => setYear(y => y + 1);
+
+  const toggle = () => setOpen(o => !o);
+
+  const pick = (dateStr) => {
+    if (disabledDates && disabledDates.has(dateStr)) return;
+    const dv = toDisplayDate(dateStr);
+    if (!startStr || (startStr && endStr)) {
+      onChange({ start: dv, end: '' });
+    } else {
+      if (dateStr < startStr) {
+        onChange({ start: dv, end: '' });
+      } else if (dateStr === startStr) {
+        onChange({ start: dv, end: dv });
+        setOpen(false); setHover(null);
+      } else {
+        onChange({ start, end: dv });
+        setOpen(false); setHover(null);
+      }
+    }
+  };
+
+  const parseVal = (v) => {
+    if (!v) return null;
+    const [d, m, y] = v.split('/');
+    return (!d || !m || !y || isNaN(+y) || +y < 1900) ? null : new Date(+y, +m - 1, +d);
+  };
+
+  const handleManual = (e) => {
+    const raw = e.target.value;
+    setManual(raw);
+
+    if (raw.includes('—') || raw.includes('-')) {
+      const sep = raw.includes('—') ? '—' : '-';
+      const parts = raw.split(sep).map(s => s.trim());
+      if (parts.length >= 2) {
+        const d1 = parseVal(parts[0]);
+        const d2 = parseVal(parts[1]);
+        if (d1 && d2) {
+          onChange({ start: parts[0], end: parts[1] });
+          setMonth(d2.getMonth());
+          setYear(d2.getFullYear());
+          return;
+        }
+      }
+    }
+
+    const digits = raw.replace(/\D/g, '').slice(0, 8);
+    let v = '';
+    if (digits.length > 4) v = digits.slice(0,2) + '/' + digits.slice(2,4) + '/' + digits.slice(4);
+    else if (digits.length > 2) v = digits.slice(0,2) + '/' + digits.slice(2);
+    else v = digits;
+
+    if (digits.length >= 4) {
+      const m = parseInt(digits.slice(2, 4), 10) - 1;
+      if (m >= 0 && m <= 11) setMonth(m);
+    }
+    if (digits.length === 8) {
+      const y = parseInt(digits.slice(4, 8), 10);
+      if (y >= 1900) setYear(y);
+    }
+
+    const parsed = parseVal(raw.slice(0, 10));
+    if (parsed) {
+      onChange({ start: raw.slice(0, 10), end: '' });
+      setMonth(parsed.getMonth());
+      setYear(parsed.getFullYear());
+    }
+  };
+
+  const DOW = ['L','M','X','J','V','S','D'];
+  const firstDow    = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  return (
+    <div ref={trigRef} className="dp-wrap">
+      <div className="dp-field">
+        <input ref={manualRef} className="dp-field__input mono" value={manual}
+          onChange={handleManual} placeholder="DD/MM/AAAA o rango" maxLength={24}
+          onFocus={() => { if (!open) setOpen(true); }}
+        />
+        <button type="button" className="dp-field__icon" onClick={toggle}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>
+          </svg>
+        </button>
+      </div>
+
+      {open && (
+        <div className="dp-cal" ref={calRef}
+          style={{ position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000 }}>
+          <div className="dp-cal__nav">
+            <button type="button" className="dp-cal__arrow" onClick={prevYear} title="Año anterior">«</button>
+            <button type="button" className="dp-cal__arrow" onClick={prevMo}   title="Mes anterior">‹</button>
+            <span className="dp-cal__month">{MONTHS_ES[month]} {year}</span>
+            <button type="button" className="dp-cal__arrow" onClick={nextMo}   title="Mes siguiente">›</button>
+            <button type="button" className="dp-cal__arrow" onClick={nextYear} title="Año siguiente">»</button>
+          </div>
+          <div className="dp-cal__grid">
+            {DOW.map(d => <span key={d} className="dp-cal__dow">{d}</span>)}
+            {Array.from({length: firstDow}).map(function(_, i) { return <span key={'b'+i}/>; })}
+            {Array.from({length: daysInMonth}, function(_, i) {
+              const d  = i + 1;
+              const ds = year + '-' + String(month+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+              const isUsed     = disabledDates && disabledDates.has(ds);
+              const isToday    = now.getDate()===d && now.getMonth()===month && now.getFullYear()===year;
+              const isStart    = ds === startStr && endStr;
+              const isEnd      = ds === endStr;
+              const isSingle   = ds === startStr && ds === endStr;
+              const isMid      = endStr && ds > startStr && ds < endStr;
+              const isPending  = ds === startStr && !endStr;
+              const effHover   = awaiting && hover && hover > startStr ? hover : null;
+              const isPrevEnd  = effHover && ds === effHover;
+              const isPrevMid  = effHover && ds > startStr && ds < effHover;
+              var cellCls = '';
+
+              if      (isSingle)              cellCls = 'dp-range-cell--single';
+              else if (isStart)               cellCls = 'dp-range-cell--start';
+              else if (isEnd)                 cellCls = 'dp-range-cell--end';
+              else if (isMid)                 cellCls = 'dp-range-cell--mid';
+              else if (isPrevEnd && !isMid)   cellCls = 'dp-range-cell--prev-end';
+              else if (isPrevMid)             cellCls = 'dp-range-cell--prev-mid';
+
+              var btnCls = 'dp-cal__day';
+              if      (isSingle || isStart || isEnd) btnCls += ' dp-cal__day--sel';
+              else if (isPending)                    btnCls += ' dp-cal__day--range-pending';
+              else if (isToday)                      btnCls += ' dp-cal__day--today';
+              if (isUsed)                            btnCls += ' dp-cal__day--used';
+
+              return (
+                <button type="button" key={d} className={cellCls ? btnCls + ' ' + cellCls : btnCls}
+                  disabled={isUsed}
+                  title={isUsed ? 'Fecha ya registrada' : undefined}
+                  onMouseEnter={() => setHover(ds)}
+                  onMouseLeave={() => setHover(null)}
+                  onClick={() => pick(ds)}>
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+          {awaiting && (
+            <div style={{ marginTop:10, fontSize:11, color:'var(--ink-400)', textAlign:'center', borderTop:'1px solid var(--ink-100)', paddingTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              Inicio: <span style={{ fontFamily:'var(--font-mono)', color:'var(--ink-700)', fontWeight:600 }}>{start}</span>
+              &nbsp;· Elige la fecha de fin
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Eventualidades Section ────────────────────────────────── */
 const EVENT_KEY = 'uasd_eventualidades';
 function getEventualidades() {
@@ -1321,9 +1570,11 @@ function toStorageDate(v) {
 }
 
 const EVENT_TYPE = {
-  eventualidad: { label_es: 'Trabajo extra',      label_en: 'Extra work',        cls: 'badge--ok'      },
-  dia_libre:    { label_es: 'Día compensatorio',  label_en: 'Compensatory day',  cls: 'badge--warn'    },
-  permiso:      { label_es: 'Permiso',            label_en: 'Leave permit',      cls: 'badge--neutral' },
+  eventualidad:     { label_es: 'Trabajo extra',      label_en: 'Extra work',        cls: 'badge--ok'      },
+  dia_libre:        { label_es: 'Día compensatorio',  label_en: 'Compensatory day',  cls: 'badge--warn'    },
+  permiso:          { label_es: 'Permiso',            label_en: 'Leave permit',      cls: 'badge--neutral' },
+  licencia_familiar:{ label_es: 'Licencia familiar',  label_en: 'Family care leave', cls: 'badge--neutral' },
+  licencia_medica:  { label_es: 'Licencia médica',   label_en: 'Medical leave',     cls: 'badge--neutral' },
 };
 
 function EventualidadSection({ empId, lang }) {
@@ -1333,15 +1584,86 @@ function EventualidadSection({ empId, lang }) {
   });
   const [open, setOpen]       = React.useState(false);
   const [date, setDate]       = React.useState('');
-  const [type, setType]       = React.useState('eventualidad');
+  const [dateEnd, setDateEnd] = React.useState('');
+  const [type, setType]       = React.useState('');
   const [motivo, setMotivo]   = React.useState('');
   const [err, setErr]         = React.useState({});
+  const [hoveredEvId,  setHoveredEvId ] = React.useState(null);
+  const [editingEvId,  setEditingEvId ] = React.useState(null);
   const [deletingEvId, setDeletingEvId] = React.useState(null);
 
+  const [typeColors, setTypeColors] = React.useState(function() {
+    try { return JSON.parse(localStorage.getItem('uasd_event_type_colors') || '{}'); } catch(e) { return {}; }
+  });
+
+  var extendedPalette = React.useMemo(function() {
+    var usedInPreset = {};
+    PRESET_COLORS.forEach(function(h) { usedInPreset[h] = true; });
+    return PRESET_COLORS.concat(
+      COLOR_NAMES.map(function(c) { return c.hex; }).filter(function(h) { return !usedInPreset[h]; })
+    );
+  }, []);
+
+  function nextColor(colors) {
+    var usedSet = {};
+    Object.values(colors).forEach(function(h) { usedSet[h] = true; });
+    for (var i = 0; i < extendedPalette.length; i++) {
+      if (!usedSet[extendedPalette[i]]) return extendedPalette[i];
+    }
+    return '#' + Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6, '0');
+  }
+
+  React.useEffect(function() {
+    var allEvs = getEventualidades();
+    var allTypes = [];
+    Object.values(allEvs).forEach(function(arr) {
+      arr.forEach(function(ev) {
+        if (!EVENT_TYPE[ev.type] && allTypes.indexOf(ev.type) === -1) allTypes.push(ev.type);
+      });
+    });
+    customLabels.forEach(function(l) {
+      if (allTypes.indexOf(l) === -1) allTypes.push(l);
+    });
+    var colors = { ...typeColors };
+    var changed = false;
+    allTypes.forEach(function(label) {
+      if (!colors[label]) {
+        colors[label] = nextColor(colors);
+        changed = true;
+      }
+    });
+    if (changed) {
+      localStorage.setItem('uasd_event_type_colors', JSON.stringify(colors));
+      setTypeColors(colors);
+    }
+  }, []);
+
+  const getTypeColor = React.useCallback(function(label) {
+    if (EVENT_TYPE[label]) return EVENT_TYPE[label].cls;
+    return null;
+  }, [typeColors]);
+
+  const getTypeStyle = React.useCallback(function(label) {
+    var hex = typeColors[label];
+    if (!hex) return {};
+    return { background: hexToRgba(hex, 0.12), color: hex };
+  }, [typeColors]);
 
   const items = (map[empId] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
 
-  const usedEvDates = React.useMemo(() => new Set(items.map(x => x.date)), [items]);
+  const usedEvDates = React.useMemo(() => {
+    const set = new Set();
+    items.forEach(function(ev) {
+      if (ev.dateEnd) {
+        let d = new Date(ev.date + 'T00:00:00');
+        const end = new Date(ev.dateEnd + 'T00:00:00');
+        while (d <= end) { set.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+      } else {
+        set.add(ev.date);
+      }
+    });
+    return set;
+  }, [items]);
 
   const tLabel = (typeKey) => {
     if (EVENT_TYPE[typeKey]) return lang === 'es' ? EVENT_TYPE[typeKey].label_es : EVENT_TYPE[typeKey].label_en;
@@ -1367,6 +1689,10 @@ function EventualidadSection({ empId, lang }) {
       var updated = customLabels.concat([trimmed]);
       localStorage.setItem('uasd_event_type_labels', JSON.stringify(updated));
       setCustomLabels(updated);
+      var colors = { ...typeColors };
+      colors[trimmed] = nextColor(colors);
+      localStorage.setItem('uasd_event_type_colors', JSON.stringify(colors));
+      setTypeColors(colors);
     }
   };
 
@@ -1374,26 +1700,73 @@ function EventualidadSection({ empId, lang }) {
     var updated = customLabels.filter(function(l) { return l !== label; });
     localStorage.setItem('uasd_event_type_labels', JSON.stringify(updated));
     setCustomLabels(updated);
-    if (type === label) setType('eventualidad');
+    var colors = { ...typeColors };
+    delete colors[label];
+    localStorage.setItem('uasd_event_type_colors', JSON.stringify(colors));
+    setTypeColors(colors);
+    if (type === label) setType('');
   };
 
   const removableTypeOptions = React.useMemo(function() {
     return new Set(customLabels);
   }, [customLabels]);
 
-  const reset = () => { setDate(''); setType('eventualidad'); setMotivo(''); setErr({}); };
+  const reset = () => { setDate(''); setDateEnd(''); setType(''); setMotivo(''); setErr({}); setEditingEvId(null); };
+
+  const checkDateConflict = React.useCallback(function(dateStr, dateEndStr, excludeId) {
+    const sd = toStorageDate(dateStr);
+    const se = toStorageDate(dateEndStr);
+    if (!sd) return false;
+    var excludeSet = {};
+    if (excludeId) {
+      items.forEach(function(ev) {
+        if (ev.id === excludeId) {
+          excludeSet[ev.date] = true;
+          if (ev.dateEnd) {
+            var d = new Date(ev.date + 'T00:00:00');
+            var end = new Date(ev.dateEnd + 'T00:00:00');
+            while (d <= end) { excludeSet[d.toISOString().slice(0, 10)] = true; d.setDate(d.getDate() + 1); }
+          }
+        }
+      });
+    }
+    if (!se) return (!excludeSet[sd] && usedEvDates.has(sd)) ? 'dup' : false;
+    const overlaps = [];
+    let d = new Date(sd + 'T00:00:00');
+    const end = new Date(se + 'T00:00:00');
+    while (d <= end) {
+      const ds = d.toISOString().slice(0, 10);
+      if (!excludeSet[ds] && usedEvDates.has(ds)) overlaps.push(ds);
+      d.setDate(d.getDate() + 1);
+    }
+    return overlaps.length > 0 ? overlaps : false;
+  }, [usedEvDates, items]);
 
   const submit = () => {
     const e = {};
     const sd = toStorageDate(date);
-    if (!sd) e.date = true;
-    if (sd && usedEvDates.has(sd)) e.date = 'dup';
+    const se = toStorageDate(dateEnd);
+    if (!sd) { e.date = true; }
+    else {
+      const conflict = checkDateConflict(date, dateEnd, editingEvId);
+      if (conflict) e.date = conflict;
+    }
+    if (!type) e.type = true;
     if (!motivo.trim()) e.motivo = true;
     if (Object.keys(e).length) { setErr(e); return; }
-    const entry = { id: Date.now() + Math.random(), date: sd, type, motivo: motivo.trim() };
-    const next = { ...map, [empId]: [...(map[empId] || []), entry] };
-    setMap(next); saveEventualidades(next);
-    reset(); setOpen(false);
+    const entry = { date: sd, type, motivo: motivo.trim() };
+    if (se && se !== sd) entry.dateEnd = se;
+    if (editingEvId) {
+      entry.id = editingEvId;
+      const next = { ...map, [empId]: (map[empId] || []).map(function(x) { return x.id === editingEvId ? entry : x; }) };
+      setMap(next); saveEventualidades(next);
+      reset(); setOpen(false);
+    } else {
+      entry.id = Date.now() + Math.random();
+      const next = { ...map, [empId]: [...(map[empId] || []), entry] };
+      setMap(next); saveEventualidades(next);
+      reset(); setOpen(false);
+    }
   };
 
   const remove = (id) => {
@@ -1419,24 +1792,27 @@ function EventualidadSection({ empId, lang }) {
           borderRadius:'var(--radius-md)', padding:'16px', marginBottom:16,
           display:'flex', flexDirection:'column', gap:14,
         }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'end' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
             <div className={`field${err.date ? ' field--error' : ''}`}>
               <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'} <span className="field__req">*</span></span>
-              <DatePickerField value={date} onChange={v => { setDate(v); setErr(p => ({...p, date: false})); }} disabledDates={usedEvDates} />
-              {err.date === 'dup' && <span className="field__err">{lang === 'es' ? 'Ya existe una eventualidad en esta fecha.' : 'A record already exists for this date.'}</span>}
-            </div>
-            <div className="field">
-              <span className="field__label">{lang === 'es' ? 'Tipo' : 'Type'} <span className="field__req">*</span></span>
-              <ComboBoxField
-                value={tLabel(type)}
-                options={typeOptions}
-                maxLength={50}
-                placeholder={lang === 'es' ? 'Seleccionar o agregar tipo…' : 'Select or add type…'}
-                onChange={handleTypeChange}
-                requireSelection
-                removableOptions={removableTypeOptions}
-                onRemoveOption={handleRemoveType}
+              <DateRangePickerField
+                start={date} end={dateEnd}
+                onChange={function(v) {
+                  setDate(v.start); setDateEnd(v.end);
+                  const conflict = v.end ? checkDateConflict(v.start, v.end) : false;
+                  setErr(p => ({...p, date: conflict}));
+                }}
+                disabledDates={usedEvDates}
               />
+              {err.date === 'dup'     && <span className="field__err">{lang === 'es' ? 'Ya existe una eventualidad en esta fecha.' : 'A record already exists for this date.'}</span>}
+              {Array.isArray(err.date) && <span className="field__err">{lang === 'es' ? 'Fechas ya registradas en el rango.' : 'Dates already registered in range.'}</span>}
+            </div>
+            <div className={`field${err.type ? ' field--error' : ''}`}>
+              <span className="field__label">{lang === 'es' ? 'Tipo' : 'Type'} <span className="field__req">*</span></span>
+              <ComboBoxField value={tLabel(type)} options={typeOptions} maxLength={50}
+                placeholder={lang === 'es' ? 'Seleccionar o agregar tipo…' : 'Select or add type…'}
+                onChange={v => { handleTypeChange(v); setErr(p => ({...p, type: false})); }}
+                requireSelection removableOptions={removableTypeOptions} onRemoveOption={handleRemoveType} />
             </div>
           </div>
           <div className={`field${err.motivo ? ' field--error' : ''}`}>
@@ -1444,12 +1820,16 @@ function EventualidadSection({ empId, lang }) {
             <input className="field__input" value={motivo}
               onChange={e => { setMotivo(e.target.value); setErr(p => ({...p, motivo: false})); }}
               placeholder={type === 'eventualidad'
-                ? (lang === 'es' ? 'Ej. Proyecto especial, sustitución…'   : 'e.g. Special project, substitution…')
+                ? (lang === 'es' ? 'Ej. Jornada extendida, sustitución, proyecto especial…' : 'e.g. Extended shift, substitution, special project…')
                 : type === 'dia_libre'
-                ? (lang === 'es' ? 'Ej. Permiso personal, cita médica…'    : 'e.g. Personal leave, medical appointment…')
+                ? (lang === 'es' ? 'Ej. Compensación por horas extra, día acumulado…'        : 'e.g. Overtime compensation, accrued day off…')
                 : type === 'permiso'
-                ? (lang === 'es' ? 'Ej. Cita médica, diligencia personal…' : 'e.g. Medical appointment, personal errand…')
-                : (lang === 'es' ? 'Descripción…' : 'Description…')
+                ? (lang === 'es' ? 'Ej. Diligencia personal, trámite oficial, cita…'         : 'e.g. Personal errand, official procedure, appointment…')
+                : type === 'licencia_familiar'
+                ? (lang === 'es' ? 'Ej. Cuidado de cónyuge, padres o hijos enfermos…'        : 'e.g. Care of spouse, parents or sick children…')
+                : type === 'licencia_medica'
+                ? (lang === 'es' ? 'Ej. Reposo médico, tratamiento, intervención quirúrgica…': 'e.g. Medical rest, treatment, surgical procedure…')
+                : (lang === 'es' ? 'Descripción del motivo…' : 'Reason description…')
               } />
           </div>
           <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
@@ -1484,23 +1864,47 @@ function EventualidadSection({ empId, lang }) {
                   {g.items.map(ev => (
                     <div key={ev.id}>
                       <div
-                        onMouseEnter={e => { e.currentTarget.style.background='var(--cream-100)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background='transparent'; }}
+                        onMouseEnter={e => { setHoveredEvId(ev.id); e.currentTarget.style.background='var(--cream-100)'; }}
+                        onMouseLeave={e => { setHoveredEvId(null); e.currentTarget.style.background='transparent'; }}
                         style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 10px', borderRadius:8, background:'transparent', transition:'background .12s' }}>
                         <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0 }}>
-                          {toDisplayDate(ev.date)}
+                          {ev.dateEnd ? `${toDisplayDate(ev.date)} — ${toDisplayDate(ev.dateEnd)}` : toDisplayDate(ev.date)}
                         </span>
-                        <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-300)', flexShrink:0 }}>
-                          {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(ev.date).getDay()]}
-                        </span>
-                        <span className={`badge ${EVENT_TYPE[ev.type] ? EVENT_TYPE[ev.type].cls : 'badge--neutral'}`} style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>
+                        {ev.dateEnd ? (() => {
+                          const days = Math.round((new Date(ev.dateEnd + 'T00:00:00') - new Date(ev.date + 'T00:00:00')) / 86400000) + 1;
+                          return <span style={{ fontFamily:'var(--font-mono)', fontSize:10, color:'var(--ink-400)', flexShrink:0, background:'var(--cream-100)', padding:'2px 7px', borderRadius:4, border:'1px solid var(--ink-100)' }}>{days} {lang === 'es' ? 'días' : 'days'}</span>;
+                        })() : (
+                          <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-300)', flexShrink:0 }}>
+                            {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(ev.date + 'T00:00:00').getDay()]}
+                          </span>
+                        )}
+                        <span className={'badge ' + (getTypeColor(ev.type) || '')}
+  style={{ fontSize:10, padding:'2px 8px', flexShrink:0, ...(getTypeColor(ev.type) ? {} : getTypeStyle(ev.type)) }}>
                           {tLabel(ev.type)}
                         </span>
                         <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                           {ev.motivo}
                         </span>
-                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: deletingEvId === ev.id ? 1 : 0, transition:'opacity .15s' }}>
-                          <button onClick={() => setDeletingEvId(deletingEvId === ev.id ? null : ev.id)}
+                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: hoveredEvId === ev.id || editingEvId === ev.id || deletingEvId === ev.id ? 1 : 0, transition:'opacity .15s' }}>
+                          <button onClick={() => {
+                            if (editingEvId === ev.id) { setEditingEvId(null); reset(); }
+                            else {
+                              setEditingEvId(ev.id);
+                              setDate(toDisplayDate(ev.date));
+                              setDateEnd(ev.dateEnd ? toDisplayDate(ev.dateEnd) : '');
+                              setType(ev.type);
+                              setMotivo(ev.motivo);
+                              setDeletingEvId(null);
+                              setOpen(false);
+                              setErr({});
+                            }
+                          }}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--ink-700)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
+                            <Icon name="edit" size={12} stroke={1.8}/>
+                          </button>
+                          <button onClick={() => { setDeletingEvId(deletingEvId === ev.id ? null : ev.id); setEditingEvId(null); }}
                             style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
                             onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
@@ -1508,6 +1912,67 @@ function EventualidadSection({ empId, lang }) {
                           </button>
                         </div>
                       </div>
+
+                      {/* ── editar inline ── */}
+                      <div style={{ display:'grid', gridTemplateRows: editingEvId === ev.id ? '1fr' : '0fr', transition:'grid-template-rows 0.28s cubic-bezier(0, 0, 0.2, 1)', overflow:'hidden' }}>
+                        <div style={{ minHeight:0 }}>
+                          <div style={{
+                            margin:'4px 0 8px', padding:'12px 14px',
+                            background:'var(--cream-100)', borderRadius:'var(--radius-md)',
+                            border:'1px solid var(--ink-100)',
+                            display:'flex', flexDirection:'column', gap:12,
+                          }}>
+                            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, alignItems:'start' }}>
+                              <div className={`field${err.date ? ' field--error' : ''}`}>
+                                <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'}</span>
+                                <DateRangePickerField
+                                  start={date} end={dateEnd}
+                                  onChange={function(v) {
+                                    setDate(v.start); setDateEnd(v.end);
+                                    const conflict = v.end ? checkDateConflict(v.start, v.end, editingEvId) : false;
+                                    setErr(p => ({...p, date: conflict}));
+                                  }}
+                                  disabledDates={usedEvDates}
+                                />
+                                {err.date === 'dup'     && <span className="field__err">{lang === 'es' ? 'Ya existe una eventualidad en esta fecha.' : 'A record already exists for this date.'}</span>}
+                                {Array.isArray(err.date) && <span className="field__err">{lang === 'es' ? 'Fechas ya registradas en el rango.' : 'Dates already registered in range.'}</span>}
+                              </div>
+                              <div className={`field${err.type ? ' field--error' : ''}`}>
+                                <span className="field__label">{lang === 'es' ? 'Tipo' : 'Type'}</span>
+                                <ComboBoxField value={tLabel(type)} options={typeOptions} maxLength={50}
+                                  placeholder={lang === 'es' ? 'Seleccionar o agregar tipo…' : 'Select or add type…'}
+                                  onChange={v => { handleTypeChange(v); setErr(p => ({...p, type: false})); }}
+                                  requireSelection removableOptions={removableTypeOptions} onRemoveOption={handleRemoveType} />
+                              </div>
+                            </div>
+                            <div className={`field${err.motivo ? ' field--error' : ''}`}>
+                              <span className="field__label">{lang === 'es' ? 'Motivo' : 'Reason'}</span>
+                              <input className="field__input" value={motivo}
+                                onChange={e => { setMotivo(e.target.value); setErr(p => ({...p, motivo: false})); }}
+                                placeholder={type === 'eventualidad'
+                                  ? (lang === 'es' ? 'Ej. Jornada extendida, sustitución, proyecto especial…' : 'e.g. Extended shift, substitution, special project…')
+                                  : type === 'dia_libre'
+                                  ? (lang === 'es' ? 'Ej. Compensación por horas extra, día acumulado…'        : 'e.g. Overtime compensation, accrued day off…')
+                                  : type === 'permiso'
+                                  ? (lang === 'es' ? 'Ej. Diligencia personal, trámite oficial, cita…'         : 'e.g. Personal errand, official procedure, appointment…')
+                                  : type === 'licencia_familiar'
+                                  ? (lang === 'es' ? 'Ej. Cuidado de cónyuge, padres o hijos enfermos…'        : 'e.g. Care of spouse, parents or sick children…')
+                                  : type === 'licencia_medica'
+                                  ? (lang === 'es' ? 'Ej. Reposo médico, tratamiento, intervención quirúrgica…': 'e.g. Medical rest, treatment, surgical procedure…')
+                                  : (lang === 'es' ? 'Descripción del motivo…' : 'Reason description…')
+                                } />
+                            </div>
+                            <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+                              <button className="btn btn--ghost" style={{ fontSize:11, padding:'3px 10px' }}
+                                onClick={() => { setEditingEvId(null); reset(); }}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                              <button className="btn btn--primary" style={{ fontSize:11, padding:'3px 10px' }}
+                                onClick={submit}>{lang === 'es' ? 'Actualizar' : 'Update'}</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── eliminar ── */}
                       <div style={{ display:'grid', gridTemplateRows: deletingEvId === ev.id ? '1fr' : '0fr', transition:'grid-template-rows 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)', overflow:'hidden' }}>
                         <div style={{ minHeight:0, opacity: deletingEvId === ev.id ? 1 : 0, transform: deletingEvId === ev.id ? 'translateY(0)' : 'translateY(-4px)', transition:'opacity 0.18s ease, transform 0.18s ease' }}>
                           <div style={{ margin:'4px 0 8px', padding:'10px 14px', background:'rgba(220,38,38,0.06)', borderRadius:'var(--radius-md)', border:'1px solid rgba(220,38,38,0.2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>

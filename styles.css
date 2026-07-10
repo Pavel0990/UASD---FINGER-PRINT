@@ -816,6 +816,8 @@ input, select, textarea {
   color: #8d3a34;
 }
 
+
+
 .badge__dot {
   width: 6px;
   height: 6px;
@@ -2358,6 +2360,7 @@ tr.table__row--selected .table__actions {
   flex: 1;
   scrollbar-width: thin;
   scrollbar-color: var(--ink-200) transparent;
+  scrollbar-gutter: stable;
 }
 .edit-modal__body::-webkit-scrollbar { width: 5px; }
 .edit-modal__body::-webkit-scrollbar-track { background: transparent; margin: 2px 0; border-radius: 999px; }
@@ -2733,6 +2736,22 @@ tr.table__row--selected .table__actions {
   opacity: 0.25; cursor: not-allowed !important; pointer-events: none;
 }
 .dp-cal__day--disabled:hover { background: none !important; }
+
+.dp-range-cell--mid, .dp-range-cell--start, .dp-range-cell--end,
+.dp-range-cell--single, .dp-range-cell--prev-mid,
+.dp-range-cell--prev-start, .dp-range-cell--prev-end,
+.dp-cal__day--range-pending { transition: none !important; }
+
+/* ── Range picker cells (applied directly to dp-cal__day) ── */
+.dp-range-cell--mid        { background: rgba(22,27,51,0.09); }
+.dp-range-cell--start      { background: linear-gradient(to right, transparent 50%, rgba(22,27,51,0.09) 50%); }
+.dp-range-cell--end        { background: linear-gradient(to left,  transparent 50%, rgba(22,27,51,0.09) 50%); }
+.dp-range-cell--single     { background: transparent; }
+.dp-range-cell--prev-mid   { background: rgba(22,27,51,0.05); }
+.dp-range-cell--prev-start { background: linear-gradient(to right, transparent 50%, rgba(22,27,51,0.05) 50%); }
+.dp-range-cell--prev-end   { background: linear-gradient(to left,  transparent 50%, rgba(22,27,51,0.05) 50%); }
+.dp-cal__day--range-pending { background: var(--ink-800); color: #fff; font-weight: 700; box-shadow: 0 0 0 2px rgba(22,27,51,0.18); }
+.dp-cal__day--range-pending:hover { background: var(--cream-100) !important; color: var(--ink-900) !important; box-shadow: none !important; }
 
 .dp-cal__manual {
   width: 100%; padding: 7px 10px; border: 1px solid var(--ink-100); border-radius: 8px;
