@@ -1103,7 +1103,7 @@ function MonthGroup({ label, unjust, total, defaultOpen, children }) {
   );
 }
 
-function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onUnjustify, onRemove }) {
+function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onUnjustify, onRemove, disabledEvDates }) {
   const [open,         setOpen        ] = React.useState(false);
   const [date,         setDate        ] = React.useState(''); // DD/MM/YYYY
   const [isJustified,  setIsJustified ] = React.useState(false);
@@ -1119,7 +1119,11 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onUnjusti
 
   const resetForm = () => { setDate(''); setIsJustified(false); setJustifyNote(''); setFormErrors({}); };
 
-  const usedAbsDates = React.useMemo(() => new Set(absences.map(a => a.date)), [absences]);
+  const usedAbsDates = React.useMemo(() => {
+    var s = new Set(absences.map(a => a.date));
+    if (disabledEvDates) disabledEvDates.forEach(function(d) { s.add(d); });
+    return s;
+  }, [absences, disabledEvDates]);
 
   const submit = () => {
     const errs = {};
@@ -1472,7 +1476,7 @@ function DateRangePickerField({ start, end, onChange, disabledDates }) {
     <div ref={trigRef} className="dp-wrap">
       <div className="dp-field">
         <input ref={manualRef} className="dp-field__input mono" value={manual}
-          onChange={handleManual} placeholder="DD/MM/AAAA o rango" maxLength={24}
+          onChange={handleManual} placeholder="DD/MM/AAAA" maxLength={24}
           onFocus={() => { if (!open) setOpen(true); }}
         />
         <button type="button" className="dp-field__icon" onClick={toggle}>
@@ -1577,8 +1581,7 @@ const EVENT_TYPE = {
   licencia_medica:  { label_es: 'Licencia médica',   label_en: 'Medical leave',     cls: 'badge--neutral' },
 };
 
-function EventualidadSection({ empId, lang }) {
-  const [map, setMap]         = React.useState(getEventualidades);
+function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, onAddAbsence, onRemoveAbsenceById, onBatchAddAbsences }) {
   const [customLabels, setCustomLabels] = React.useState(function() {
     try { return JSON.parse(localStorage.getItem('uasd_event_type_labels') || '[]'); } catch(e) { return []; }
   });
@@ -1649,7 +1652,7 @@ function EventualidadSection({ empId, lang }) {
     return { background: hexToRgba(hex, 0.12), color: hex };
   }, [typeColors]);
 
-  const items = (map[empId] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+  const items = (evMap[empId] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
 
   const usedEvDates = React.useMemo(() => {
     const set = new Set();
@@ -1754,24 +1757,74 @@ function EventualidadSection({ empId, lang }) {
     if (!type) e.type = true;
     if (!motivo.trim()) e.motivo = true;
     if (Object.keys(e).length) { setErr(e); return; }
+
+    // ── remover ausencias en el nuevo rango ──
+    if (onRemoveAbsenceById) {
+      var nd = new Date(sd + 'T00:00:00');
+      var ne = se && se !== sd ? new Date(se + 'T00:00:00') : new Date(sd + 'T00:00:00');
+      while (nd <= ne) {
+        var nds = nd.toISOString().slice(0, 10);
+        (absences || []).forEach(function(a) {
+          if (a.date === nds) onRemoveAbsenceById(empId, a.id);
+        });
+        nd.setDate(nd.getDate() + 1);
+      }
+    }
+
     const entry = { date: sd, type, motivo: motivo.trim() };
     if (se && se !== sd) entry.dateEnd = se;
     if (editingEvId) {
       entry.id = editingEvId;
-      const next = { ...map, [empId]: (map[empId] || []).map(function(x) { return x.id === editingEvId ? entry : x; }) };
-      setMap(next); saveEventualidades(next);
+      const next = { ...evMap, [empId]: (evMap[empId] || []).map(function(x) { return x.id === editingEvId ? entry : x; }) };
+      saveEvMap(next);
+
+      // ── crear ausencias en fechas viejas que ya no cubre ──
+      if (onBatchAddAbsences) {
+        var old = (evMap[empId] || []).find(function(x) { return x.id === editingEvId; });
+        if (old) {
+          var absentDates = [];
+          var od = new Date(old.date + 'T00:00:00');
+          var oe = old.dateEnd ? new Date(old.dateEnd + 'T00:00:00') : new Date(old.date + 'T00:00:00');
+          while (od <= oe) {
+            var ods = od.toISOString().slice(0, 10);
+            var inNew = false;
+            var nd2 = new Date(sd + 'T00:00:00');
+            var ne2 = se && se !== sd ? new Date(se + 'T00:00:00') : new Date(sd + 'T00:00:00');
+            while (nd2 <= ne2) {
+              if (nd2.toISOString().slice(0, 10) === ods) { inNew = true; break; }
+              nd2.setDate(nd2.getDate() + 1);
+            }
+            if (!inNew && !allAtt[empId + ':' + ods]) absentDates.push(ods);
+            od.setDate(od.getDate() + 1);
+          }
+          if (absentDates.length) onBatchAddAbsences(empId, absentDates);
+        }
+      }
+
       reset(); setOpen(false);
     } else {
       entry.id = Date.now() + Math.random();
-      const next = { ...map, [empId]: [...(map[empId] || []), entry] };
-      setMap(next); saveEventualidades(next);
+      const next = { ...evMap, [empId]: [...(evMap[empId] || []), entry] };
+      saveEvMap(next);
       reset(); setOpen(false);
     }
   };
 
   const remove = (id) => {
-    const next = { ...map, [empId]: (map[empId] || []).filter(x => x.id !== id) };
-    setMap(next); saveEventualidades(next);
+    const ev = items.find(x => x.id === id);
+    const next = { ...evMap, [empId]: (evMap[empId] || []).filter(x => x.id !== id) };
+    saveEvMap(next);
+    if (ev && onBatchAddAbsences) {
+      var absentDates = [];
+      var d = new Date(ev.date + 'T00:00:00');
+      var end = ev.dateEnd ? new Date(ev.dateEnd + 'T00:00:00') : new Date(ev.date + 'T00:00:00');
+      while (d <= end) {
+        var ds = d.toISOString().slice(0, 10);
+        if (!allAtt[empId + ':' + ds]) absentDates.push(ds);
+        d.setDate(d.getDate() + 1);
+      }
+      if (absentDates.length) onBatchAddAbsences(empId, absentDates);
+    }
   };
 
   return (
@@ -1786,7 +1839,12 @@ function EventualidadSection({ empId, lang }) {
         </button>
       </div>
 
-      <div style={{ display:'grid', gridTemplateRows: open ? '1fr' : '0fr', transition:'grid-template-rows 0.30s cubic-bezier(0, 0, 0.2, 1)', overflow:'hidden' }}><div style={{ minHeight:0 }}>
+      <div style={{
+        display:'grid',
+        gridTemplateRows: open ? '1fr' : '0fr',
+        transition:'grid-template-rows 0.30s cubic-bezier(0, 0, 0.2, 1)',
+        overflow:'hidden',
+      }}><div style={{ minHeight:0 }}>
         <div style={{
           background:'var(--cream-100)', border:'1px solid var(--ink-100)',
           borderRadius:'var(--radius-md)', padding:'16px', marginBottom:16,
@@ -1837,7 +1895,8 @@ function EventualidadSection({ empId, lang }) {
             <button className="btn btn--primary" onClick={submit}>{lang === 'es' ? 'Guardar' : 'Save'}</button>
           </div>
         </div>
-      </div></div>
+      </div>
+    </div>
 
       {(() => {
         const currentYear = String(new Date().getFullYear());
@@ -1914,15 +1973,19 @@ function EventualidadSection({ empId, lang }) {
                       </div>
 
                       {/* ── editar inline ── */}
-                      <div style={{ display:'grid', gridTemplateRows: editingEvId === ev.id ? '1fr' : '0fr', transition:'grid-template-rows 0.28s cubic-bezier(0, 0, 0.2, 1)', overflow:'hidden' }}>
-                        <div style={{ minHeight:0 }}>
+                      <div style={{
+                        display:'grid',
+                        gridTemplateRows: editingEvId === ev.id ? '1fr' : '0fr',
+                        transition:'grid-template-rows 0.30s cubic-bezier(0, 0, 0.2, 1)',
+                        overflow:'hidden',
+                      }}><div style={{ minHeight:0 }}>
                           <div style={{
-                            margin:'4px 0 8px', padding:'12px 14px',
                             background:'var(--cream-100)', borderRadius:'var(--radius-md)',
                             border:'1px solid var(--ink-100)',
-                            display:'flex', flexDirection:'column', gap:12,
+                            padding:'16px', marginBottom:16,
+                            display:'flex', flexDirection:'column', gap:14,
                           }}>
-                            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, alignItems:'start' }}>
+                            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, alignItems:'start' }}>
                               <div className={`field${err.date ? ' field--error' : ''}`}>
                                 <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'}</span>
                                 <DateRangePickerField
@@ -2048,6 +2111,15 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const [tardRegJustified, setTardRegJustified] = React.useState(false);
   const [tardRegNote, setTardRegNote] = React.useState('');
   const [tardRegErrors, setTardRegErrors] = React.useState({});
+
+  const [evMap, setEvMap] = React.useState(getEventualidades);
+  const saveEvMap = (next) => { setEvMap(next); saveEventualidades(next); };
+  const batchAddAbsences = (empId, dates) => {
+    if (!dates || !dates.length) return;
+    const prev = absencesMap[empId] || [];
+    const newEntries = dates.map(function(date) { return { id: Date.now() + Math.random(), date, justified: false, justifyNote: '' }; });
+    saveAbsences({ ...absencesMap, [empId]: [...prev, ...newEntries] });
+  };
 
   const [absencesMap, setAbsencesMap] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('uasd_absences') || '{}'); } catch { return {}; }
@@ -3027,10 +3099,29 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                     onJustify={justifyAbsence}
                     onUnjustify={unjustifyAbsence}
                     onRemove={removeAbsence}
+                    disabledEvDates={(() => {
+                      var evs = (evMap[editTarget?.id] || []), s = new Set();
+                      evs.forEach(function(ev) {
+                        var d = new Date(ev.date + 'T00:00:00');
+                        var end = ev.dateEnd ? new Date(ev.dateEnd + 'T00:00:00') : new Date(ev.date + 'T00:00:00');
+                        while (d <= end) { s.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+                      });
+                      return s;
+                    })()}
                   />
               </div></div>
               <div ref={el => paneRefs.current['eventualidades'] = el} className={`edit-modal__pane${editTab === 'eventualidades' ? ' edit-modal__pane--open' : ''}`}><div className="edit-modal__pane__inner edit-modal__grid" style={{ gridTemplateColumns:'1fr' }}>
-                  <EventualidadSection empId={editTarget?.id} lang={lang} />
+                  <EventualidadSection
+                    empId={editTarget?.id}
+                    lang={lang}
+                    evMap={evMap}
+                    saveEvMap={saveEvMap}
+                    absences={absencesMap[editTarget?.id] || []}
+                    allAtt={allAtt}
+                    onAddAbsence={addAbsence}
+                    onRemoveAbsenceById={removeAbsence}
+                    onBatchAddAbsences={batchAddAbsences}
+                  />
               </div></div>
 
               {editTab === 'profile' && Object.keys(editErrors).length > 0 && (
