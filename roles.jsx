@@ -4,14 +4,14 @@ const ROLES_KEY = 'uasd_roles_v1';
 const ASSIGN_KEY = 'uasd_role_assignments_v1';
 const CRED_KEY = 'uasd_credentials_v1';
 const CURR_USER_KEY = 'uasd_current_user';
-const ROLE_SEED_VER = 'uasd_role_seed_v8';
+const ROLE_SEED_VER = 'uasd_role_seed_v9';
 const CRED_PATCH_V1 = 'uasd_cred_patch_v1';
 const CRED_PATCH_V2 = 'uasd_cred_patch_v2';
 const DEFAULT_PASS   = '123456789';
 
 const SEED_ROLES = [
-  { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','liceo','kiosk_admin'] },
-  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll','reports','manage','farm','liceo','roles'] },
+  { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','liceo','vacaciones','kiosk_admin'] },
+  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll','reports','manage','farm','liceo','vacaciones','roles'] },
   { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports','audit','roles'] },
 ];
 
@@ -33,6 +33,7 @@ const ALL_PERMS = [
   { id: 'audit',   label_es: 'Control de actividad',  label_en: 'Activity log' },
   { id: 'farm',    label_es: 'Control de finca',      label_en: 'Farm control' },
   { id: 'liceo',   label_es: 'Control de liceo',      label_en: 'School control' },
+  { id: 'vacaciones', label_es: 'Vacaciones colectivas', label_en: 'Collective vacations' },
 ];
 
 (function seedRoles() {
@@ -45,6 +46,9 @@ const ALL_PERMS = [
     }
     if ((r.id === 'role_admin' || r.id === 'role_hr') && !perms.includes('liceo')) {
       return { ...r, perms: [...perms, 'liceo'] };
+    }
+    if ((r.id === 'role_admin' || r.id === 'role_hr') && !perms.includes('vacaciones')) {
+      return { ...r, perms: [...perms, 'vacaciones'] };
     }
     if (r.id === 'role_hr' && !perms.includes('roles')) {
       return { ...r, perms: [...perms, 'roles'] };

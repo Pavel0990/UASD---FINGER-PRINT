@@ -1350,10 +1350,10 @@ function FarmView({ t, lang, setRoute }) {
       } else {
         /* Quitar presencia de finca si existía */
         if (att[attKey] && att[attKey].source === 'finca') delete att[attKey];
-        /* Añadir ausencia solo si no hay ausencia de finca ya registrada para ese día */
+        /* Añadir ausencia solo si no hay ausencia de finca ya registrada para ese día y no es feriado */
         var absArr   = abs[emp.id] || [];
         var yaExiste = absArr.some(function(a) { return a.date === viewDate && a.source === 'finca'; });
-        if (!yaExiste) {
+        if (!yaExiste && !isHoliday(viewDate)) {
           abs[emp.id] = absArr.concat([{
             id: baseTs * 100 + idx,   /* garantiza unicidad aunque varios idx coincidan en ms */
             date: viewDate,

@@ -240,24 +240,26 @@ function EmailField({ value, onChange }) {
 }
 
 /* ── DatePickerField ─────────────────────────────────────────── */
-function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDates = null, minDate = null }) {
+function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDates = null, minDate = null, maxDate = null }) {
   const [open,     setOpen    ] = React.useState(false);
   const [manual,   setManual  ] = React.useState(value || '');
   const [ageError, setAgeError] = React.useState(false);
   const [calPos,   setCalPos  ] = React.useState({ top: 0, left: 0, minWidth: 0 });
+  const [calReady, setCalReady] = React.useState(false);
   const trigRef   = React.useRef(null);
   const calRef    = React.useRef(null);
   const manualRef = React.useRef(null);
 
   // Recalculate fixed position whenever calendar opens or window scrolls/resizes
-  React.useEffect(() => {
-    if (!open || !trigRef.current) return;
+  React.useLayoutEffect(() => {
+    if (!open || !trigRef.current) { setCalReady(false); return; }
     const update = () => {
       const r = trigRef.current.getBoundingClientRect();
       const calH = calRef.current?.offsetHeight || 300;
       const spaceBelow = window.innerHeight - r.bottom;
       const top = spaceBelow >= calH + 8 ? r.bottom + 6 : r.top - calH - 6;
       setCalPos({ top, left: r.left, minWidth: r.width });
+      setCalReady(true);
     };
     update();
     window.addEventListener('scroll', update, true);
@@ -282,6 +284,7 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
   const maxAllowed    = minAge > 0 ? new Date(now.getFullYear() - minAge, now.getMonth(), now.getDate()) : null;
   const minAllowed    = maxAge > 0 ? new Date(now.getFullYear() - maxAge, now.getMonth(), now.getDate()) : null;
   const minDateObj    = minDate ? new Date(minDate + 'T00:00:00') : null;
+  const maxDateObj    = maxDate ? new Date(maxDate + 'T00:00:00') : null;
   const defaultYear   = minAge > 0 ? now.getFullYear() - (minAge + 7) : now.getFullYear();
   const [month, setMonth] = React.useState(() => {
     if (sel) return sel.getMonth();
@@ -329,10 +332,15 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
   const firstDow   = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const prevMo   = () => month === 0  ? (setMonth(11), setYear(y => y-1)) : setMonth(m => m-1);
-  const nextMo   = () => month === 11 ? (setMonth(0),  setYear(y => y+1)) : setMonth(m => m+1);
-  const prevYear = () => setYear(y => y - 1);
-  const nextYear = () => setYear(y => y + 1);
+  const canPrevYear = !minDateObj || year > minDateObj.getFullYear();
+  const canNextYear = !maxDateObj || year < maxDateObj.getFullYear();
+  const canPrevMo   = !minDateObj || year > minDateObj.getFullYear() || month > minDateObj.getMonth();
+  const canNextMo   = !maxDateObj || year < maxDateObj.getFullYear() || month < maxDateObj.getMonth();
+
+  const prevMo   = () => { if (!canPrevMo)  return; month === 0  ? (setMonth(11), setYear(y => y-1)) : setMonth(m => m-1); };
+  const nextMo   = () => { if (!canNextMo)  return; month === 11 ? (setMonth(0),  setYear(y => y+1)) : setMonth(m => m+1); };
+  const prevYear = () => { if (canPrevYear) setYear(y => y - 1); };
+  const nextYear = () => { if (canNextYear) setYear(y => y + 1); };
 
   const pick = (d) => {
     const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -340,6 +348,8 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
     const candidate = new Date(year, month, d);
     if (maxAllowed && candidate > maxAllowed) { setAgeError('min'); return; }
     if (minAllowed && candidate < minAllowed) { setAgeError('max'); return; }
+    if (minDateObj && candidate < minDateObj) return;
+    if (maxDateObj && candidate > maxDateObj) return;
     setAgeError(false);
     const v = `${String(d).padStart(2,'0')}/${String(month+1).padStart(2,'0')}/${year}`;
     onChange(v); setManual(v); setOpen(false);
@@ -366,6 +376,8 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
     if (parsed) {
       if (maxAllowed && parsed > maxAllowed) { setAgeError('min'); onChange(''); return; }
       if (minAllowed && parsed < minAllowed) { setAgeError('max'); onChange(''); return; }
+      if (minDateObj && parsed < minDateObj) { onChange(''); return; }
+      if (maxDateObj && parsed > maxDateObj) { onChange(''); return; }
       setAgeError(false);
       onChange(v); setMonth(parsed.getMonth()); setYear(parsed.getFullYear());
     } else {
@@ -390,18 +402,18 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
           </svg>
         </button>
       </div>
-      {open && (
+      {open && calReady && ReactDOM.createPortal(
         <div className="dp-cal" ref={calRef} style={calStyle}
           onKeyDown={(e) => {
             if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key) && e.target.tagName !== 'INPUT')
               e.preventDefault();
           }}>
           <div className="dp-cal__nav">
-            <button type="button" className="dp-cal__arrow" onClick={prevYear} title="Año anterior">«</button>
-            <button type="button" className="dp-cal__arrow" onClick={prevMo}   title="Mes anterior">‹</button>
+            <button type="button" className="dp-cal__arrow" onClick={prevYear} title="Año anterior" disabled={!canPrevYear} style={!canPrevYear ? {opacity:.25,cursor:'default',pointerEvents:'none'} : undefined}>«</button>
+            <button type="button" className="dp-cal__arrow" onClick={prevMo}   title="Mes anterior"  disabled={!canPrevMo}  style={!canPrevMo  ? {opacity:.25,cursor:'default',pointerEvents:'none'} : undefined}>‹</button>
             <span className="dp-cal__month">{MONTHS_ES[month]} {year}</span>
-            <button type="button" className="dp-cal__arrow" onClick={nextMo}   title="Mes siguiente">›</button>
-            <button type="button" className="dp-cal__arrow" onClick={nextYear} title="Año siguiente">»</button>
+            <button type="button" className="dp-cal__arrow" onClick={nextMo}   title="Mes siguiente" disabled={!canNextMo}  style={!canNextMo  ? {opacity:.25,cursor:'default',pointerEvents:'none'} : undefined}>›</button>
+            <button type="button" className="dp-cal__arrow" onClick={nextYear} title="Año siguiente" disabled={!canNextYear} style={!canNextYear ? {opacity:.25,cursor:'default',pointerEvents:'none'} : undefined}>»</button>
           </div>
           <div className="dp-cal__grid">
             {DOW.map(d => <span key={d} className="dp-cal__dow">{d}</span>)}
@@ -411,7 +423,7 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
               const isSel = sel && sel.getDate()===d && sel.getMonth()===month && sel.getFullYear()===year;
               const isNow = now.getDate()===d && now.getMonth()===month && now.getFullYear()===year;
               const dayDate = new Date(year, month, d);
-              const isDisabled = (maxAllowed && dayDate > maxAllowed) || (minAllowed && dayDate < minAllowed) || (minDateObj && dayDate < minDateObj);
+              const isDisabled = (maxAllowed && dayDate > maxAllowed) || (minAllowed && dayDate < minAllowed) || (minDateObj && dayDate < minDateObj) || (maxDateObj && dayDate > maxDateObj);
               const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
               const isUsed = disabledDates && disabledDates.has(dateStr);
               return (
@@ -433,7 +445,8 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
               La edad máxima permitida es {maxAge} años
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -1114,7 +1127,7 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onUnjusti
   const [laterErr,     setLaterErr    ] = React.useState(false);
   const [deletingAbsId, setDeletingAbsId] = React.useState(null);
   const [hoveredAbsId,  setHoveredAbsId ] = React.useState(null);
-  const unjustified = absences.filter(a => !a.justified).length;
+  const unjustified = absences.filter(a => !a.justified && !isHoliday(a.date)).length;
   const isOut = unjustified >= 3;
 
   const resetForm = () => { setDate(''); setIsJustified(false); setJustifyNote(''); setFormErrors({}); };
@@ -1122,6 +1135,7 @@ function AbsenceSection({ empId, absences, workDays, onAdd, onJustify, onUnjusti
   const usedAbsDates = React.useMemo(() => {
     var s = new Set(absences.map(a => a.date));
     if (disabledEvDates) disabledEvDates.forEach(function(d) { s.add(d); });
+    getHolidays().forEach(function(h) { s.add(h.date); });
     return s;
   }, [absences, disabledEvDates]);
 
@@ -1579,6 +1593,7 @@ const EVENT_TYPE = {
   permiso:          { label_es: 'Permiso',            label_en: 'Leave permit',      cls: 'badge--neutral' },
   licencia_familiar:{ label_es: 'Licencia familiar',  label_en: 'Family care leave', cls: 'badge--neutral' },
   licencia_medica:  { label_es: 'Licencia médica',   label_en: 'Medical leave',     cls: 'badge--neutral' },
+  servicio_feriado: { label_es: 'Servicio en feriado', label_en: 'Holiday service',  cls: 'badge--info'    },
 };
 
 function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, onAddAbsence, onRemoveAbsenceById, onBatchAddAbsences }) {
@@ -1794,7 +1809,7 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
               if (nd2.toISOString().slice(0, 10) === ods) { inNew = true; break; }
               nd2.setDate(nd2.getDate() + 1);
             }
-            if (!inNew && !allAtt[empId + ':' + ods]) absentDates.push(ods);
+            if (!inNew && !allAtt[empId + ':' + ods] && !isHoliday(ods)) absentDates.push(ods);
             od.setDate(od.getDate() + 1);
           }
           if (absentDates.length) onBatchAddAbsences(empId, absentDates);
@@ -1820,7 +1835,7 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
       var end = ev.dateEnd ? new Date(ev.dateEnd + 'T00:00:00') : new Date(ev.date + 'T00:00:00');
       while (d <= end) {
         var ds = d.toISOString().slice(0, 10);
-        if (!allAtt[empId + ':' + ds]) absentDates.push(ds);
+        if (!allAtt[empId + ':' + ds] && !isHoliday(ds)) absentDates.push(ds);
         d.setDate(d.getDate() + 1);
       }
       if (absentDates.length) onBatchAddAbsences(empId, absentDates);
@@ -2087,12 +2102,18 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const [query, setQuery] = React.useState('');
   const [employees, setEmployees] = React.useState(() => {
     const emailOverrides = typeof getEmployeeEmails === 'function' ? getEmployeeEmails() : {};
-    return [...EMPLOYEES, ...extraEmployees].map(e =>
+    const persisted = typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [];
+    const seen = new Set();
+    return [...EMPLOYEES, ...persisted, ...extraEmployees].filter(e => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    }).map(e =>
       emailOverrides[e.id] ? { ...e, email: emailOverrides[e.id] } : e
     );
   });
   const [selectedId, setSelectedId] = React.useState(EMPLOYEES[0]?.id || null);
-  const allDepts = React.useMemo(() => [...new Set(employees.map(e => e.dept))].sort(), [employees]);
+  const allDepts = React.useMemo(() => getDepartments(), []);
   const allRoles = React.useMemo(() => [...new Set(employees.map(e => e.role))].sort(), [employees]);
   const [editTarget, setEditTarget] = React.useState(null);
   const [editErrors, setEditErrors] = React.useState({});
@@ -2111,6 +2132,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const [tardRegJustified, setTardRegJustified] = React.useState(false);
   const [tardRegNote, setTardRegNote] = React.useState('');
   const [tardRegErrors, setTardRegErrors] = React.useState({});
+  const [showHolidays, setShowHolidays] = React.useState(false);
+  const [holidayEditor, setHolidayEditor] = React.useState(null); // { date, name_es, name_en } | null
 
   const [evMap, setEvMap] = React.useState(getEventualidades);
   const saveEvMap = (next) => { setEvMap(next); saveEventualidades(next); };
@@ -2141,10 +2164,10 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const removeAbsence = (empId, absId) => {
     saveAbsences({ ...absencesMap, [empId]: (absencesMap[empId] || []).filter(a => a.id !== absId) });
   };
-  const unjustifiedCount = (empId) => (absencesMap[empId] || []).filter(a => !a.justified).length;
+  const unjustifiedCount = (empId) => (absencesMap[empId] || []).filter(a => !a.justified && !isHoliday(a.date)).length;
   const currentMonth = React.useMemo(() => new Date().toLocaleDateString('en-CA').slice(0, 7), []);
   const unjustifiedThisMonth = React.useCallback(
-    (empId) => (absencesMap[empId] || []).filter(a => !a.justified && a.date.startsWith(currentMonth)).length,
+    (empId) => (absencesMap[empId] || []).filter(a => !a.justified && a.date.startsWith(currentMonth) && !isHoliday(a.date)).length,
     [absencesMap, currentMonth]
   );
 
@@ -2232,6 +2255,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     setEditErrors({});
     window.auditLog?.edit({ name: editTarget.name, id: editTarget.id });
     setEmployees(prev => prev.map(e => e.id === editTarget.id ? editTarget : e));
+    if (typeof saveRegisteredEmployee === 'function') saveRegisteredEmployee(editTarget);
     if (typeof saveEmployeeEmail === 'function') saveEmployeeEmail(editTarget.id, editTarget.email.trim());
     if (typeof getCredentials === 'function' && typeof saveCredential === 'function') {
       const c = getCredentials()[editTarget.id];
@@ -2473,6 +2497,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
           <div className="page__subtitle">{t.dash_sub}</div>
         </div>
         <div className="page__actions">
+
           <div className="export-wrap" ref={exportRef}>
             <button className="btn btn--ghost" onClick={() => setExportOpen(o => !o)}>
               <Icon name="download" size={14}/> {t.dash_export} <Icon name="chevDown" size={12}/>
@@ -2522,6 +2547,87 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
           </div>
         ))}
       </div>
+
+      {showHolidays && (() => {
+        const holidays = getHolidays();
+        const [hEdit, setHEdit] = React.useState(null); // null | { date, name_es, name_en }
+        const [hErr, setHErr] = React.useState('');
+        return (
+          <div className="card" style={{ marginBottom:16 }}>
+            <div className="card__head" style={{ justifyContent:'space-between' }}>
+              <div>
+                <div className="card__title">{lang === 'es' ? 'Días feriados' : 'Holidays'}</div>
+                <div className="card__subtitle">{lang === 'es' ? 'Estos días no cuentan como ausencias' : 'These days do not count as absences'}</div>
+              </div>
+              <button className="btn btn--primary" onClick={() => setHEdit({ date:'', name_es:'', name_en:'' })}>
+                <Icon name="plus" size={13}/> {lang === 'es' ? 'Agregar' : 'Add'}
+              </button>
+            </div>
+            <div className="card__body">
+              {hEdit && (
+                <div style={{ display:'flex', gap:10, alignItems:'end', flexWrap:'wrap', padding:'12px', background:'var(--cream-100)', borderRadius:'var(--radius-md)', marginBottom:14 }}>
+                  <div className="field" style={{ margin:0, minWidth:140 }}>
+                    <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'}</span>
+                    <input className="field__input mono" type="date" value={hEdit.date}
+                      onChange={e => { setHErr(''); setHEdit(p => ({...p, date: e.target.value})); }}/>
+                  </div>
+                  <div className="field" style={{ margin:0, flex:1, minWidth:160 }}>
+                    <span className="field__label">{lang === 'es' ? 'Nombre (ES)' : 'Name (ES)'}</span>
+                    <input className="field__input" value={hEdit.name_es} maxLength={60}
+                      onChange={e => { setHErr(''); setHEdit(p => ({...p, name_es: e.target.value})); }}/>
+                  </div>
+                  <div className="field" style={{ margin:0, flex:1, minWidth:160 }}>
+                    <span className="field__label">{lang === 'es' ? 'Nombre (EN)' : 'Name (EN)'}</span>
+                    <input className="field__input" value={hEdit.name_en} maxLength={60}
+                      onChange={e => { setHErr(''); setHEdit(p => ({...p, name_en: e.target.value})); }}/>
+                  </div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button className="btn btn--primary" style={{ fontSize:12, padding:'6px 16px' }} onClick={() => {
+                      if (!hEdit.date || !hEdit.name_es.trim() || !hEdit.name_en.trim()) { setHErr('Completa todos los campos.'); return; }
+                      const all = getHolidays();
+                      const idx = all.findIndex(h => h.date === hEdit.date);
+                      if (idx >= 0 && DEFAULT_HOLIDAYS.some(d => d.date === hEdit.date)) { setHErr('No se puede editar un feriado por defecto.'); return; }
+                      let next;
+                      if (idx >= 0 && all[idx].type !== 'fixed') next = all.map(h => h.date === hEdit.date ? { ...h, name_es: hEdit.name_es.trim(), name_en: hEdit.name_en.trim() } : h);
+                      else next = [...all, { date: hEdit.date, name_es: hEdit.name_es.trim(), name_en: hEdit.name_en.trim(), type: 'custom' }];
+                      saveHolidays(next);
+                      setHEdit(null);
+                      setHErr('');
+                    }}>{lang === 'es' ? 'Guardar' : 'Save'}</button>
+                    <button className="btn btn--ghost" style={{ fontSize:12, padding:'6px 12px' }} onClick={() => { setHEdit(null); setHErr(''); }}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                  </div>
+                  {hErr && <span style={{ fontSize:11, color:'var(--danger)', width:'100%' }}>{hErr}</span>}
+                </div>
+              )}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:8 }}>
+                {holidays.map(h => (
+                  <div key={h.date} style={{
+                    display:'flex', alignItems:'center', gap:10, padding:'8px 12px',
+                    background: h.type === 'uasd' ? 'rgba(201,169,97,0.08)' : h.type === 'custom' ? 'var(--cream-100)' : 'transparent',
+                    border:'1px solid var(--ink-100)', borderRadius:'var(--radius-sm)',
+                    fontSize:13,
+                  }}>
+                    <span className="mono" style={{ fontSize:11, color:'var(--ink-400)', minWidth:80 }}>
+                      {(() => { const [y,m,d] = h.date.split('-'); return `${d}/${m}/${y}`; })()}
+                    </span>
+                    <span style={{ flex:1, color:'var(--ink-800)', fontWeight: h.type === 'uasd' ? 600 : 400 }}>
+                      {lang === 'es' ? h.name_es : h.name_en}
+                    </span>
+                    {h.type === 'uasd' && <span className="badge badge--gold" style={{ fontSize:9 }}>UASD</span>}
+                    {h.type === 'fixed' && <span className="badge" style={{ fontSize:9, background:'var(--ink-50)', color:'var(--ink-400)' }}>RD</span>}
+                    {h.type === 'custom' && (
+                      <button className="btn btn--ghost" style={{ padding:'2px 6px', opacity:.5, fontSize:11 }}
+                        onClick={() => { const all = getHolidays(); saveHolidays(all.filter(x => x.date !== h.date)); }}>
+                        <Icon name="trash" size={11}/>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="card card--table" ref={tableRef}>
 
@@ -2789,8 +2895,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                 <div className={`field${editErrors.dept ? ' field--error' : ''}`}>
                   <span className="field__label">{t.dash_col_dept} <span className="field__req">*</span></span>
                   <ComboBoxField value={editTarget.dept} maxLength={50}
-                    options={allDepts} requireSelection
-                    onChange={(v) => { clearError('dept'); updateEditField({ dept: v }); }} />
+                    options={allDepts}
+                    onChange={(v) => { clearError('dept'); updateEditField({ dept: v }); if (v && !allDepts.includes(v)) addDepartment(v); }} />
                 </div>
                 <div className={`field${editErrors.role ? ' field--error' : ''}`}>
                   <span className="field__label">{t.dash_col_role} <span className="field__req">*</span></span>
@@ -3166,4 +3272,4 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   );
 }
 
-Object.assign(window, { DashboardView });
+Object.assign(window, { DashboardView, DatePickerField, ComboBoxField });

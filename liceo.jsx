@@ -1287,7 +1287,7 @@ function LiceoView({ t, lang, setRoute }) {
         if (att[attKey] && att[attKey].source === 'liceo') delete att[attKey];
         var absArr   = abs[emp.id] || [];
         var yaExiste = absArr.some(function(a) { return a.date === viewDate && a.source === 'liceo'; });
-        if (!yaExiste) {
+        if (!yaExiste && !isHoliday(viewDate)) {
           abs[emp.id] = absArr.concat([{
             id: baseTs * 100 + idx,
             date: viewDate,

@@ -420,7 +420,7 @@ function StrikesReport({ filterMonth, monthLabel }) {
     return emps
       .map(emp => {
         const allAbs  = absencesMap[emp.id] || [];
-        const absences = filterMonth ? allAbs.filter(a => a.date?.slice(0, 7) === filterMonth) : allAbs;
+        const absences = filterMonth ? allAbs.filter(a => a.date?.slice(0, 7) === filterMonth && !isHoliday(a.date)) : allAbs.filter(a => !isHoliday(a.date));
         const unjustified = absences.filter(a => !a.justified).length;
         return { emp, absences, unjustified };
       })
@@ -759,6 +759,7 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
           { bg:'rgba(34,197,94,0.10)',  color:'#16a34a',              sym:'✓', label:'Presente' },
           { bg:'rgba(193,85,77,0.13)',  color:'var(--danger,#c1554d)', sym:'✕', label:'Ausente sin justificar' },
           { bg:'rgba(200,160,0,0.14)',  color:'var(--gold-600,#b45309)',sym:'✕', label:'Ausente justificado' },
+          { bg:'rgba(59,130,246,0.10)', color:'#3b82f6',              sym:'📅', label:'Feriado' },
         ].map(function(item, i) {
           return (
             <div key={i} style={{ display:'flex', alignItems:'center', gap:6, fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-500)' }}>
@@ -821,9 +822,9 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
                       for (var i = 0; i < empAbs.length; i++) {
                         if (empAbs[i].date === ds) { found = empAbs[i]; break; }
                       }
-                      return { ds: ds, abs: found };
+                      return { ds: ds, abs: found, isHoliday: isHoliday(ds) };
                     });
-                    var absCount = dayCells.filter(function(c) { return c.abs !== null; }).length;
+                    var absCount = dayCells.filter(function(c) { return c.abs !== null && !c.isHoliday; }).length;
 
                     return (
                       <tr key={emp.id} style={{ background: ei % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.018)' }}>
@@ -832,8 +833,20 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
                           <div style={{ fontFamily:'var(--font-sans)', fontSize:10, color:'var(--ink-400)', marginTop:1 }}>{emp.dept}</div>
                         </td>
                         {dayCells.map(function(cell) {
-                          var isAbsent  = cell.abs !== null;
+                          var isAbsent  = cell.abs !== null && !cell.isHoliday;
                           var justified = isAbsent && cell.abs.justified;
+                          if (cell.isHoliday) {
+                            return (
+                              <td key={cell.ds} style={{ textAlign:'center', padding:'8px 4px', borderBottom:'1px solid var(--ink-100)' }}>
+                                <span title="Feriado" style={{
+                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
+                                  width:24, height:24, borderRadius:'50%',
+                                  background:'rgba(59,130,246,0.10)', color:'#3b82f6',
+                                  fontWeight:700, fontSize:13
+                                }}>📅</span>
+                              </td>
+                            );
+                          }
                           return (
                             <td key={cell.ds} style={{ textAlign:'center', padding:'8px 4px', borderBottom:'1px solid var(--ink-100)' }}>
                               {isAbsent ? (

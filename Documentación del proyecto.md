@@ -49,3 +49,113 @@ estructura del terminal ni las tarjetas de resultado.
   texto hijo: usa solo `dangerouslySetInnerHTML`. Si se le agrega texto directo se rompe
   ("Can only set one of children or dangerouslySetInnerHTML"). Editar el texto del título
   en la clave `kiosk_title` del diccionario, no sobre el elemento.
+
+---
+
+## Plan: Sistema de Feriados en Asistencia + Pago Doble
+
+### Resumen
+Integrar feriados en el sistema de asistencia para que:
+1. Se excluyan del denominador en reportes y KPIs
+2. Aparezcan como "Feriado" con indicador visual en el grid semanal
+3. Trabajo en feriado = pago doble como tipo de eventualidad
+
+### Modelo de negocio
+- **Feriado = se excluye del conteo** — No cuenta como presente ni ausente
+- **Trabajo en feriado = pago doble** — Se registra como eventualidad tipo "Trabajo en feriado"
+- **Reportes** — El feriado aparece con badge azul especial, se retira del denominador
+- **Base legal** — Art. 68 Código de Trabajo DR: feriados son días pagados
+
+---
+
+### Cambio 1: Nuevo tipo EVENT_TYPE
+**Archivo:** `dashboard.jsx:1590-1596`
+
+Agregar al mapa `EVENT_TYPE`:
+```js
+trabajo_feriado: { label_es: 'Trabajo en feriado', label_en: 'Holiday work', cls: 'badge--info' }
+```
+
+Badge azul para diferenciar de los demás tipos.
+
+---
+
+### Cambio 2: Filtrar feriados en FaltasSemanalReport
+**Archivo:** `reports.jsx:659-875`
+
+- Importar `isHoliday` (de `shared.jsx`)
+- En generación de días (líneas 682-696): marcar días feriados con `isHoliday: true`
+- En renderización de celdas (líneas 834-857): celda azul con icono `calendar1`
+- En conteo de faltas (línea 826): excluir días feriados
+- Agregar "Feriado" a la leyenda (líneas 757-770)
+
+**Diseño celda feriado:**
+```
+Fondo: rgba(59,130,246,0.10)
+Icono: calendar1 (12px)
+Color: #3b82f6
+Tooltip: "Feriado — {nombre}"
+```
+
+---
+
+### Cambio 3: Filtrar feriados en StrikesReport
+**Archivo:** `reports.jsx:412-511`
+
+- Importar `isHoliday`
+- Filtrar ausencias: excluir las que caigan en feriados (líneas 418-429)
+- Actualizar badge "total ausencias"
+
+---
+
+### Cambio 4: Filtrar feriados en Dashboard KPIs
+**Archivo:** `dashboard.jsx:2166-2171`
+
+- En `unjustifiedThisMonth`: agregar `!isHoliday(a.date)` al filtro
+- Afecta `StrikeBadge` en tabla de empleados (línea 2742)
+
+---
+
+### Cambio 5: Filtrar feriados en AbsenceSection
+**Archivo:** `dashboard.jsx:1130`
+
+- Excluir feriados del conteo de "OUT" (ya excluye del datepicker)
+
+---
+
+### Cambio 6: Prevenir ausencias en Finca/Liceo
+**Archivos:** `finca.jsx:1350-1363`, `liceo.jsx:1286-1298`
+
+- Agregar `!isHoliday(viewDate)` antes de crear ausencias
+
+---
+
+### Cambio 7: Actualizar leyenda del grid
+**Archivo:** `reports.jsx:757-770`
+
+Agregar cuarto ítem:
+```jsx
+<span style={{ background:'rgba(59,130,246,0.10)', color:'#3b82f6' }}>📅</span>
+<span>Feriado</span>
+```
+
+---
+
+### Archivos a modificar
+
+| Archivo | Cambios |
+|---------|---------|
+| `dashboard.jsx` | EVENT_TYPE, KPIs, AbsenceSection |
+| `reports.jsx` | StrikesReport, FaltasSemanalReport, badge feriado, leyenda |
+| `finca.jsx` | `!isHoliday()` check |
+| `liceo.jsx` | `!isHoliday()` check |
+
+---
+
+### Orden de implementación
+1. Nuevo tipo EVENT_TYPE (dashboard.jsx)
+2. Filtrar KPIs + AbsenceSection (dashboard.jsx)
+3. Filtrar StrikesReport (reports.jsx)
+4. Filtrar FaltasSemanalReport + badge feriado (reports.jsx)
+5. Prevenir ausencias en Finca/Liceo
+6. Verificar CSS badge--info

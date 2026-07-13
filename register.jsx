@@ -3,7 +3,8 @@
 const FINGERS = ['T-I', 'I-I', 'M-I', 'A-I', 'P-I', 'T-D', 'I-D', 'M-D', 'A-D', 'P-D'];
 
 function generateNextCode() {
-  const max = EMPLOYEES.reduce((m, e) => {
+  const all = typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [];
+  const max = [...EMPLOYEES, ...all].reduce((m, e) => {
     const n = parseInt((e.id || '').replace('EMP-', ''), 10) || 0;
     return n > m ? n : m;
   }, 0);
@@ -50,7 +51,7 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
   }));
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const allDepts = React.useMemo(() => [...new Set(EMPLOYEES.map(e => e.dept))].sort(), []);
+  const allDepts = React.useMemo(() => getDepartments(), []);
   const allRoles = React.useMemo(() => [...new Set(EMPLOYEES.map(e => e.role))].sort(), []);
 
   const [regErrors, setRegErrors] = React.useState({});
@@ -278,7 +279,7 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
     if (!form.name?.trim()) errs.name = true;
     if (!form.cedula?.trim()) errs.cedula = true;
     if (!form.code?.trim()) errs.code = true;
-    else if (EMPLOYEES.some(e => e.id === form.code.trim())) errs.code = 'dup';
+    else if ([...EMPLOYEES, ...(typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [])].some(e => e.id === form.code.trim())) errs.code = 'dup';
     if (!form.dept?.trim()) errs.dept = true;
     if (!form.role?.trim()) errs.role = true;
     if (!form.email?.trim()) errs.email = true;
@@ -292,7 +293,7 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
     const nameLower   = form.name.trim().toLowerCase();
     const cedulaClean = form.cedula.replace(/\D/g, '');
     const emailLower  = form.email.trim().toLowerCase();
-    const isDup = EMPLOYEES.some(emp =>
+    const isDup = [...EMPLOYEES, ...(typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [])].some(emp =>
       emp.cedula?.replace(/\D/g, '') === cedulaClean ||
       emp.name?.trim().toLowerCase()  === nameLower  ||
       emp.email?.trim().toLowerCase() === emailLower
@@ -307,7 +308,9 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
   };
 
   const save = () => {
-    onRegister?.({ ...form, id: form.code, lastIn: '—' });
+    const emp = { ...form, id: form.code, lastIn: '—' };
+    saveRegisteredEmployee(emp);
+    onRegister?.(emp);
     window.auditLog?.add({ name: form.name || 'Nuevo empleado', id: form.cedula || '—' });
     setFlash(t.reg_saved);
     setTimeout(() => setRoute('dashboard'), 800);
@@ -446,8 +449,8 @@ function Step1({ t, form, update, setForm, allDepts, allRoles, errors, clearErro
             <div className={`field${errors.dept ? ' field--error' : ''}`}>
               <label className="field__label">{t.reg_fld_dept} <span className="field__req">*</span></label>
               <ComboBoxField value={form.dept} maxLength={50}
-                options={allDepts} requireSelection
-                onChange={v => { clearError('dept'); update('dept', v); }}/>
+                options={allDepts}
+                onChange={v => { clearError('dept'); update('dept', v); if (v && !allDepts.includes(v)) addDepartment(v); }}/>
             </div>
 
             {/* Cargo */}

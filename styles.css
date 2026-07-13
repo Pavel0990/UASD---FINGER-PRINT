@@ -479,6 +479,10 @@ input, select, textarea {
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes feriadoYearIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 .usermenu__head {
   display: flex;
   align-items: center;
@@ -800,6 +804,11 @@ input, select, textarea {
 .badge--neutral {
   background: var(--cream-100);
   color: var(--ink-600);
+}
+
+.badge--info {
+  background: rgba(59,130,246,0.12);
+  color: #2563eb;
 }
 
 .badge--retired {
@@ -4917,7 +4926,7 @@ tr.table__row--selected .table__actions {
 @keyframes accPop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes menuOpen  { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes credFormIn    { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes credFormOut   { from { opacity: 1; } to { opacity: 0; } }
+@keyframes credFormOut   { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(6px) scale(.985); } }
 @keyframes assignFormIn    { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes assignFormOut   { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(4px) scale(.99); } }
 @keyframes assignSelectIn  { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
@@ -5037,7 +5046,7 @@ tr.table__row--selected .table__actions {
 }
 
 .admin-panel__content {
-  flex: 1; overflow-y: auto;
+  flex: 1; overflow-y: auto; scrollbar-gutter: stable;
   transition: opacity .2s ease;
 }
 .admin-panel__content--transitioning { opacity: 0; }
@@ -5420,6 +5429,10 @@ tr.table__row--selected .table__actions {
 @keyframes body-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes body-out {
+  from { opacity: 1; transform: translateY(0);   }
+  to   { opacity: 0; transform: translateY(6px); }
 }
 @keyframes roster-in {
   from { opacity: 0; transform: translateY(20px); }
@@ -5943,6 +5956,13 @@ tr.table__row--selected .table__actions {
   0.55% { left:108%; opacity:1; }
   0.7%  { left:108%; opacity:0; }
   100%  { left:108%; opacity:0; }
+}
+
+@keyframes snowFall {
+  0%   { transform: translateY(0)   translateX(0);     opacity: 0; }
+  8%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateY(380px) translateX(14px); opacity: 0; }
 }
 
 /* ── Print: Reporte de Faltas por Semanas ── */

@@ -340,6 +340,9 @@ const I18N = {
     farm_no_emps_admin: 'Contacta a un administrador para asignar personal.',
     liceo_title:       'Liceo Experimental',
     liceo_sub:         'Control de asistencia de estudiantes del liceo',
+    vacaciones_title:  'Vacaciones Colectivas',
+    feriados_title:    'Días feriados',
+    feriados_sub:      'Administración de días inhábiles nacionales',
   },
   en: {
     appName: 'Biometric Attendance System',
@@ -677,6 +680,9 @@ const I18N = {
     farm_no_emps_admin: 'Contact an administrator to assign staff.',
     liceo_title:       'Experimental High School',
     liceo_sub:         'Student attendance control for the school',
+    vacaciones_title:  'Collective Vacations',
+    feriados_title:    'Public Holidays',
+    feriados_sub:      'Administration of national non-working days',
   }
 };
 
@@ -759,6 +765,7 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>,
     shieldUser: <><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M6.376 18.91a6 6 0 0 1 11.249.003"/><circle cx="12" cy="11" r="4"/></>,
     calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
+    calendar1: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M11 14h1v4" /></>,
     grid: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></>,
     barChart: <><path d="M3 21h18M7 17V9M12 17V5M17 17v-7" /></>,
     activity: <><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></>,
@@ -952,6 +959,14 @@ function UserMenu({ t, lang, account, setRoute, close, onAdmin }) {
           <Icon name="school" size={15} /> {t.liceo_title}
         </button>
         )}
+        <button className="usermenu__action" onClick={() => { onAdmin('feriados'); }}>
+          <Icon name="calendar1" size={15} /> {t.feriados_title}
+        </button>
+        {(typeof userHasPermission !== 'function' || userHasPermission('vacaciones')) && (
+        <button className="usermenu__action" onClick={() => { onAdmin('vacaciones'); }}>
+          <Icon name="calendar1" size={15} /> {t.vacaciones_title}
+        </button>
+        )}
       </div>
     </div>);
 
@@ -1063,12 +1078,15 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
 
   const canFarm  = typeof userHasPermission === 'function' ? userHasPermission('farm')  : true;
   const canLiceo = typeof userHasPermission === 'function' ? userHasPermission('liceo') : true;
+  const canVac   = typeof userHasPermission === 'function' ? userHasPermission('vacaciones') : true;
   const tabs = [
     { id: 'account',   label: t.um_view,       icon: 'user'      },
     ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'activity'   }] : []),
     ...(canRoles ? [{ id: 'roles',     label: t.nav_roles,     icon: 'shieldUser' }] : []),
     ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'landPlot'   }] : []),
     ...(canLiceo ? [{ id: 'liceo',     label: t.liceo_title,   icon: 'school'     }] : []),
+    { id: 'feriados', label: t.feriados_title, icon: 'calendar1' },
+    ...(canVac   ? [{ id: 'vacaciones', label: t.vacaciones_title, icon: 'calendar1' }] : []),
   ];
 
   return (
@@ -1115,8 +1133,10 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
             {tab === 'account'   && <AccountPanelContent t={t} lang={lang} setLang={setLang} />}
             {tab === 'changelog' && <ChangelogView t={t} setRoute={setRoute} />}
             {tab === 'roles'     && <RolesView t={t} setRoute={setRoute} onClose={close} />}
-            {tab === 'finca'     && <FarmView  t={t} lang={lang} setRoute={setRoute} />}
-            {tab === 'liceo'     && <LiceoView t={t} lang={lang} setRoute={setRoute} />}
+            {tab === 'finca'     && <FarmView      t={t} lang={lang} setRoute={setRoute} />}
+            {tab === 'liceo'     && <LiceoView     t={t} lang={lang} setRoute={setRoute} />}
+            {tab === 'vacaciones' && <VacacionesView t={t} lang={lang} />}
+            {tab === 'feriados'  && <FeriadosView  t={t} lang={lang} />}
           </div>
         </div>
       </div>
@@ -1326,6 +1346,12 @@ function nearestColorName(hex) {
     return d < best.d ? { d, name: c.name } : best;
   }, { d: Infinity, name: '' }).name;
 }
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAYS_ES   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -1342,6 +1368,507 @@ function saveEmployeeEmail(empId, email) {
   } catch {}
 }
 
+/* ── Departamento system ──────────────────────────── */
+const DEFAULT_DEPARTMENTS = [
+  'Data', 'Recursos Humanos', 'Facultad de Ingeniería', 'Biblioteca Central',
+  'Tesorería', 'Sistemas e Informática', 'Rectoría', 'Mantenimiento',
+  'Facultad de Humanidades', 'Seguridad', 'Registro', 'Comunicaciones',
+  'Economato', 'Caja',
+];
+const DEPARTMENTS_KEY = 'uasd_departments';
+function getDepartments() {
+  try {
+    const custom = JSON.parse(localStorage.getItem(DEPARTMENTS_KEY) || '[]');
+    const merged = [...new Set([...DEFAULT_DEPARTMENTS, ...custom])].sort();
+    return merged;
+  } catch { return [...DEFAULT_DEPARTMENTS].sort(); }
+}
+function addDepartment(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  try {
+    const existing = JSON.parse(localStorage.getItem(DEPARTMENTS_KEY) || '[]');
+    if (existing.includes(trimmed) || DEFAULT_DEPARTMENTS.includes(trimmed)) return false;
+    existing.push(trimmed);
+    localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(existing));
+    return true;
+  } catch { return false; }
+}
+function removeDepartment(name) {
+  try {
+    let custom = JSON.parse(localStorage.getItem(DEPARTMENTS_KEY) || '[]');
+    custom = custom.filter(d => d !== name);
+    localStorage.setItem(DEPARTMENTS_KEY, JSON.stringify(custom));
+    return true;
+  } catch { return false; }
+}
+
+/* ── Employee persistence ─────────────────────────── */
+const REG_EMP_KEY = 'uasd_registered_employees';
+function getRegisteredEmployees() {
+  try { return JSON.parse(localStorage.getItem(REG_EMP_KEY) || '[]'); } catch { return []; }
+}
+function saveRegisteredEmployee(emp) {
+  try {
+    const list = getRegisteredEmployees();
+    const idx = list.findIndex(e => e.id === emp.id);
+    if (idx >= 0) list[idx] = emp;
+    else list.push(emp);
+    localStorage.setItem(REG_EMP_KEY, JSON.stringify(list));
+  } catch {}
+}
+function removeRegisteredEmployee(empId) {
+  try {
+    const list = getRegisteredEmployees().filter(e => e.id !== empId);
+    localStorage.setItem(REG_EMP_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+/* ── Días feriados ─────────────────────────────── */
+const HOLIDAYS_KEY            = 'uasd_holidays';
+const HOLIDAYS_REMOVED_KEY    = 'uasd_holidays_removed';
+const HOLIDAY_TYPES_KEY       = 'uasd_holiday_types';
+const HOLIDAY_TYPE_COLORS_KEY = 'uasd_holiday_type_colors';
+const DEFAULT_HOLIDAYS = [
+  { date: '2026-01-01', name_es: 'Año Nuevo', name_en: "New Year's Day", type: 'fixed' },
+  { date: '2026-01-06', name_es: 'Día de los Santos Reyes', name_en: 'Epiphany', type: 'fixed' },
+  { date: '2026-01-21', name_es: 'Día de la Altagracia', name_en: 'Our Lady of Altagracia', type: 'fixed' },
+  { date: '2026-01-26', name_es: 'Día de Duarte', name_en: 'Duarte Day', type: 'fixed' },
+  { date: '2026-02-27', name_es: 'Día de la Independencia', name_en: 'Independence Day', type: 'fixed' },
+  { date: '2026-04-18', name_es: 'Viernes Santo', name_en: 'Good Friday', type: 'fixed' },
+  { date: '2026-05-01', name_es: 'Día del Trabajo', name_en: 'Labor Day', type: 'fixed' },
+  { date: '2026-06-19', name_es: 'Día de Corpus Christi', name_en: 'Corpus Christi', type: 'fixed' },
+  { date: '2026-08-16', name_es: 'Restauración de la República', name_en: 'Restoration Day', type: 'fixed' },
+  { date: '2026-09-24', name_es: 'Nuestra Señora de las Mercedes', name_en: 'Our Lady of Mercedes', type: 'fixed' },
+  { date: '2026-10-28', name_es: 'Día de la UASD', name_en: 'UASD Day', type: 'uasd' },
+  { date: '2026-11-06', name_es: 'Día de la Constitución', name_en: 'Constitution Day', type: 'fixed' },
+  { date: '2026-12-25', name_es: 'Navidad', name_en: 'Christmas Day', type: 'fixed' },
+];
+function getHolidays() {
+  try {
+    const custom = JSON.parse(localStorage.getItem(HOLIDAYS_KEY) || '[]');
+    const removed = new Set(JSON.parse(localStorage.getItem(HOLIDAYS_REMOVED_KEY) || '[]'));
+    const customDates = new Set(custom.map(h => h.date));
+    const defaults = DEFAULT_HOLIDAYS.filter(h => !removed.has(h.date) && !customDates.has(h.date));
+    return [...defaults, ...custom].sort((a, b) => a.date.localeCompare(b.date));
+  } catch { return [...DEFAULT_HOLIDAYS]; }
+}
+function saveHolidays(list) {
+  try {
+    const defaultDates = new Set(DEFAULT_HOLIDAYS.map(h => h.date));
+    const activeDates = new Set(list.map(h => h.date));
+    const removed = DEFAULT_HOLIDAYS.filter(h => !activeDates.has(h.date)).map(h => h.date);
+    const custom = list.filter(h => !defaultDates.has(h.date));
+    const overrides = list.filter(h => defaultDates.has(h.date));
+    localStorage.setItem(HOLIDAYS_KEY, JSON.stringify([...overrides, ...custom]));
+    localStorage.setItem(HOLIDAYS_REMOVED_KEY, JSON.stringify(removed));
+  } catch {}
+}
+function isHoliday(dateStr) {
+  return getHolidays().some(h => h.date === dateStr);
+}
+
+function FeriadosView({ t, lang }) {
+  const [holidays, setHolidays] = React.useState(getHolidays);
+  const [year, setYear] = React.useState(new Date().getFullYear());
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [newDate, setNewDate] = React.useState('');
+  const [newName, setNewName] = React.useState('');
+  const [err, setErr] = React.useState({});
+  const [editId, setEditId] = React.useState(null);
+  const [editClosing, setEditClosing] = React.useState(false);
+  const [editDate, setEditDate] = React.useState('');
+  const [editName, setEditName] = React.useState('');
+  const [editErr, setEditErr] = React.useState({});
+  const [newType, setNewType] = React.useState('');
+  const [editType, setEditType] = React.useState('');
+  const [hoverId, setHoverId] = React.useState(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(null);
+  const [customHTypes, setCustomHTypes] = React.useState(function() {
+    try { return JSON.parse(localStorage.getItem(HOLIDAY_TYPES_KEY) || '[]'); } catch { return []; }
+  });
+  const [hTypeColors, setHTypeColors] = React.useState(function() {
+    try { return JSON.parse(localStorage.getItem(HOLIDAY_TYPE_COLORS_KEY) || '{}'); } catch { return {}; }
+  });
+
+  var extendedHTypePalette = React.useMemo(function() {
+    var usedInPreset = {};
+    PRESET_COLORS.forEach(function(h) { usedInPreset[h] = true; });
+    return PRESET_COLORS.concat(
+      COLOR_NAMES.map(function(c) { return c.hex; }).filter(function(h) { return !usedInPreset[h]; })
+    );
+  }, []);
+
+  function nextHTypeColor(colors) {
+    var usedSet = {};
+    Object.values(colors).forEach(function(h) { usedSet[h.toLowerCase()] = true; });
+    var available = extendedHTypePalette.filter(function(h) { return !usedSet[h.toLowerCase()]; });
+    if (available.length > 0) {
+      return available[Math.floor(Math.random() * available.length)];
+    }
+    var hex;
+    do { hex = '#' + Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6, '0'); } while (usedSet[hex.toLowerCase()]);
+    return hex;
+  }
+
+  const closeAdd = () => { setAddOpen(false); setNewDate(''); setNewName(''); setNewType(''); setErr({}); };
+
+  const closeEdit = () => {
+    setEditClosing(true);
+    setTimeout(() => { setEditId(null); setEditClosing(false); setEditErr({}); }, 300);
+  };
+
+  React.useEffect(() => { setNewDate(''); setNewType(''); setEditDate(''); setEditType(''); setEditId(null); setEditClosing(false); setEditErr({}); }, [year]);
+
+  React.useEffect(() => {
+    const now = new Date();
+    if (now.getMonth() !== 11) return;
+    const nextYear = now.getFullYear() + 1;
+    const nextYearStr = String(nextYear);
+    const nextYearHolidays = holidays.filter(h => h.date.startsWith(nextYearStr));
+    if (nextYearHolidays.length > 0) return;
+    const currentYearStr = String(now.getFullYear());
+    const currentHolidays = holidays.filter(h => h.date.startsWith(currentYearStr));
+    if (currentHolidays.length === 0) return;
+    const inherited = currentHolidays.map(h => ({
+      ...h,
+      date: h.date.replace(currentYearStr, nextYearStr),
+    }));
+    const merged = [...holidays, ...inherited].sort((a, b) => a.date.localeCompare(b.date));
+    setHolidays(merged);
+    saveHolidays(merged);
+  }, []);
+
+  const defaults = new Set(DEFAULT_HOLIDAYS.map(h => h.date));
+  const yearHolidays = holidays.filter(h => h.date.startsWith(String(year)));
+
+  const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const MONTHS = lang === 'es' ? MONTHS_ES : MONTHS_EN;
+  const DOW_ES  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const DOW_EN  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DOWS    = lang === 'es' ? DOW_ES : DOW_EN;
+
+  const HEAD_ES = ['Fecha','Día','Nombre','Tipo',''];
+  const HEAD_EN = ['Date','Day','Name','Type',''];
+  const HEADS   = lang === 'es' ? HEAD_ES : HEAD_EN;
+
+  const TYPE_LABEL = {
+    fixed: lang === 'es' ? 'Nacional' : 'National',
+    uasd: 'UASD',
+    'Nacional': 'Nacional', 'National': 'National', 'UASD': 'UASD',
+  };
+
+  const hTypeToDisplay = function(type) {
+    if (!type || type === 'custom') return '';
+    return TYPE_LABEL[type] || type;
+  };
+
+  const hTypeOptions = [lang === 'es' ? 'Nacional' : 'National', 'UASD'].concat(customHTypes);
+  const removableHTypes = new Set(customHTypes);
+
+  React.useEffect(function() {
+    var colors = { ...hTypeColors };
+    var changed = false;
+    var builtinNacional = lang === 'es' ? 'Nacional' : 'National';
+    if (!colors[builtinNacional]) { colors[builtinNacional] = '#2C3E66'; changed = true; }
+    if (!colors['UASD']) { colors['UASD'] = '#8b2942'; changed = true; }
+    hTypeOptions.forEach(function(label) {
+      if (!colors[label]) { colors[label] = nextHTypeColor(colors); changed = true; }
+    });
+    if (changed) {
+      localStorage.setItem(HOLIDAY_TYPE_COLORS_KEY, JSON.stringify(colors));
+      setHTypeColors(colors);
+    }
+  }, []);
+
+  const commitHType = function(label) {
+    var trimmed = label.trim();
+    if (!trimmed) return;
+    if (!hTypeOptions.some(function(o) { return o.toLowerCase() === trimmed.toLowerCase(); })) {
+      var updated = customHTypes.concat([trimmed]);
+      localStorage.setItem(HOLIDAY_TYPES_KEY, JSON.stringify(updated));
+      setCustomHTypes(updated);
+      var colors = { ...hTypeColors };
+      colors[trimmed] = nextHTypeColor(colors);
+      localStorage.setItem(HOLIDAY_TYPE_COLORS_KEY, JSON.stringify(colors));
+      setHTypeColors(colors);
+    }
+  };
+
+  const hTypeBadgeStyle = function(label) {
+    var hex = hTypeColors[label];
+    if (!hex) return {};
+    return { background: hexToRgba(hex, 0.12), color: hex };
+  };
+
+  const removeHType = function(label) {
+    var updated = customHTypes.filter(function(t) { return t !== label; });
+    localStorage.setItem(HOLIDAY_TYPES_KEY, JSON.stringify(updated));
+    setCustomHTypes(updated);
+  };
+
+  function parseDDMMYYYY(v) {
+    if (!v) return '';
+    const [d, m, y] = v.split('/');
+    if (!d || !m || !y || y.length < 4) return '';
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  const remove = (date) => {
+    const removed = holidays.find(h => h.date === date);
+    const next = holidays.filter(h => h.date !== date);
+    setHolidays(next); saveHolidays(next);
+    if (removed && removed.type && !hTypeOptions.includes(removed.type)) {
+      const typeStillUsed = next.some(h => h.type === removed.type);
+      if (!typeStillUsed) {
+        var colors = { ...hTypeColors };
+        delete colors[removed.type];
+        localStorage.setItem(HOLIDAY_TYPE_COLORS_KEY, JSON.stringify(colors));
+        setHTypeColors(colors);
+      }
+    }
+  };
+
+  const add = () => {
+    const e = {};
+    const sd = parseDDMMYYYY(newDate);
+    if (!sd) e.date = true;
+    else if (holidays.some(h => h.date === sd)) e.date = 'dup';
+    if (!newName.trim()) e.name = true;
+    if (!newType.trim()) e.type = true;
+    if (Object.keys(e).length) { setErr(e); return; }
+    if (newType.trim()) commitHType(newType);
+    const entry = { date: sd, name_es: newName.trim(), name_en: newName.trim(), type: newType.trim() };
+    const next = [...holidays, entry].sort((a, b) => a.date.localeCompare(b.date));
+    setHolidays(next); saveHolidays(next);
+    setYear(Number(sd.slice(0,4)));
+    setAddOpen(false); setNewDate(''); setNewName(''); setNewType(''); setErr({});
+  };
+
+  const startEdit = (h) => {
+    const d = new Date(h.date + 'T00:00:00');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const yyyy = d.getFullYear();
+    setEditClosing(false);
+    setEditId(h.date);
+    setEditDate(`${dd}/${mm}/${yyyy}`);
+    setEditName(lang === 'es' ? h.name_es : h.name_en);
+    setEditType(hTypeToDisplay(h.type));
+    setEditErr({});
+    setAddOpen(false);
+  };
+
+  const saveEdit = () => {
+    const e = {};
+    const sd = parseDDMMYYYY(editDate);
+    if (!sd) e.date = true;
+    else if (holidays.some(h => h.date === sd && h.date !== editId)) e.date = 'dup';
+    if (!editName.trim()) e.name = true;
+    if (!editType.trim()) e.type = true;
+    if (Object.keys(e).length) { setEditErr(e); return; }
+    const next = holidays.map(h => {
+      if (h.date !== editId) return h;
+      if (editType.trim()) commitHType(editType);
+      return { date: sd, name_es: editName.trim(), name_en: editName.trim(), type: editType.trim() };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    setHolidays(next); saveHolidays(next);
+    setEditId(null); setEditDate(''); setEditName(''); setEditType(''); setEditErr({});
+    setYear(Number(sd.slice(0,4)));
+  };
+
+  return (
+    <div className="page" style={{ paddingTop: 32, paddingBottom: 60, animation:'body-in .28s cubic-bezier(0.33,1,0.68,1) both' }}>
+      <div className="page__head" style={{ marginBottom: 24 }}>
+        <div>
+          <div className="page__title">{t.feriados_title}</div>
+          <div className="page__subtitle">{t.feriados_sub}</div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid var(--ink-100)', borderRadius:8, padding:'4px 6px', background:'var(--paper)', width:140, boxSizing:'border-box', flexShrink:0 }}>
+            <button className="dp-cal__arrow" onClick={() => setYear(y => y-1)}>‹</button>
+            <span style={{ fontFamily:'var(--font-mono)', fontSize:15, fontWeight:700, color:'var(--ink-800)', flex:1, textAlign:'center' }}>{year}</span>
+            <button className="dp-cal__arrow" onClick={() => setYear(y => y+1)}>›</button>
+          </div>
+          <button className={'btn ' + (addOpen ? 'btn--ghost' : 'btn--primary')} style={{ gap:7 }} onClick={() => { if (addOpen) { closeAdd(); } else { setAddOpen(true); setEditId(null); } }}>
+            <Icon name={addOpen ? 'x' : 'plus'} size={13}/> {lang === 'es' ? 'Agregar' : 'Add'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ overflow:'hidden', display:'grid', gridTemplateRows: addOpen ? '1fr' : '0fr', marginBottom: addOpen ? 20 : 0, transition:'grid-template-rows .38s cubic-bezier(0.16,1,0.3,1), margin-bottom .38s cubic-bezier(0.16,1,0.3,1)' }}>
+        <div style={{ minHeight:0 }}>
+        <div style={{ opacity: addOpen ? 1 : 0, transform: addOpen ? 'scale(1)' : 'scale(0.98)', transition: addOpen ? 'opacity .28s .05s ease, transform .36s .03s cubic-bezier(0.16,1,0.3,1)' : 'opacity .2s ease, transform .2s ease', background:'var(--cream-100)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)', padding:20, display:'flex', flexDirection:'column', gap:14, pointerEvents: addOpen ? 'auto' : 'none' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
+            <div className={`field${err.date ? ' field--error' : ''}`}>
+              <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'} <span className="field__req">*</span></span>
+              <DatePickerField key={`add-date-${addOpen}`} value={newDate} onChange={v => { setNewDate(v); setErr(p => ({...p, date:false})); }} minDate={year+'-01-01'} maxDate={year+'-12-31'} />
+              {err.date === 'dup' && <span className="field__err">{lang === 'es' ? 'Esta fecha ya existe.' : 'Date already exists.'}</span>}
+            </div>
+            <div className={`field${err.name ? ' field--error' : ''}`}>
+              <span className="field__label">{lang === 'es' ? 'Nombre' : 'Name'} <span className="field__req">*</span></span>
+              <input className="field__input" style={{ fontFamily:'var(--font-sans)' }} value={newName} maxLength={60} placeholder={lang === 'es' ? 'Ej. Día de la universidad…' : 'e.g. University Day…'}
+                onChange={e => { setNewName(e.target.value); setErr(p => ({...p, name:false})); }} />
+            </div>
+            <div className={`field${err.type ? ' field--error' : ''}`}>
+              <span className="field__label">{lang === 'es' ? 'Tipo' : 'Type'} <span className="field__req">*</span></span>
+              <ComboBoxField key={`add-type-${addOpen}`} value={newType} options={hTypeOptions} maxLength={40}
+                placeholder={lang === 'es' ? 'Seleccionar o agregar…' : 'Select or add…'}
+                onChange={v => { setNewType(v); setErr(p => ({...p, type:false})); }}
+                removableOptions={removableHTypes} onRemoveOption={removeHType} />
+              {err.type && <span className="field__err">{lang === 'es' ? 'El tipo es obligatorio.' : 'Type is required.'}</span>}
+            </div>
+          </div>
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+            <button className="btn btn--ghost" onClick={closeAdd}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
+            <button className="btn btn--primary" onClick={add}>{lang === 'es' ? 'Guardar' : 'Save'}</button>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      {yearHolidays.length === 0 ? (
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, padding:'100px 24px', textAlign:'center', color:'var(--ink-300)', minHeight:400 }}>
+          <Icon name="calendar" size={48} stroke={1.2} />
+          <div style={{ fontSize:20, fontWeight:600, color:'var(--ink-500)' }}>{lang === 'es' ? 'No hay feriados registrados' : 'No holidays found'}</div>
+          <div style={{ fontSize:14, color:'var(--ink-300)', maxWidth:320, lineHeight:1.5 }}>{lang === 'es' ? `Agrega un feriado para comenzar con el año ${year}.` : `Add a holiday to get started with ${year}.`}</div>
+        </div>
+      ) : (
+        <div className="chart-card" style={{ padding:0, overflow:'hidden' }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th style={{ width:'22%', background:'transparent' }}>{HEADS[0]}</th>
+                <th style={{ width:'10%', background:'transparent' }}>{HEADS[1]}</th>
+                <th style={{ width:'38%', background:'transparent' }}>{HEADS[2]}</th>
+                <th style={{ width:'18%', background:'transparent' }}>{HEADS[3]}</th>
+                <th style={{ width:'12%', textAlign:'right', background:'transparent' }}>{HEADS[4]}</th>
+              </tr>
+            </thead>
+            <tbody key={year} className="tbody--in">
+              {yearHolidays.map((h, i) => {
+                const d = new Date(h.date + 'T00:00:00');
+                const monthName = MONTHS[d.getMonth()];
+                const dayNum = d.getDate();
+                const dow = DOWS[d.getDay()];
+                const isDefault = defaults.has(h.date);
+                const typeKey = h.type || 'custom';
+                const typeLabel = TYPE_LABEL[typeKey] || (typeKey !== 'custom' ? typeKey : (lang === 'es' ? 'Personalizado' : 'Custom'));
+                const typeBadgeStyle = hTypeBadgeStyle(typeLabel);
+                if (editId === h.date) {
+                  const ec = editClosing;
+                  return (
+                    <tr key={h.date} className="table__row--selected" style={{ cursor:'default' }}>
+                      <td colSpan={5} style={{ padding:0 }}>
+                        <div style={{ animation: ec ? 'credFormOut .3s cubic-bezier(0.4,0,0.2,1) both' : 'credFormIn .22s cubic-bezier(0.16,1,0.3,1) both', background:'var(--cream-100)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)', padding:20, display:'flex', flexDirection:'column', gap:14, pointerEvents: ec ? 'none' : 'auto' }}>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
+                            <div className={`field${editErr.date ? ' field--error' : ''}`}>
+                              <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'} <span className="field__req">*</span></span>
+                              <DatePickerField key={`edit-date-${editId}`} value={editDate} onChange={v => { setEditDate(v); setEditErr(p => ({...p, date:false})); }} minDate={year+'-01-01'} maxDate={year+'-12-31'} />
+                              {editErr.date === 'dup' && <span className="field__err">{lang === 'es' ? 'Esta fecha ya existe.' : 'Date already exists.'}</span>}
+                            </div>
+                            <div className={`field${editErr.name ? ' field--error' : ''}`}>
+                              <span className="field__label">{lang === 'es' ? 'Nombre' : 'Name'} <span className="field__req">*</span></span>
+                              <input className="field__input" style={{ fontFamily:'var(--font-sans)' }} value={editName} maxLength={60}
+                                onChange={e => { setEditName(e.target.value); setEditErr(p => ({...p, name:false})); }} />
+                            </div>
+                            <div className={`field${editErr.type ? ' field--error' : ''}`}>
+                              <span className="field__label">{lang === 'es' ? 'Tipo' : 'Type'} <span className="field__req">*</span></span>
+                              <ComboBoxField key={`edit-type-${editId}`} value={editType} options={hTypeOptions} maxLength={40}
+                                placeholder={lang === 'es' ? 'Seleccionar o agregar…' : 'Select or add…'}
+                                onChange={v => { setEditType(v); setEditErr(p => ({...p, type:false})); }}
+                                removableOptions={removableHTypes} onRemoveOption={removeHType} />
+                              {editErr.type && <span className="field__err">{lang === 'es' ? 'El tipo es obligatorio.' : 'Type is required.'}</span>}
+                            </div>
+                          </div>
+                          <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+                            <button className="btn btn--ghost" onClick={closeEdit}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                            <button className="btn btn--primary" onClick={saveEdit}>{lang === 'es' ? 'Guardar' : 'Save'}</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={h.date}
+                    onMouseEnter={() => setHoverId(h.date)}
+                    onMouseLeave={() => setHoverId(null)}>
+                    <td style={{ whiteSpace:'nowrap' }}>
+                      <span className="mono" style={{ fontWeight:700, color:'var(--ink-800)' }}>
+                        {String(dayNum).padStart(2,'0')}
+                      </span>
+                      <span style={{ fontWeight:500, color:'var(--ink-600)', marginLeft:6 }}>
+                        {monthName}
+                      </span>
+                      <span className="mono" style={{ fontSize:12, color:'var(--ink-400)', marginLeft:4 }}>
+                        {year}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontSize:12, color:'var(--ink-400)' }}>{dow}</span>
+                    </td>
+                    <td style={{ fontWeight:600, color:'var(--ink-800)' }}>
+                      {lang === 'es' ? h.name_es : h.name_en}
+                    </td>
+                    <td>
+                      <span className="badge" style={{ fontSize:11, padding:'2px 9px', ...typeBadgeStyle }}>{typeLabel}</span>
+                    </td>
+                    <td className="table__actions-cell">
+                      <div className="table__actions" style={{ opacity: hoverId === h.date ? 1 : 0, transition:'opacity .15s ease' }}>
+                        <button className="table__action-btn" onClick={() => startEdit(h)} title={lang === 'es' ? 'Editar' : 'Edit'}>
+                          <Icon name="edit" size={14}/>
+                        </button>
+                        <button className="table__action-btn table__action-btn--del" onClick={() => setDeleteConfirm(h)} title={lang === 'es' ? 'Eliminar' : 'Delete'}>
+                          <Icon name="trash" size={14}/>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {deleteConfirm && ReactDOM.createPortal(
+        <div className="edit-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="del-confirm" onClick={e => e.stopPropagation()}>
+            <div className="del-confirm__hero">
+              <div className="del-confirm__icon">
+                <Icon name="trash" size={40} stroke={1.6}/>
+              </div>
+              <div className="del-confirm__title">
+                {lang === 'es' ? '¿Eliminar feriado?' : 'Delete holiday?'}
+              </div>
+              <div className="del-confirm__sub">
+                {lang === 'es'
+                  ? <span>Estás a punto de eliminar <strong style={{ color:'#fff' }}>{deleteConfirm.name_es}</strong>.<br/>Esta acción no se puede deshacer.</span>
+                  : <span>You are about to delete <strong style={{ color:'#fff' }}>{deleteConfirm.name_en}</strong>.<br/>This action cannot be undone.</span>
+                }
+              </div>
+              <div className="del-confirm__id mono">
+                {(() => { const [y,m,d] = deleteConfirm.date.split('-'); return `${d}/${m}/${y}`; })()}
+              </div>
+            </div>
+            <div className="del-confirm__foot">
+              <button className="btn btn--ghost" onClick={() => setDeleteConfirm(null)}>
+                {lang === 'es' ? 'Cancelar' : 'Cancel'}
+              </button>
+              <button className="btn btn--danger" onClick={() => { remove(deleteConfirm.date); setDeleteConfirm(null); }}>
+                <Icon name="trash" size={14}/> {lang === 'es' ? 'Eliminar' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 Object.assign(window, {
   I18N, EMPLOYEES, RECENT_LOG, DEPT_DIST,
   Icon, Crest, TopBar, LangSwitch, AdminPanel,
@@ -1350,4 +1877,8 @@ Object.assign(window, {
   PRESET_COLORS, PRESET_COLOR_NAMES, nearestColorName,
   MONTHS_ES, DAYS_ES,
   getEmployeeEmails, saveEmployeeEmail,
+  DEFAULT_DEPARTMENTS, getDepartments, addDepartment, removeDepartment,
+  getRegisteredEmployees, saveRegisteredEmployee, removeRegisteredEmployee,
+  getHolidays, saveHolidays, isHoliday, DEFAULT_HOLIDAYS,
+  FeriadosView,
 });
