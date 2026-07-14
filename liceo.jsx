@@ -359,6 +359,8 @@ function LiceoStudent({ emp, onToggle, slotIndex, totalCount }) {
 
   return (
     <div onClick={function() { onToggle(emp.id); }} title={emp.name}
+      role="button" tabIndex={0} aria-label={emp.name}
+      onKeyDown={function(e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onToggle(emp.id); } }}
       style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',
         cursor:'pointer',userSelect:'none'}}>
       <svg width={sz} height={Math.round(sz*1.27)} viewBox="0 0 44 56" style={{overflow:'visible'}}>
@@ -1524,6 +1526,9 @@ function LiceoView({ t, lang, setRoute }) {
                     </div>
                     {/* Toggle — siempre visible */}
                     <div onClick={function(){ togglePresent(emp.id); }}
+                      role="switch" aria-checked={present} tabIndex={0}
+                      aria-label={`${emp.name} — ${present ? (isES ? 'presente' : 'present') : (isES ? 'ausente' : 'absent')}`}
+                      onKeyDown={function(e){ if (e.key===' '||e.key==='Enter') { e.preventDefault(); togglePresent(emp.id); } }}
                       title={present ? (isES ? 'Marcar ausente' : 'Mark absent') : (isES ? 'Marcar presente' : 'Mark present')}
                       style={{
                         width:'36px',height:'20px',borderRadius:'10px',flexShrink:0,

@@ -2656,7 +2656,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
         <table className="table">
           <thead>
             <tr>
-              <th style={{width:'20%'}}>{t.dash_col_employee}</th>
+              <th style={{width:'4%'}}></th>
+              <th style={{width:'18%'}}>{t.dash_col_employee}</th>
               <th style={{width:'10%'}}>{t.dash_col_dept}</th>
               <th style={{width:'12%'}}>{t.dash_col_role}</th>
               <th style={{width:'10%'}}>{t.dash_col_schedule}</th>
@@ -2706,6 +2707,9 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                 className={selectedId === e.id ? 'table__row--selected' : ''}
                 onClick={(ev) => { ev.stopPropagation(); setSelectedId(prev => prev === e.id ? null : e.id); }}
               >
+                <td className="mono" style={{fontSize:12, fontWeight:600, color:'var(--ink-300)', whiteSpace:'nowrap'}}>
+                  {String(i + 1).padStart(2,'0')}
+                </td>
                 <td>
                   <div className="table__person">
                     <div className="table__avatar">{initials(d.name)}</div>
@@ -2746,7 +2750,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
             ); })}
             {displayList.length === 0 && (
               <tr>
-                <td colSpan="9" className="table__empty">
+                <td colSpan="10" className="table__empty">
                   {t.dash_empty}
                 </td>
               </tr>

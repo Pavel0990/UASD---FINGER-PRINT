@@ -283,23 +283,23 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
     if (!form.dept?.trim()) errs.dept = true;
     if (!form.role?.trim()) errs.role = true;
     if (!form.email?.trim()) errs.email = true;
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs.email = 'invalid';
     if (!form.phone || form.phone.replace(/\D/g, '').length === 0) errs.phone = true;
     if (!form.dob?.trim()) errs.dob = true;
     if (!form.schedule?.trim()) errs.schedule = true;
     if (!form.workDays || form.workDays.length === 0) errs.workDays = true;
     if (Object.keys(errs).length > 0) { setRegErrors(errs); return; }
 
-    // Duplicados
-    const nameLower   = form.name.trim().toLowerCase();
+    // Duplicados — solo por identificadores únicos reales (cédula/correo), no por nombre
+    // (dos empleados distintos pueden ser homónimos legítimamente).
     const cedulaClean = form.cedula.replace(/\D/g, '');
     const emailLower  = form.email.trim().toLowerCase();
     const isDup = [...EMPLOYEES, ...(typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [])].some(emp =>
       emp.cedula?.replace(/\D/g, '') === cedulaClean ||
-      emp.name?.trim().toLowerCase()  === nameLower  ||
       emp.email?.trim().toLowerCase() === emailLower
     );
     if (isDup) {
-      setRegErrors({ _dup: true, cedula: true, name: true, email: true });
+      setRegErrors({ _dup: true, cedula: true, email: true });
       return;
     }
 
@@ -466,6 +466,7 @@ function Step1({ t, form, update, setForm, allDepts, allRoles, errors, clearErro
               <label className="field__label">{t.reg_fld_email} <span className="field__req">*</span></label>
               <EmailField value={form.email}
                 onChange={v => { clearError('email'); update('email', v); }}/>
+              {errors.email === 'invalid' && <span className="field__err">Formato de correo inválido.</span>}
             </div>
 
             {/* Teléfono */}
@@ -527,6 +528,8 @@ function Step1({ t, form, update, setForm, allDepts, allRoles, errors, clearErro
               <span>
                 {errors._dup
                   ? 'Ya existe un empleado registrado con estos parámetros.'
+                  : (errors.email === 'invalid' && Object.keys(errors).length === 1)
+                  ? 'El correo electrónico no tiene un formato válido.'
                   : `Completa los campos obligatorios: ${REG_REQUIRED.filter(f => errors[f.key]).map(f => f.label).join(', ')}.`
                 }
               </span>

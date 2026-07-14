@@ -431,6 +431,8 @@ function FarmWorker({ emp, present, onToggle, delay, slotIndex, totalCount, noHa
 
   return (
     <div onClick={() => onToggle(emp.id)} title={emp.name}
+      role="switch" aria-checked={present} tabIndex={0} aria-label={emp.name}
+      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onToggle(emp.id); } }}
       style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',
         cursor:'pointer',userSelect:'none'}}>
       <svg width={sz} height={Math.round(sz*1.27)} viewBox="0 0 44 56"
@@ -1585,6 +1587,9 @@ function FarmView({ t, lang, setRoute }) {
                     </div>
                     {/* Toggle — siempre visible */}
                     <div onClick={()=>togglePresent(emp.id)}
+                      role="switch" aria-checked={present} tabIndex={0}
+                      aria-label={`${emp.name} — ${present?(isES?'presente':'present'):(isES?'ausente':'absent')}`}
+                      onKeyDown={(e)=>{ if (e.key===' '||e.key==='Enter') { e.preventDefault(); togglePresent(emp.id); } }}
                       title={present?(isES?'Marcar ausente':'Mark absent'):(isES?'Marcar presente':'Mark present')}
                       style={{
                         width:'36px',height:'20px',borderRadius:'10px',flexShrink:0,

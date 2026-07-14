@@ -22,6 +22,7 @@ function ReportsView({ t, lang, setRoute }) {
     if (typeof userHasPermission === 'function' && !userHasPermission('reports')) setRoute('dashboard');
   }, []);
 
+  const isES = lang === 'es';
   const [hoveredIdx, setHoveredIdx] = React.useState(null);
 
   const [filterMonth, setFilterMonth] = React.useState(todayKey);
@@ -40,6 +41,37 @@ function ReportsView({ t, lang, setRoute }) {
     if (key <= todayKey()) setFilterMonth(key);
   }, [fy, fm]);
 
+  const exportCSV = () => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
+    let allAtt = {};
+    try { allAtt = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}'); } catch {}
+    let evMap = {};
+    try { evMap = JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch {}
+
+    const rows = [['Sección', 'Empleado', 'Departamento', 'Fecha', 'Detalle']];
+
+    emps.forEach(emp => {
+      Object.values(allAtt)
+        .filter(a => a.empId === emp.id && a.late && a.date?.slice(0, 7) === filterMonth)
+        .forEach(a => rows.push(['Tardanza', emp.name, emp.dept, a.date, a.justified ? 'Justificada' : 'No justificada']));
+    });
+
+    emps.forEach(emp => {
+      (evMap[emp.id] || [])
+        .filter(e => e.date?.slice(0, 7) === filterMonth)
+        .forEach(e => rows.push(['Eventualidad', emp.name, emp.dept, e.dateEnd ? `${e.date} → ${e.dateEnd}` : e.date, `${e.type}${e.motivo ? ' — ' + e.motivo : ''}`]));
+    });
+
+    const csv = '\uFEFF' + rows.map(r => r.map(esc).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `UASD_reportes_${filterMonth}.xls`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   return (
     <div className="page">
       {/* ── Header ── */}
@@ -49,7 +81,7 @@ function ReportsView({ t, lang, setRoute }) {
           <div className="page__subtitle">{t.rep_sub}</div>
         </div>
         <div className="page__actions">
-          <button className="btn btn--ghost">
+          <button className="btn btn--ghost" onClick={exportCSV}>
             <Icon name="download" size={14}/> {t.dash_export}
           </button>
         </div>
@@ -157,38 +189,39 @@ function ReportsView({ t, lang, setRoute }) {
                   onMouseEnter={() => setHoveredIdx(i)}
                   onMouseLeave={() => setHoveredIdx(null)}>
 
-                  {/* card flotante en barra activa */}
-                  {isActive && (
-                    <div className="rep-bar-col__card">
-                      <span className="rep-bar-col__card-label">{isHigh ? 'Alto' : 'Bajo'}</span>
-                    </div>
-                  )}
-
-                  {/* barra */}
+                  {/* barra — el tag flotante vive DENTRO del track (absolute) para
+                      no empujar el layout ni desbordar en pantallas angostas */}
                   <div className="rep-bar-col__track">
+                    {isActive && (
+                      <div className="rep-bar-tag"
+                        style={{ bottom: `calc(${totalH}% + 8px)`, background: isHigh ? 'var(--ink-900)' : 'var(--ink-500)' }}>
+                        {isHigh ? (isES ? 'Pico' : 'Peak') : (isES ? 'Mínimo' : 'Low')}
+                      </div>
+                    )}
                     <div className="rep-bar-col__fill" style={{
                       height: `${totalH}%`,
-                      background: isActive ? (isHigh ? 'var(--ink-800)' : 'var(--ink-600)') : 'var(--ink-100)',
+                      background: isHigh ? 'var(--ink-800)' : isLow ? 'var(--ink-400)' : (isHover ? 'var(--ink-300)' : 'var(--ink-100)'),
                     }}>
                       {/* segmento tarde */}
                       <div style={{
                         position:'absolute', bottom:0, left:0, right:0,
                         height:`${lateH}%`,
-                        background: isHigh ? 'var(--gold-500)' : isLow ? 'var(--ink-400)' : 'var(--ink-200)',
+                        background: isHigh ? 'var(--gold-500)' : isLow ? 'var(--ink-300)' : 'var(--ink-200)',
                         borderRadius: '6px 6px 0 0',
-                        opacity: isActive ? 1 : 0.6,
+                        opacity: isActive || isHover ? 1 : 0.6,
                       }}/>
                     </div>
                   </div>
 
-                  {/* etiqueta día + valor */}
+                  {/* etiqueta día + valor — siempre visible, nunca vacío */}
                   <div className="rep-bar-col__foot">
                     <div className="rep-bar-col__day">{d.day}</div>
-                    {isActive && (
-                      <div className="rep-bar-col__val" style={{ color: isHigh ? 'var(--gold-500)' : 'var(--ink-400)' }}>
-                        {total}
-                      </div>
-                    )}
+                    <div className="rep-bar-col__val" style={{
+                      color: isHigh ? 'var(--gold-600)' : isLow ? 'var(--ink-500)' : 'var(--ink-300)',
+                      fontWeight: isActive ? 700 : 600,
+                    }}>
+                      {total}
+                    </div>
                   </div>
                 </div>
               );
@@ -335,7 +368,7 @@ function HourHistogram({ t }) {
 
   return (
     <div style={{ padding:'8px 0' }}>
-      <div className="bars" style={{ height:'clamp(90px, 20vw, 140px)', gap:6 }}>
+      <div className="bars" style={{ height:'clamp(110px, 22vw, 160px)', gap:6 }}>
         {hours.map((h, i) => (
           <div className="bars__col" key={i}>
             <div className="bars__bar" style={{
@@ -454,15 +487,17 @@ function StrikesReport({ filterMonth, monthLabel }) {
       </div>
 
       {rows.length === 0 ? (
-        <div style={{ padding:'24px 0', textAlign:'center', fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)' }}>
-          Sin ausencias registradas actualmente.
+        <div className="audit-empty">
+          <Icon name="baseball" size={26} stroke={1.2}/>
+          <div className="audit-empty__title">Sin ausencias</div>
+          <div className="audit-empty__sub">No hay ausencias registradas para {(monthLabel || 'este período').toLowerCase()}.</div>
         </div>
       ) : (
         <div style={{ display:'flex', flexDirection:'column' }}>
           {rows.map((r, i) => {
             const isOut = r.unjustified >= 3;
             return (
-              <div key={r.emp.id} style={{
+              <div key={r.emp.id} className="rep-row" style={{
                 display:'grid', gridTemplateColumns:'36px 1fr auto auto',
                 alignItems:'center', gap:14,
                 padding:'12px 0',
@@ -550,13 +585,15 @@ function TardanzasReport({ filterMonth, monthLabel }) {
       </div>
 
       {rows.length === 0 ? (
-        <div style={{ padding:'24px 0', textAlign:'center', fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)' }}>
-          Sin tardanzas registradas este mes.
+        <div className="audit-empty">
+          <Icon name="clock" size={26} stroke={1.2}/>
+          <div className="audit-empty__title">Sin tardanzas</div>
+          <div className="audit-empty__sub">No hay tardanzas registradas para {(monthLabel || 'este período').toLowerCase()}.</div>
         </div>
       ) : (
         <div style={{ display:'flex', flexDirection:'column' }}>
           {rows.map((r, i) => (
-            <div key={r.emp.id} style={{
+            <div key={r.emp.id} className="rep-row" style={{
               display:'grid', gridTemplateColumns:'34px 1fr auto auto',
               alignItems:'center', gap:12,
               padding:'11px 0',
@@ -623,13 +660,15 @@ function EventualidadesReport({ filterMonth, monthLabel }) {
       </div>
 
       {rows.length === 0 ? (
-        <div style={{ padding:'24px 0', textAlign:'center', fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)' }}>
-          Sin eventualidades registradas.
+        <div className="audit-empty">
+          <Icon name="calendar" size={26} stroke={1.2}/>
+          <div className="audit-empty__title">Sin eventualidades</div>
+          <div className="audit-empty__sub">No hay eventualidades registradas para {(monthLabel || 'este período').toLowerCase()}.</div>
         </div>
       ) : (
         <div style={{ display:'flex', flexDirection:'column' }}>
           {rows.map((r, i) => (
-            <div key={r.emp.id} style={{
+            <div key={r.emp.id} className="rep-row" style={{
               display:'grid', gridTemplateColumns:'34px 1fr auto auto',
               alignItems:'center', gap:12,
               padding:'11px 0',
