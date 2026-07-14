@@ -44,6 +44,31 @@ Conclusión: para migrar a Face ID se tocan 3 puntos acotados — el componente 
 lector, las claves de texto del kiosk, y el bloque de `startScan()`. No reescribir la
 estructura del terminal ni las tarjetas de resultado.
 
+## Modelo Estado vs. Eventualidad (empleado)
+Son dos modelos separados, cada uno con una responsabilidad distinta. No deben
+mezclarse ni sincronizarse entre sí — la división es por severidad/efecto, no por tema.
+
+- **Estado** (`StatusPicker`/`StatusBadge`, `dashboard.jsx`) — clasificación única y
+  vigente del empleado: `ok | pending | inactive(+reason) | custom`. Es un **gate
+  funcional real**: `status !== 'ok'` saca al empleado del pool de reconocimiento del
+  kiosco (`kiosk.jsx`), del roster de Finca (`finca.jsx`) y de los reportes
+  (`reports.jsx`). Úsalo para situaciones **serias/prolongadas** que ameritan sacar al
+  empleado del sistema mientras duren: licencia médica, licencia de
+  maternidad/paternidad, estudio, comisión de servicio, personal (`inactive` + reason
+  `other`, con detalle `licenseType/licenseStart/licenseEnd` en el modal de edición).
+
+- **Eventualidad** (`EventualidadSection`, `dashboard.jsx`, persistida en
+  `localStorage['uasd_eventualidades']`) — registro histórico por fecha/rango que
+  **justifica un día de marcaje sin sacar al empleado del sistema** (sigue `ok`, sigue
+  marcando). Tipos: `eventualidad` (trabajo extra), `dia_libre`, `permiso`,
+  `servicio_feriado`. Al guardar una, borra ausencias existentes en esas fechas y al
+  editar/eliminar puede regenerar ausencias en los días que dejan de estar cubiertos.
+
+`licencia_familiar` y `licencia_medica` existieron antes como tipos de Eventualidad y
+se quitaron (2026-07) porque duplicaban lo que ya cubre Estado → Lic. laboral. Si se
+necesita una licencia corta que no amerite sacar al empleado del sistema, no se debe
+re-agregar esos tipos a Eventualidad — evaluar primero si encaja en `permiso`.
+
 ## Notas de edición
 - El componente `T` en `shared.jsx` (renderiza títulos con `<strong>`) NO debe llevar
   texto hijo: usa solo `dangerouslySetInnerHTML`. Si se le agrega texto directo se rompe

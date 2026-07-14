@@ -385,7 +385,7 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
     }
   };
 
-  const calStyle = { position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000 };
+  const calStyle = { position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000, animation:'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both' };
 
   return (
     <div className="dp-wrap" ref={trigRef}>
@@ -1503,7 +1503,7 @@ function DateRangePickerField({ start, end, onChange, disabledDates }) {
 
       {open && (
         <div className="dp-cal" ref={calRef}
-          style={{ position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000 }}>
+          style={{ position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000, animation:'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both' }}>
           <div className="dp-cal__nav">
             <button type="button" className="dp-cal__arrow" onClick={prevYear} title="Año anterior">«</button>
             <button type="button" className="dp-cal__arrow" onClick={prevMo}   title="Mes anterior">‹</button>
@@ -1591,8 +1591,6 @@ const EVENT_TYPE = {
   eventualidad:     { label_es: 'Trabajo extra',      label_en: 'Extra work',        cls: 'badge--ok'      },
   dia_libre:        { label_es: 'Día compensatorio',  label_en: 'Compensatory day',  cls: 'badge--warn'    },
   permiso:          { label_es: 'Permiso',            label_en: 'Leave permit',      cls: 'badge--neutral' },
-  licencia_familiar:{ label_es: 'Licencia familiar',  label_en: 'Family care leave', cls: 'badge--neutral' },
-  licencia_medica:  { label_es: 'Licencia médica',   label_en: 'Medical leave',     cls: 'badge--neutral' },
   servicio_feriado: { label_es: 'Servicio en feriado', label_en: 'Holiday service',  cls: 'badge--info'    },
 };
 
@@ -1898,10 +1896,6 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
                 ? (lang === 'es' ? 'Ej. Compensación por horas extra, día acumulado…'        : 'e.g. Overtime compensation, accrued day off…')
                 : type === 'permiso'
                 ? (lang === 'es' ? 'Ej. Diligencia personal, trámite oficial, cita…'         : 'e.g. Personal errand, official procedure, appointment…')
-                : type === 'licencia_familiar'
-                ? (lang === 'es' ? 'Ej. Cuidado de cónyuge, padres o hijos enfermos…'        : 'e.g. Care of spouse, parents or sick children…')
-                : type === 'licencia_medica'
-                ? (lang === 'es' ? 'Ej. Reposo médico, tratamiento, intervención quirúrgica…': 'e.g. Medical rest, treatment, surgical procedure…')
                 : (lang === 'es' ? 'Descripción del motivo…' : 'Reason description…')
               } />
           </div>
@@ -2033,10 +2027,6 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
                                   ? (lang === 'es' ? 'Ej. Compensación por horas extra, día acumulado…'        : 'e.g. Overtime compensation, accrued day off…')
                                   : type === 'permiso'
                                   ? (lang === 'es' ? 'Ej. Diligencia personal, trámite oficial, cita…'         : 'e.g. Personal errand, official procedure, appointment…')
-                                  : type === 'licencia_familiar'
-                                  ? (lang === 'es' ? 'Ej. Cuidado de cónyuge, padres o hijos enfermos…'        : 'e.g. Care of spouse, parents or sick children…')
-                                  : type === 'licencia_medica'
-                                  ? (lang === 'es' ? 'Ej. Reposo médico, tratamiento, intervención quirúrgica…': 'e.g. Medical rest, treatment, surgical procedure…')
                                   : (lang === 'es' ? 'Descripción del motivo…' : 'Reason description…')
                                 } />
                             </div>

@@ -1003,6 +1003,13 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
     return function() { document.removeEventListener('mousedown', onOut); };
   }, [open]);
 
+  React.useEffect(function() {
+    if (!open) return;
+    var onResize = function() { computePos(); };
+    window.addEventListener('resize', onResize);
+    return function() { window.removeEventListener('resize', onResize); };
+  }, [open]);
+
   var sel = parseISO(viewDate);
   var now = parseISO(today);
   const [month, setMonth] = React.useState(sel.m);
@@ -1053,7 +1060,7 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
           className="farm-date-pill"
           style={{display:'flex',alignItems:'center',gap:'7px',
             background: open ? 'var(--ink-100)' : 'transparent',
-            border:'1.5px solid '+(open ? 'var(--accent)' : 'var(--ink-200,#ddd)'),
+            border:'1.5px solid '+(open ? '#4a6fa5' : 'var(--ink-200,#ddd)'),
             borderRadius:'8px',padding:'6px 14px',cursor:'pointer',
             transition:'background .15s,border-color .2s,box-shadow .2s',
             fontFamily:'var(--font-sans)',fontWeight:700,fontSize:'14px',
@@ -1082,7 +1089,8 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
                   pointerEvents:(open && calReady) ? 'auto' : 'none',
                   visibility:(open && calReady) ? 'visible' : 'hidden'}}>
           <div ref={calRef} className="dp-cal"
-            style={{boxShadow:'0 16px 48px rgba(0,0,0,.18)',animation:'none'}}>
+            style={{boxShadow:'0 16px 48px rgba(0,0,0,.18)',
+              animation:(open && calReady)?'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both':'none'}}>
             <div className="dp-cal__nav">
               <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevYear}>«</button>
               <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevMo}>‹</button>
@@ -1496,6 +1504,10 @@ function LiceoView({ t, lang, setRoute }) {
                     style={{alignItems:'center',padding:'14px 0',
                       borderTop: idx === 0 || idx === MAX_LICEO_SCENE ? 'none' : '1px solid var(--ink-100)',
                       opacity: offScene ? 0.7 : 1}}>
+                    <span className="mono" style={{width:'22px',flexShrink:0,fontSize:'12px',fontWeight:600,
+                      color:'var(--ink-300)',textAlign:'right',marginRight:'2px'}}>
+                      {String(idx + 1).padStart(2,'0')}
+                    </span>
                     <div style={{width:'38px',height:'38px',borderRadius:'50%',flexShrink:0,
                       display:'grid',placeItems:'center',fontSize:'13px',fontWeight:700,
                       background:'var(--ink-200)',color:'var(--ink-600)'}}>

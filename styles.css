@@ -25,6 +25,7 @@
   --success: #4f9d7a;
   --danger:  #c1554d;
   --warn:    #C9A961;
+  --accent:  #D2AE63;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -2698,6 +2699,11 @@ tr.table__row--selected .table__actions {
 @keyframes dp-open {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+@keyframes dp-open-vac {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .dp-cal {

@@ -107,6 +107,18 @@ function VacacionesView({ t, lang, setRoute }) {
 
   React.useEffect(function() {
     if (!yearCalOpen) return;
+    var onResize = function() {
+      if (yearPillRef.current) {
+        var r = yearPillRef.current.getBoundingClientRect();
+        setYearCalPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return function() { window.removeEventListener('resize', onResize); };
+  }, [yearCalOpen]);
+
+  React.useEffect(function() {
+    if (!yearCalOpen) return;
     var onOut = function(e) {
       if (yearPillRef.current && yearPillRef.current.contains(e.target)) return;
       if (yearCalRef.current  && yearCalRef.current.contains(e.target))  return;
@@ -192,11 +204,30 @@ function VacacionesView({ t, lang, setRoute }) {
     setSearchVal('');
   };
 
+  const addAllToVac = function() {
+    var newIds = filteredAvailable.map(function(e) { return e.id; }).filter(function(id) { return !yearEmps.includes(id); });
+    if (!newIds.length) return;
+    var list = yearEmps.concat(newIds);
+    var updated = Object.assign({}, vacEmpsAll);
+    updated[selYear] = list;
+    setVacEmpsAll(updated);
+    saveVacEmps(updated);
+    setSearchVal('');
+  };
+
   const removeFromVac = function(empId) {
     var list    = yearEmps.filter(function(id) { return id !== empId; });
     var updated = Object.assign({}, vacEmpsAll);
     if (list.length) updated[selYear] = list;
     else delete updated[selYear];
+    setVacEmpsAll(updated);
+    saveVacEmps(updated);
+  };
+
+  const removeAllFromVac = function() {
+    if (!yearEmps.length) return;
+    var updated = Object.assign({}, vacEmpsAll);
+    delete updated[selYear];
     setVacEmpsAll(updated);
     saveVacEmps(updated);
   };
@@ -228,18 +259,19 @@ function VacacionesView({ t, lang, setRoute }) {
         </div>
         {/* Pill column — position:absolute saca el pill del flujo flex → cero layout shift */}
         <div style={{position:'absolute',right:0,top:'50%',transform:'translateY(-50%)'}}>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,width:'140px'}}>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,width:'140px'}}>
           <span style={{fontFamily:'var(--font-serif)',fontSize:13,fontWeight:700,
             letterSpacing:'-0.02em',textTransform:'none',color:'var(--ink-500)',lineHeight:1}}>
             {isES ? 'Período' : 'Period'}
           </span>
           <div ref={yearPillRef}
+            className="farm-date-pill"
             onMouseDown={function(e){ e.preventDefault(); }}
             style={{display:'flex',alignItems:'center',justifyContent:'space-between',
-              border:'1px solid '+(yearCalOpen?'var(--accent)':'var(--ink-100)'),
+              border:'1px solid '+(yearCalOpen?'#4a6fa5':'var(--ink-200)'),
               borderRadius:8,padding:'4px 6px',
               background:'var(--paper)',width:140,boxSizing:'border-box',flexShrink:0,
-              transition:'border-color .15s'}}>
+              transition:'background .15s,border-color .2s,box-shadow .2s'}}>
             <button tabIndex={-1} className="dp-cal__arrow" onClick={function() { setSelYear(function(y) { return String(parseInt(y)-1); }); }}>‹</button>
             <button tabIndex={-1} type="button"
               onClick={openYearCal}
@@ -251,8 +283,8 @@ function VacacionesView({ t, lang, setRoute }) {
             <button tabIndex={-1} className="dp-cal__arrow" onClick={function() { setSelYear(function(y) { return String(parseInt(y)+1); }); }}>›</button>
           </div>
           <span style={{display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap',
-            fontFamily:'var(--font-mono)',fontSize:10,fontWeight:500,color:'var(--ink-400)',
-            letterSpacing:0,
+            fontFamily:'var(--font-mono)',fontSize:11,fontWeight:700,color:'var(--ink-400)',
+            letterSpacing:0,marginTop:2,marginBottom:4,
             visibility: yearDias.length > 0 ? 'visible' : 'hidden',
             transition:'opacity .2s ease',
             opacity: yearDias.length > 0 ? 1 : 0}}>
@@ -269,7 +301,9 @@ function VacacionesView({ t, lang, setRoute }) {
                 transform:'translateX(-50%)',zIndex:9999,
                 pointerEvents:(yearCalOpen && yearCalReady)?'auto':'none',
                 visibility:(yearCalOpen && yearCalReady)?'visible':'hidden'}}>
-              <div ref={yearCalRef} className="dp-cal" style={{boxShadow:'0 16px 48px rgba(0,0,0,.18)'}}>
+              <div ref={yearCalRef} className="dp-cal" style={{
+                boxShadow:'0 16px 48px rgba(0,0,0,.18)',
+                animation:(yearCalOpen && yearCalReady)?'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both':'none'}}>
                 {(function() {
                   var firstDow = new Date(yearCalYear, yearCalMonth, 1).getDay();
                   var daysInMo = new Date(yearCalYear, yearCalMonth+1, 0).getDate();
@@ -352,28 +386,44 @@ function VacacionesView({ t, lang, setRoute }) {
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
               <span className="activity-map__label" style={{margin:0,flexShrink:0,color:'var(--ink-600)'}}>
                 {isES ? 'Personal' : 'Staff'}
-                <span style={{fontWeight:400,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',
+                <span className="mono" style={{fontWeight:600,color:'var(--ink-300)',marginLeft:'6px',fontSize:'12px',
                   textTransform:'none',letterSpacing:0}}>
                   ({totalCount})
                 </span>
               </span>
               {canManage && (
-                <button
-                  className={'kpi__pill kpi__pill--btn'+(searchQ ? ' kpi__pill--btn--close' : '')}
-                  style={{padding:'9px 18px',fontSize:'13px',gap:'7px',justifyContent:'center',width:'140px',boxSizing:'border-box'}}
-                  onClick={function() { setSearchQ(function(p) { return !p; }); setSearchVal(''); }}>
-                  <Icon name={searchQ ? 'x' : 'userPlus'} size={15}/>
-                  {searchQ ? (isES ? 'Cerrar' : 'Close') : (isES ? 'Agregar' : 'Add')}
-                </button>
+                <div style={{display:'flex',gap:6}}>
+                  {searchQ && (
+                    <button
+                      className={yearEmps.length > 0 ? 'kpi__pill kpi__pill--btn kpi__pill--btn--close' : 'kpi__pill kpi__pill--up'}
+                      style={{padding:'9px 14px',fontSize:'12px',gap:'5px',justifyContent:'center',whiteSpace:'nowrap'}}
+                      onClick={yearEmps.length > 0 ? removeAllFromVac : addAllToVac}>
+                      <Icon name={yearEmps.length > 0 ? 'x' : 'check'} size={14} stroke={yearEmps.length > 0 ? 1.6 : 2.4}/>
+                      {yearEmps.length > 0
+                        ? (isES ? 'Eliminar todos' : 'Remove all')
+                        : (isES ? 'Seleccionar todos' : 'Select all')}
+                    </button>
+                  )}
+                  <button
+                    className={'kpi__pill kpi__pill--btn'+(searchQ ? ' kpi__pill--btn--close' : '')}
+                    style={{padding:'9px 18px',fontSize:'13px',gap:'7px',justifyContent:'center',width:'140px',boxSizing:'border-box',
+                      transition:'background .25s ease, color .25s ease, border-color .25s ease, transform .3s cubic-bezier(0.22,1,0.36,1)'}}
+                    onClick={function() { setSearchQ(function(p) { return !p; }); setSearchVal(''); }}>
+                    <Icon name={searchQ ? 'x' : 'userPlus'} size={15}/>
+                    {searchQ ? (isES ? 'Cerrar' : 'Close') : (isES ? 'Agregar' : 'Add')}
+                  </button>
+                </div>
               )}
             </div>
 
             {/* Collapsible search */}
             <div style={{maxHeight: searchQ ? '300px' : '0', overflow:'hidden',
-              transition:'max-height .42s cubic-bezier(0.22,1,0.36,1)'}}>
+              transition:'max-height .5s cubic-bezier(0.33,1,0.68,1)'}}>
               <div style={{opacity: searchQ ? 1 : 0,
-                transform: searchQ ? 'translateY(0)' : 'translateY(-10px)',
-                transition:'opacity .32s ease, transform .4s cubic-bezier(0.22,1,0.36,1)',
+                transform: searchQ ? 'translateY(0)' : 'translateY(-6px)',
+                transition: searchQ
+                  ? 'opacity .35s ease .08s, transform .4s cubic-bezier(0.22,1,0.36,1) .06s'
+                  : 'opacity .2s ease, transform .25s ease',
                 paddingTop:'4px', width:'100%', display:'flex', flexDirection:'column', gap:'6px'}}>
                 <div className="toolbar__search" style={{width:'100%'}}>
                   <span className="toolbar__search-icon"><Icon name="search" size={15}/></span>
@@ -444,6 +494,10 @@ function VacacionesView({ t, lang, setRoute }) {
                     <div className="audit-entry role-assignee-row"
                       style={{alignItems:'center',padding:'14px 0',
                         borderTop: idx === 0 ? 'none' : '1px solid var(--ink-100)'}}>
+                      <span className="mono" style={{width:'22px',flexShrink:0,fontSize:'12px',fontWeight:600,
+                        color:'var(--ink-300)',textAlign:'right',marginRight:'2px'}}>
+                        {String(idx + 1).padStart(2,'0')}
+                      </span>
                       <div style={{width:'38px',height:'38px',borderRadius:'50%',flexShrink:0,
                         display:'grid',placeItems:'center',fontSize:'13px',fontWeight:700,
                         background:'var(--ink-200)',color:'var(--ink-600)'}}>

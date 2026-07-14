@@ -1076,16 +1076,17 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
     return () => document.removeEventListener('keydown', onKey);
   }, [close]);
 
-  const canFarm  = typeof userHasPermission === 'function' ? userHasPermission('farm')  : true;
-  const canLiceo = typeof userHasPermission === 'function' ? userHasPermission('liceo') : true;
-  const canVac   = typeof userHasPermission === 'function' ? userHasPermission('vacaciones') : true;
+  const canFarm     = typeof userHasPermission === 'function' ? userHasPermission('farm')  : true;
+  const canLiceo    = typeof userHasPermission === 'function' ? userHasPermission('liceo') : true;
+  const canVac      = typeof userHasPermission === 'function' ? userHasPermission('vacaciones') : true;
+  const canFeriados = typeof userHasPermission === 'function' ? userHasPermission('feriados') : true;
   const tabs = [
     { id: 'account',   label: t.um_view,       icon: 'user'      },
     ...(canAudit ? [{ id: 'changelog', label: t.nav_changelog, icon: 'activity'   }] : []),
     ...(canRoles ? [{ id: 'roles',     label: t.nav_roles,     icon: 'shieldUser' }] : []),
     ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'landPlot'   }] : []),
     ...(canLiceo ? [{ id: 'liceo',     label: t.liceo_title,   icon: 'school'     }] : []),
-    { id: 'feriados', label: t.feriados_title, icon: 'calendar1' },
+    ...(canFeriados ? [{ id: 'feriados', label: t.feriados_title, icon: 'calendar1' }] : []),
     ...(canVac   ? [{ id: 'vacaciones', label: t.vacaciones_title, icon: 'absent' }] : []),
   ];
 
