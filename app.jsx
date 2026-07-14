@@ -1,6 +1,14 @@
 /* app.jsx — main router */
 
 function App() {
+  // Intenta restaurar la sesión de backend desde la cookie de refresh (httpOnly)
+  // al montar — evita pedir login de nuevo en cada recarga si el token sigue
+  // vigente. Si el backend está caído o no hay cookie, no hace nada (la app
+  // sigue funcionando en modo localStorage como siempre).
+  React.useEffect(() => {
+    if (typeof restoreSession === 'function') restoreSession().catch(() => {});
+  }, []);
+
   // Seed demo attendance with tardanza for Ana Cristina
   React.useEffect(() => {
     if (localStorage.getItem('uasd_demo_seeded')) return;

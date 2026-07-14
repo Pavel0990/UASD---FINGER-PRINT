@@ -12,8 +12,31 @@ function LoginView({ t, lang, setLang, setRoute }) {
     if (submitting) return;
     setError(false);
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
+
+    (async () => {
+      // Camino real: login contra el backend (Postgres, password hasheado).
+      if (typeof loginRequest === 'function') {
+        try {
+          await loginRequest(email.trim(), pass);
+          if (typeof bootstrapStore === 'function') {
+            try { await bootstrapStore(); } catch (err) { console.error('bootstrapStore', err); }
+          }
+          setSubmitting(false);
+          setRoute('dashboard');
+          return;
+        } catch (err) {
+          if (err && err.status) {
+            // El backend respondió (credenciales inválidas o sin rol) — no cae al fallback local.
+            setSubmitting(false);
+            setError(err.body?.error === 'no_role' ? 'no_role' : 'credentials');
+            return;
+          }
+          // err.status ausente = el backend no respondió (caído / offline).
+          // Sigue con el flujo local de siempre, sin interrumpir el demo.
+        }
+      }
+
+      // Fallback: comportamiento original sobre localStorage, intacto.
       const creds = typeof getCredentials === 'function' ? getCredentials() : {};
       const found = Object.entries(creds).find(([, c]) => c.email.toLowerCase() === email.trim().toLowerCase());
       const saveLogin = () => {
@@ -26,6 +49,7 @@ function LoginView({ t, lang, setLang, setRoute }) {
         const assignments = typeof getAssignments === 'function' ? getAssignments() : [];
         return assignments.some(a => a.empId === empId);
       };
+      setSubmitting(false);
       if (found && found[1].password === pass) {
         if (!hasRole(found[0])) { setError('no_role'); return; }
         if (typeof setCurrentUserId === 'function') setCurrentUserId(found[0]);
@@ -41,7 +65,7 @@ function LoginView({ t, lang, setLang, setRoute }) {
           setError('credentials');
         }
       }
-    }, 700);
+    })();
   };
 
   return (

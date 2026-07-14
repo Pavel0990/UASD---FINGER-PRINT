@@ -105,32 +105,62 @@ const ALL_PERMS = [
   localStorage.setItem(CRED_PATCH_V2, '1');
 })();
 
+// Todo lo de abajo sigue el mismo patrón dual que shared.jsx: sin sesión de
+// backend (dev/local, sin login), se comporta exactamente igual que antes
+// (localStorage). Con sesión activa, lee/escribe contra la API real.
+
 function getCredentials() {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    // El backend nunca devuelve el password (queda hasheado) — solo se expone
+    // el email, que es lo único que la UI de roles.jsx lee para mostrar.
+    const map = {};
+    EMPLOYEES.forEach(e => { map[e.id] = { email: e.email }; });
+    return map;
+  }
   try { return JSON.parse(localStorage.getItem(CRED_KEY) || '{}'); } catch { return {}; }
 }
 
 function saveCredential(empId, email, password) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    const emp = EMPLOYEES.find(e => e.id === empId);
+    if (emp) emp.email = email;
+    apiFetch(`/credentials/${encodeURIComponent(empId)}/set-password`, {
+      method: 'POST', body: JSON.stringify({ email, password }),
+    }).catch(err => console.error('saveCredential', err));
+    return;
+  }
   const creds = getCredentials();
   creds[empId] = { email, password };
   localStorage.setItem(CRED_KEY, JSON.stringify(creds));
 }
 
 function deleteCredential(empId) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    apiFetch(`/credentials/${encodeURIComponent(empId)}`, { method: 'DELETE' }).catch(err => console.error('deleteCredential', err));
+    return;
+  }
   const creds = getCredentials();
   delete creds[empId];
   localStorage.setItem(CRED_KEY, JSON.stringify(creds));
 }
 
 function getCurrentUserId() {
+  if (typeof isBackendActive === 'function' && isBackendActive()) return DataStore.session.user.id;
   return localStorage.getItem(CURR_USER_KEY) || '';
 }
 
 function setCurrentUserId(id) {
+  // Con backend, la sesión real vive en DataStore (JWT) — login.jsx la fija
+  // directamente al hacer login. Esto solo aplica al flujo localStorage previo.
+  if (typeof isBackendActive === 'function' && isBackendActive()) return;
   if (id) localStorage.setItem(CURR_USER_KEY, id);
   else localStorage.removeItem(CURR_USER_KEY);
 }
 
 function userHasPermission(perm) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    return DataStore.session.user.perms.includes(perm);
+  }
   const uid = getCurrentUserId();
   if (!uid) return true; // dev mode: no user logged in → show everything
   const assign = getAssignments();
@@ -142,19 +172,65 @@ function userHasPermission(perm) {
 }
 
 function getRoles() {
+  if (typeof isBackendActive === 'function' && isBackendActive()) return DataStore.roles;
   try { return JSON.parse(localStorage.getItem(ROLES_KEY) || 'null') || SEED_ROLES; } catch { return SEED_ROLES; }
 }
 
-function saveRoles(roles) {
-  localStorage.setItem(ROLES_KEY, JSON.stringify(roles));
+// roles.jsx siempre llama a esto con el arreglo COMPLETO ya modificado — se
+// difiere contra el snapshot anterior para saber qué crear/editar/borrar en
+// la API, sin tener que tocar RolesView (que arma el arreglo completo).
+function saveRoles(newRoles) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    const prev = DataStore.roles;
+    const prevIds = new Set(prev.map(r => r.id));
+    const newIds = new Set(newRoles.map(r => r.id));
+
+    newRoles.forEach(r => {
+      if (!prevIds.has(r.id)) {
+        apiFetch('/roles', { method: 'POST', body: JSON.stringify(r) }).catch(err => console.error('saveRoles create', err));
+        return;
+      }
+      const before = prev.find(p => p.id === r.id);
+      const samePerms = before && JSON.stringify([...before.perms].sort()) === JSON.stringify([...r.perms].sort());
+      const changed = !before || before.name !== r.name || before.description !== r.description || before.color !== r.color || !samePerms;
+      if (changed) apiFetch(`/roles/${encodeURIComponent(r.id)}`, { method: 'PATCH', body: JSON.stringify(r) }).catch(err => console.error('saveRoles update', err));
+    });
+    prev.forEach(r => {
+      if (!newIds.has(r.id)) apiFetch(`/roles/${encodeURIComponent(r.id)}`, { method: 'DELETE' }).catch(err => console.error('saveRoles delete', err));
+    });
+
+    DataStore.roles = newRoles;
+    return;
+  }
+  localStorage.setItem(ROLES_KEY, JSON.stringify(newRoles));
 }
 
 function getAssignments() {
+  if (typeof isBackendActive === 'function' && isBackendActive()) return DataStore.assignments;
   try { return JSON.parse(localStorage.getItem(ASSIGN_KEY) || 'null') || SEED_ASSIGNMENTS; } catch { return SEED_ASSIGNMENTS; }
 }
 
-function saveAssignments(asgn) {
-  localStorage.setItem(ASSIGN_KEY, JSON.stringify(asgn));
+function saveAssignments(newAsgn) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    const prev = DataStore.assignments;
+    const prevByEmp = new Map(prev.map(a => [a.empId, a.roleId]));
+    const newByEmp = new Map(newAsgn.map(a => [a.empId, a.roleId]));
+
+    newAsgn.forEach(a => {
+      if (prevByEmp.get(a.empId) !== a.roleId) {
+        apiFetch('/role-assignments', { method: 'POST', body: JSON.stringify(a) }).catch(err => console.error('saveAssignments upsert', err));
+      }
+    });
+    prevByEmp.forEach((roleId, empId) => {
+      if (!newByEmp.has(empId)) {
+        apiFetch(`/role-assignments/${encodeURIComponent(empId)}`, { method: 'DELETE' }).catch(err => console.error('saveAssignments delete', err));
+      }
+    });
+
+    DataStore.assignments = newAsgn;
+    return;
+  }
+  localStorage.setItem(ASSIGN_KEY, JSON.stringify(newAsgn));
 }
 
 function getCurrentUserProfile() {

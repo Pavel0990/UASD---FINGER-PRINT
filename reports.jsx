@@ -1,21 +1,45 @@
-/* reports.jsx — attendance analytics */
+/* reports.jsx — attendance analytics (datos reales del sistema, sin mocks) */
 
-const ATTEND_DAYS = [
-  { day: 'Lun', valid: 287, late: 22 },
-  { day: 'Mar', valid: 294, late: 18 },
-  { day: 'Mié', valid: 301, late: 14 },
-  { day: 'Jue', valid: 288, late: 21 },
-  { day: 'Vie', valid: 276, late: 28 },
-  { day: 'Sáb', valid: 142, late: 8  },
-  { day: 'Dom', valid: 41,  late: 2  },
-];
-
-const ATTEND_TOTALS = ATTEND_DAYS.map(d => d.valid + d.late);
-const ATTEND_MAX    = Math.max(...ATTEND_TOTALS);
-const ATTEND_PEAK   = ATTEND_TOTALS.indexOf(Math.max(...ATTEND_TOTALS));
-const ATTEND_LOW    = ATTEND_TOTALS.indexOf(Math.min(...ATTEND_TOTALS));
+const FULL_DAYS_ES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const FULL_DAYS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 function todayKey() { return new Date().toLocaleDateString('en-CA').slice(0, 7); }
+function todayISO()  { return new Date().toLocaleDateString('en-CA'); }
+
+function loadAttendance() {
+  try { return JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}'); } catch { return {}; }
+}
+function loadAbsences() {
+  try { return JSON.parse(localStorage.getItem('uasd_absences') || '{}'); } catch { return {}; }
+}
+
+/* "08:14:32 AM" → 8 · "01:05:00 PM" → 13 */
+function parseHour24(timeStr) {
+  const m = /(\d+):(\d+).*?(AM|PM)/i.exec(timeStr || '');
+  if (!m) return null;
+  let h = parseInt(m[1], 10) % 12;
+  if (/PM/i.test(m[3])) h += 12;
+  return h;
+}
+
+function countWeekdays(year, month0, throughDay) {
+  const last = throughDay || new Date(year, month0 + 1, 0).getDate();
+  let n = 0;
+  for (let d = 1; d <= last; d++) {
+    const dow = new Date(year, month0, d).getDay();
+    if (dow >= 1 && dow <= 5) n++;
+  }
+  return n;
+}
+
+function buildDeptDist(emps) {
+  const palette = ['#1A1F3A','#2C3E66','#4a6fa5','#5a6a90','#2f7a5a','#8a6c2c','#8b2942','#6b5b9e','#2d7d9a','#c1793c','#9e4d6b','#5a8a2c','#8b97b3'];
+  const counts = {};
+  emps.forEach(e => { counts[e.dept] = (counts[e.dept] || 0) + 1; });
+  return Object.keys(counts)
+    .map((name, i) => ({ name, value: counts[name], color: palette[i % palette.length] }))
+    .sort((a, b) => b.value - a.value);
+}
 
 function ReportsView({ t, lang, setRoute }) {
   React.useEffect(() => {
@@ -41,11 +65,115 @@ function ReportsView({ t, lang, setRoute }) {
     if (key <= todayKey()) setFilterMonth(key);
   }, [fy, fm]);
 
+  /* ── Datos reales — se sincronizan entre pestañas y con el kiosco ── */
+  const [allAtt, setAllAtt] = React.useState(loadAttendance);
+  const [absMap, setAbsMap] = React.useState(loadAbsences);
+  React.useEffect(() => {
+    const sync = () => { setAllAtt(loadAttendance()); setAbsMap(loadAbsences()); };
+    window.addEventListener('storage', sync);
+    const id = setInterval(sync, 4000);
+    return () => { window.removeEventListener('storage', sync); clearInterval(id); };
+  }, []);
+
+  const emps       = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
+  const activeEmps = React.useMemo(() => emps.filter(e => e.status !== 'inactive'), [emps]);
+  const attRecords = React.useMemo(() => Object.values(allAtt), [allAtt]);
+
+  /* KPIs + hero chart reflejan SIEMPRE el mes/semana actual (no el filtro de abajo) —
+     así el resumen de arriba es un "pulso en vivo", igual que el resto del sistema. */
+  const curMonthKey  = todayKey();
+  const [cy, cm]     = curMonthKey.split('-');
+  const curMonthLabel = `${MONTHS_ES[+cm - 1]} ${cy}`;
+  const prevMonthKey = React.useMemo(() => {
+    const d = new Date(+cy, +cm - 2, 1);
+    return d.toLocaleDateString('en-CA').slice(0, 7);
+  }, [cy, cm]);
+
+  const curMonthRecords  = React.useMemo(() => attRecords.filter(a => a.date && a.date.slice(0,7) === curMonthKey),  [attRecords, curMonthKey]);
+  const prevMonthRecords = React.useMemo(() => attRecords.filter(a => a.date && a.date.slice(0,7) === prevMonthKey), [attRecords, prevMonthKey]);
+
+  const countAbsences = React.useCallback((ym) => {
+    let total = 0;
+    Object.values(absMap).forEach(list => {
+      (list || []).forEach(a => { if (a.date && a.date.slice(0,7) === ym && !isHoliday(a.date)) total++; });
+    });
+    return total;
+  }, [absMap]);
+  const curMonthAbsences  = React.useMemo(() => countAbsences(curMonthKey),  [countAbsences, curMonthKey]);
+  const prevMonthAbsences = React.useMemo(() => countAbsences(prevMonthKey), [countAbsences, prevMonthKey]);
+
+  const workdaysCur  = React.useMemo(() => countWeekdays(+cy, +cm - 1, new Date().getDate()), [cy, cm]);
+  const workdaysPrev = React.useMemo(() => { const [py,pm] = prevMonthKey.split('-'); return countWeekdays(+py, +pm - 1); }, [prevMonthKey]);
+
+  const pct = (n, d) => d > 0 ? (n / d) * 100 : 0;
+  const denom = Math.max(1, activeEmps.length);
+
+  const onTimePct = pct(curMonthRecords.length - curMonthRecords.filter(a => a.late).length, curMonthRecords.length);
+  const latePct   = pct(curMonthRecords.filter(a => a.late).length, curMonthRecords.length);
+  const absentPct = pct(curMonthAbsences, workdaysCur * denom);
+
+  const prevOnTimePct = pct(prevMonthRecords.length - prevMonthRecords.filter(a => a.late).length, prevMonthRecords.length);
+  const prevLatePct   = pct(prevMonthRecords.filter(a => a.late).length, prevMonthRecords.length);
+  const prevAbsentPct = pct(prevMonthAbsences, workdaysPrev * denom);
+
+  const hasPrevAtt = prevMonthRecords.length > 0;
+
+  /* Pill de tendencia — real, comparado con el mes anterior. Sin datos previos
+     suficientes, muestra el mes en vez de inventar un porcentaje. */
+  const trendPill = (curr, prev, hasPrev, goodWhenLower) => {
+    if (!hasPrev) return <span className="kpi__pill">{curMonthLabel}</span>;
+    const d = +(curr - prev).toFixed(1);
+    const isGood = goodWhenLower ? d <= 0 : d >= 0;
+    const arrow  = d === 0 ? '•' : (d > 0 ? '▲' : '▼');
+    return (
+      <span className="kpi__pill" style={isGood ? undefined : {color:'var(--danger)', borderColor:'rgba(193,85,77,0.35)'}}>
+        {arrow} {Math.abs(d).toFixed(1)}%
+      </span>
+    );
+  };
+
+  /* ── Últimos 7 días — pulso reciente de asistencia (datos reales) ── */
+  const last7 = React.useMemo(() => {
+    const out  = [];
+    const base = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(base);
+      d.setDate(base.getDate() - i);
+      const iso  = d.toLocaleDateString('en-CA');
+      const recs = attRecords.filter(a => a.date === iso);
+      const late = recs.filter(a => a.late).length;
+      out.push({ iso, day: DAYS_ES[d.getDay()], total: recs.length, late, valid: recs.length - late });
+    }
+    return out;
+  }, [attRecords]);
+
+  const last7Totals = last7.map(d => d.total);
+  const last7Max     = Math.max(1, ...last7Totals);
+  const hasLast7Data = last7Totals.some(v => v > 0);
+  const last7Varies  = new Set(last7Totals).size > 1;
+  const last7Peak    = hasLast7Data ? last7Totals.indexOf(Math.max(...last7Totals)) : -1;
+  const last7Low     = (hasLast7Data && last7Varies) ? last7Totals.indexOf(Math.min(...last7Totals)) : -1;
+
+  const daysWithData = last7.filter(d => d.total > 0).length;
+  const avgPerDay     = daysWithData > 0 ? Math.round(last7Totals.reduce((s,v) => s+v, 0) / daysWithData) : 0;
+  const totalLast7    = last7Totals.reduce((s,v) => s+v, 0);
+  const busiestIdx    = hasLast7Data ? last7Peak : -1;
+  const busiestDayFull = busiestIdx >= 0
+    ? (isES ? FULL_DAYS_ES : FULL_DAYS_EN)[new Date(last7[busiestIdx].iso + 'T00:00:00').getDay()]
+    : '—';
+  const busiestVal    = busiestIdx >= 0 ? last7[busiestIdx].total : 0;
+
+  /* ── Llegadas por hora — hoy ── */
+  const todayStr     = todayISO();
+  const todayRecords = React.useMemo(() => attRecords.filter(a => a.date === todayStr), [attRecords, todayStr]);
+  const hourHours  = React.useMemo(() => Array.from({length:13}, (_,i) => i + 6), []);
+  const hourCounts = React.useMemo(
+    () => hourHours.map(h => todayRecords.filter(a => parseHour24(a.time) === h).length),
+    [hourHours, todayRecords]
+  );
+
   const exportCSV = () => {
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
-    let allAtt = {};
-    try { allAtt = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}'); } catch {}
     let evMap = {};
     try { evMap = JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch {}
 
@@ -87,46 +215,46 @@ function ReportsView({ t, lang, setRoute }) {
         </div>
       </div>
 
-      {/* ── KPIs ── */}
+      {/* ── KPIs — mes actual, datos reales, comparados con el mes anterior ── */}
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
         <div className="kpi kpi--fill">
           <div className="kpi__top">
             <div className="kpi__icon"><Icon name="check" size={18}/></div>
-            <span className="kpi__pill kpi__pill--up">▲ 3.2%</span>
+            {trendPill(onTimePct, prevOnTimePct, hasPrevAtt, false)}
           </div>
           <div className="kpi__foot">
             <div className="kpi__label">{t.rep_punctual_on}</div>
-            <div className="kpi__value">87<span style={{fontSize:18,opacity:0.6}}>%</span></div>
+            <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,opacity:0.6}}>%</span></div>
           </div>
         </div>
         <div className="kpi">
           <div className="kpi__top">
             <div className="kpi__icon"><Icon name="clock" size={18}/></div>
-            <span className="kpi__pill" style={{color:'var(--danger)',borderColor:'rgba(193,85,77,0.35)'}}>▼ 1.1%</span>
+            {trendPill(latePct, prevLatePct, hasPrevAtt, true)}
           </div>
           <div className="kpi__foot">
             <div className="kpi__label">{t.rep_punctual_late}</div>
-            <div className="kpi__value">9<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+            <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
           </div>
         </div>
         <div className="kpi">
           <div className="kpi__top">
             <div className="kpi__icon"><Icon name="x" size={18}/></div>
-            <span className="kpi__pill">{t.rep_avg_month}</span>
+            {trendPill(absentPct, prevAbsentPct, true, true)}
           </div>
           <div className="kpi__foot">
             <div className="kpi__label">{t.rep_punctual_absent}</div>
-            <div className="kpi__value">4<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+            <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
           </div>
         </div>
         <div className="kpi">
           <div className="kpi__top">
             <div className="kpi__icon"><Icon name="barChart" size={18}/></div>
-            <span className="kpi__pill">{t.rep_total_week}</span>
+            <span className="kpi__pill">{curMonthLabel}</span>
           </div>
           <div className="kpi__foot">
-            <div className="kpi__label">{t.rep_kpi_hours}</div>
-            <div className="kpi__value">14,287</div>
+            <div className="kpi__label">{isES ? 'Marcajes del mes' : 'Check-ins this month'}</div>
+            <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}</div>
           </div>
         </div>
       </div>
@@ -136,7 +264,7 @@ function ReportsView({ t, lang, setRoute }) {
         <div className="chart-card__head">
           <div>
             <div className="chart-card__title">{t.rep_attend}</div>
-            <div className="chart-card__sub">{t.rep_attend_sub}</div>
+            <div className="chart-card__sub">{t.rep_attend_sub} · {isES ? 'últimos 7 días' : 'last 7 days'}</div>
           </div>
           <div className="rep-legend">
             <div className="rep-legend__item">
@@ -159,9 +287,9 @@ function ReportsView({ t, lang, setRoute }) {
 
           {/* dots de datos encima de las barras */}
           <div className="rep-hero-chart__dots">
-            {ATTEND_DAYS.map((d, i) => {
-              const isHigh = i === ATTEND_PEAK;
-              const isLow  = i === ATTEND_LOW;
+            {last7.map((d, i) => {
+              const isHigh = i === last7Peak;
+              const isLow  = i === last7Low;
               return (
                 <div key={i} className="rep-hero-chart__dot-col">
                   <span className="rep-hero-chart__dot" style={{
@@ -175,12 +303,12 @@ function ReportsView({ t, lang, setRoute }) {
 
           {/* columnas de barras */}
           <div className="rep-hero-chart__bars">
-            {ATTEND_DAYS.map((d, i) => {
-              const total   = d.valid + d.late;
-              const totalH  = (total / ATTEND_MAX) * 100;
-              const lateH   = (d.late / total) * 100;
-              const isHigh  = i === ATTEND_PEAK;
-              const isLow   = i === ATTEND_LOW;
+            {last7.map((d, i) => {
+              const total   = d.total;
+              const totalH  = (total / last7Max) * 100;
+              const lateH   = total > 0 ? (d.late / total) * 100 : 0;
+              const isHigh  = i === last7Peak;
+              const isLow   = i === last7Low;
               const isHover = hoveredIdx === i;
               const isActive = isHigh || isLow;
 
@@ -231,9 +359,9 @@ function ReportsView({ t, lang, setRoute }) {
 
         {/* micro-stats debajo del chart */}
         <div className="rep-microstats">
-          <MicroStat label={t.rep_micro_avg}   val="231"              unit={t.rep_micro_avg_unit}/>
-          <MicroStat label={t.rep_micro_peak}  val={t.rep_micro_peak_day} unit={t.rep_micro_peak_unit}/>
-          <MicroStat label={t.rep_micro_total} val="1,629"            unit={t.rep_micro_total_unit}/>
+          <MicroStat label={t.rep_micro_avg}   val={avgPerDay}      unit={t.rep_micro_avg_unit}/>
+          <MicroStat label={t.rep_micro_peak}  val={busiestDayFull} unit={busiestIdx >= 0 ? `${busiestVal} ${isES ? 'marcajes' : 'clock-ins'}` : (isES ? 'sin datos' : 'no data')}/>
+          <MicroStat label={t.rep_micro_total} val={totalLast7}     unit={isES ? 'últimos 7 días' : 'last 7 days'}/>
         </div>
       </div>
 
@@ -246,7 +374,7 @@ function ReportsView({ t, lang, setRoute }) {
               <div className="chart-card__sub">{t.rep_hours_sub}</div>
             </div>
           </div>
-          <HourHistogram t={t}/>
+          <HourHistogram hours={hourHours} counts={hourCounts} todayCount={todayRecords.length} isES={isES}/>
         </div>
 
         <div className="chart-card">
@@ -263,14 +391,14 @@ function ReportsView({ t, lang, setRoute }) {
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{t.rep_top}</div>
-              <div className="chart-card__sub">{t.rep_recent_60}</div>
+              <div className="chart-card__sub">{isES ? 'Marcajes de hoy' : "Today's check-ins"}</div>
             </div>
             <span className="badge badge--ok">
               <span className="badge__dot"/>
               {t.rep_live}
             </span>
           </div>
-          <ActivityFeed t={t}/>
+          <ActivityFeed isES={isES}/>
         </div>
       </div>
 
@@ -316,12 +444,15 @@ function MicroStat({ label, val, unit }) {
 
 /* ── DepartmentDonut ── */
 function DepartmentDonut({ t }) {
-  const total    = DEPT_DIST.reduce((s, d) => s + d.value, 0);
+  const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
+  const dist = React.useMemo(() => buildDeptDist(emps), [emps]);
+
+  const total    = dist.reduce((s, d) => s + d.value, 0);
   const r        = 52;
   const circ     = 2 * Math.PI * r;
   let   offset   = 0;
-  const segments = DEPT_DIST.map(d => {
-    const frac   = d.value / total;
+  const segments = dist.map(d => {
+    const frac   = total > 0 ? d.value / total : 0;
     const length = circ * frac;
     const seg    = { ...d, length, gap: circ - length, offset, frac };
     offset      -= length;
@@ -347,7 +478,7 @@ function DepartmentDonut({ t }) {
         </div>
       </div>
       <div className="donut__legend">
-        {DEPT_DIST.map((d, i) => (
+        {dist.map((d, i) => (
           <div className="donut__legend-row" key={i}>
             <span className="donut__legend-swatch" style={{ background:d.color }}/>
             <span className="donut__legend-name">{d.name}</span>
@@ -359,24 +490,23 @@ function DepartmentDonut({ t }) {
   );
 }
 
-/* ── HourHistogram ── */
-function HourHistogram({ t }) {
-  const hours  = [6,12,28,64,92,41,23,12,8,6,18,47,9];
-  const labels = ['06','07','08','09','10','11','12','13','14','15','16','17','18'];
-  const maxH   = Math.max(...hours);
-  const peakI  = hours.indexOf(maxH);
+/* ── HourHistogram — llegadas de hoy, datos reales ── */
+function HourHistogram({ hours, counts, todayCount, isES }) {
+  const hasData = todayCount > 0;
+  const maxH    = Math.max(1, ...counts);
+  const peakI   = hasData ? counts.indexOf(Math.max(...counts)) : -1;
 
   return (
     <div style={{ padding:'8px 0' }}>
       <div className="bars" style={{ height:'clamp(110px, 22vw, 160px)', gap:6 }}>
-        {hours.map((h, i) => (
+        {counts.map((h, i) => (
           <div className="bars__col" key={i}>
             <div className="bars__bar" style={{
-              height:`${(h / maxH) * 100}%`,
+              height: hasData ? `${Math.max(h / maxH * 100, h > 0 ? 4 : 0)}%` : '2px',
               background: i === peakI ? 'var(--ink-800)' : 'var(--ink-150, var(--ink-100))',
               borderRadius: '5px 5px 0 0',
             }}>
-              {i === peakI && (
+              {i === peakI && h > 0 && (
                 <div style={{
                   position:'absolute', top:0, left:0, right:0,
                   height:'35%', background:'var(--gold-500)',
@@ -384,7 +514,7 @@ function HourHistogram({ t }) {
                 }}/>
               )}
             </div>
-            <div className="bars__label" style={{ fontSize:9 }}>{labels[i]}</div>
+            <div className="bars__label" style={{ fontSize:9 }}>{String(hours[i]).padStart(2,'0')}</div>
           </div>
         ))}
       </div>
@@ -395,27 +525,56 @@ function HourHistogram({ t }) {
         display:'flex', alignItems:'center', gap:8,
       }}>
         <Icon name="clock" size={13} stroke={1.8}/>
-        {(() => {
-          const parts = t.rep_peak_msg.split('{h}').join('||10:00 — 11:00||').split('{n}').join('92').split('||');
-          return parts.map((p, i) => p === '10:00 — 11:00'
-            ? <strong key={i} style={{ color:'var(--ink-800)' }}>{p}</strong>
-            : <span key={i}>{p}</span>);
-        })()}
+        {hasData ? (
+          <span>
+            {isES ? 'Pico de marcajes a las ' : 'Peak clock-ins at '}
+            <strong style={{ color:'var(--ink-800)' }}>
+              {String(hours[peakI]).padStart(2,'0')}:00 — {String(hours[peakI] + 1).padStart(2,'0')}:00
+            </strong>
+            {isES ? ` con ${maxH} entrada${maxH !== 1 ? 's' : ''}.` : ` with ${maxH} ${maxH !== 1 ? 'entries' : 'entry'}.`}
+          </span>
+        ) : (
+          <span>{isES ? 'Aún no hay marcajes registrados hoy.' : 'No check-ins recorded yet today.'}</span>
+        )}
       </div>
     </div>
   );
 }
 
-/* ── ActivityFeed ── */
-function ActivityFeed({ t }) {
-  const feed = [
-    { name:'María Reyes Castillo',   dept:'Ingeniería',   min:2,  kind:'in'  },
-    { name:'Carlos Méndez Polanco',  dept:'RRHH',          min:6,  kind:'in'  },
-    { name:'Roberto Núñez Espinal',  dept:'Sistemas',      min:11, kind:'in'  },
-    { name:'Elena Sánchez Brito',    dept:'Rectoría',      min:18, kind:'out' },
-    { name:'Lourdes Peña Vargas',    dept:'Biblioteca',    min:24, kind:'in'  },
-    { name:'Pedro Antonio Rosario',  dept:'Mantenimiento', min:31, kind:'in'  },
-  ];
+/* ── ActivityFeed — marcajes reales de hoy ── */
+function ActivityFeed({ isES }) {
+  const [allAtt, setAllAtt] = React.useState(loadAttendance);
+  React.useEffect(() => {
+    const sync = () => setAllAtt(loadAttendance());
+    window.addEventListener('storage', sync);
+    const id = setInterval(sync, 4000);
+    return () => { window.removeEventListener('storage', sync); clearInterval(id); };
+  }, []);
+
+  const today = todayISO();
+  const emps  = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
+
+  const feed = React.useMemo(() => {
+    return Object.values(allAtt)
+      .filter(a => a.date === today)
+      .map(a => {
+        const emp = emps.find(e => e.id === a.empId);
+        return emp ? { name: emp.name, dept: emp.dept, time: a.time, late: a.late } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.time.localeCompare(a.time))
+      .slice(0, 8);
+  }, [allAtt, today]);
+
+  if (feed.length === 0) {
+    return (
+      <div className="audit-empty" style={{ padding:'32px 16px' }}>
+        <Icon name="activity" size={26} stroke={1.2}/>
+        <div className="audit-empty__title">{isES ? 'Sin actividad hoy' : 'No activity today'}</div>
+        <div className="audit-empty__sub">{isES ? 'Aún no hay marcajes registrados hoy.' : 'No check-ins recorded yet today.'}</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', padding:'4px 0' }}>
@@ -431,10 +590,10 @@ function ActivityFeed({ t }) {
           </div>
           <div>
             <div style={{ fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600, color:'var(--ink-800)', lineHeight:1.3 }}>{e.name}</div>
-            <div style={{ fontFamily:'var(--font-sans)', fontSize:10, color:'var(--ink-400)', marginTop:1 }}>{e.dept} · <span style={{ fontFamily:'var(--font-mono)' }}>{t.rep_ago.split('{n}').join(e.min)}</span></div>
+            <div style={{ fontFamily:'var(--font-sans)', fontSize:10, color:'var(--ink-400)', marginTop:1 }}>{e.dept} · <span style={{ fontFamily:'var(--font-mono)' }}>{e.time.slice(0,5)}</span></div>
           </div>
-          <span className={`badge ${e.kind === 'in' ? 'badge--ok' : 'badge--neutral'}`} style={{ fontSize:9, padding:'2px 7px' }}>
-            {e.kind === 'in' ? 'IN' : 'OUT'}
+          <span className={`badge ${e.late ? 'badge--warn' : 'badge--ok'}`} style={{ fontSize:9, padding:'2px 7px' }}>
+            {e.late ? (isES ? 'TARDE' : 'LATE') : 'IN'}
           </span>
         </div>
       ))}

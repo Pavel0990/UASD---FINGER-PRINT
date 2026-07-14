@@ -3,3 +3,5 @@
 uploads/
 screenshots/
 scraps/
+backend/node_modules/
+backend/.env

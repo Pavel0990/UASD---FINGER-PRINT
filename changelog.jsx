@@ -18,10 +18,19 @@ function getAuditActions(t) {
 }
 
 function getAuditLog() {
+  if (typeof isBackendActive === 'function' && isBackendActive()) return DataStore.auditLog;
   try { return JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]'); } catch { return []; }
 }
 
 function pushAuditEntry(entry) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    // El backend ya registró la entrada real server-side (logAudit(), disparado
+    // por employees.controller en el mismo request que originó esta llamada,
+    // con el actor real de la sesión — no AUDIT_ADMINS[0]). Acá solo se
+    // refresca el cache local para que ChangelogView la muestre.
+    apiFetch('/audit-log?limit=200').then(data => { DataStore.auditLog = data.entries || []; }).catch(() => {});
+    return;
+  }
   const log = getAuditLog();
   log.unshift({ ...entry, id: Date.now(), ts: new Date().toISOString() });
   localStorage.setItem(AUDIT_KEY, JSON.stringify(log.slice(0, 200)));

@@ -9,10 +9,38 @@ Pantallas: terminal de marcaje (kiosk), login, dashboard de empleados, registro 
 - `UASD Fingerprint System.html` — entrada; carga fuentes, estilos y todos los .jsx.
 - `styles.css` — tokens de diseño + todos los estilos.
 - `shared.jsx` — diccionario de textos bilingüe (I18N), iconos, componentes comunes (TopBar, Crest, etc.), helpers (formatTime/formatDate).
+- `store.jsx` — puente frontend↔backend (DataStore, apiFetch, sesión JWT). Se carga justo después de `shared.jsx`.
 - `kiosk.jsx` — terminal de marcaje (vista principal de reconocimiento).
 - `login.jsx`, `dashboard.jsx`, `register.jsx`, `reports.jsx` — demás vistas.
 - `fingerprint.jsx` — componente del lector/escáner reutilizable.
 - `app.jsx` — router + Tweaks.
+- `backend/` — servidor Node/Express + Prisma + PostgreSQL (ver sección "Backend" abajo).
+
+## Backend (Node + Express + Prisma + PostgreSQL)
+Fase 1 implementada (2026-07-14): Empleados, Auth (JWT + refresh cookie httpOnly),
+Roles/Permisos/Asignaciones y Auditoría ya persisten en Postgres real, vía
+`backend/` (Express sirve también los estáticos del frontend en el mismo puerto
+8080 — reemplaza `python3 -m http.server`). Arranque: `bash "Abrir sistema.command"`
+(o `cd backend && npm run dev`). Seed: `cd backend && npm run seed`.
+
+**Patrón de integración — "dual-path"**: los helpers `get*/save*` de
+`shared.jsx`/`roles.jsx`/`changelog.jsx` (empleados, departamentos, roles,
+asignaciones, credenciales, audit log) chequean `isBackendActive()`
+(= `DataStore.session` no nulo, definido en `store.jsx`). Con sesión activa,
+leen/escriben contra la API real; sin sesión (app sin login, arranque dev por
+defecto en `dashboard`), siguen exactamente igual que antes sobre
+`localStorage`. `EMPLOYEES` pasó de `const` a `let` y se muta EN SITIO
+(`EMPLOYEES.length = 0; EMPLOYEES.push(...)`) en `bootstrapStore()` — así
+`dashboard.jsx`/`finca.jsx`/`liceo.jsx`/`vacaciones.jsx`/`register.jsx`, que
+hacen `EMPLOYEES.find/.filter/.map` directo, funcionan sin tocarles una línea.
+
+**Dominios pendientes** (siguen 100% en `localStorage`, fases futuras):
+Asistencia (`attendance_events`/`absences`), Finca, Liceo, Eventualidades,
+Vacaciones, Feriados. El diseño de esas tablas ya está en el plan
+`~/.claude/plans/adaptive-mapping-whisper.md` de la sesión que hizo la Fase 1.
+
+**Local dev**: Postgres corre vía Homebrew (`brew services start postgresql@16`),
+base de datos `uasd_fingerprint`, `DATABASE_URL` en `backend/.env` (no versionado).
 
 ## Sistema tipográfico (mantener consistente en TODAS las pantallas)
 - **Serif** (Source Serif 4) → títulos grandes / display.

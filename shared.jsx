@@ -687,7 +687,7 @@ const I18N = {
 };
 
 // workDays: array of JS getDay() values — 0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb
-const EMPLOYEES = [
+let EMPLOYEES = [
 { id: 'EMP-00702', name: 'Pavel Abreu Torres',    cedula: '40298731045', dept: 'Data',                     role: 'Desarrollador',         email: 'pabreu@uasd.edu.do',      phone: '+1 809 555 0702', schedule: '8:00 AM — 6:00 PM',   workDays: [1,2,3,4,5],     status: 'ok',       lastIn: '08:00', dob: '12/06/1999', gender: 'M' },
 { id: 'EMP-00601', name: 'Gabriel Gómez',          cedula: '40220274583', dept: 'Data',                     role: 'Analista de Datos',     email: 'ggomez@uasd.edu.do',      phone: '+1 809 555 0601', schedule: '8:00 AM — 6:00 PM',   workDays: [1,2,3,4,5],     status: 'ok',       lastIn: '07:58', dob: '14/03/1991', gender: 'M' },
 { id: 'EMP-00214', name: 'María Reyes Castillo',   cedula: '40212845637', dept: 'Facultad de Ingeniería',   role: 'Decana',                email: 'mreyes@uasd.edu.do',      phone: '+1 809 555 0142', schedule: '7:00 AM — 3:00 PM',   workDays: [1,2,3,4,5],     status: 'ok',       lastIn: '07:54', dob: '22/07/1978', gender: 'F' },
@@ -1359,9 +1359,18 @@ const DAYS_ES   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
 const EMP_EMAILS_KEY = 'uasd_employee_emails';
 function getEmployeeEmails() {
+  // Con backend, el email ya vive en employees.email — se deriva de EMPLOYEES
+  // en vez de mantener esta tabla redundante.
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    const map = {};
+    EMPLOYEES.forEach(e => { map[e.id] = e.email; });
+    return map;
+  }
   try { return JSON.parse(localStorage.getItem(EMP_EMAILS_KEY) || '{}'); } catch { return {}; }
 }
 function saveEmployeeEmail(empId, email) {
+  // Con backend: no-op — saveRegisteredEmployee ya persiste employee.email.
+  if (typeof isBackendActive === 'function' && isBackendActive()) return;
   try {
     const map = getEmployeeEmails();
     map[empId] = email;
@@ -1378,6 +1387,9 @@ const DEFAULT_DEPARTMENTS = [
 ];
 const DEPARTMENTS_KEY = 'uasd_departments';
 function getDepartments() {
+  if (typeof isBackendActive === 'function' && isBackendActive() && DataStore.departments.length) {
+    return [...DataStore.departments].sort();
+  }
   try {
     const custom = JSON.parse(localStorage.getItem(DEPARTMENTS_KEY) || '[]');
     const merged = [...new Set([...DEFAULT_DEPARTMENTS, ...custom])].sort();
@@ -1387,6 +1399,12 @@ function getDepartments() {
 function addDepartment(name) {
   const trimmed = name.trim();
   if (!trimmed) return false;
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    if (DataStore.departments.includes(trimmed)) return false;
+    DataStore.departments.push(trimmed);
+    apiFetch('/departments', { method: 'POST', body: JSON.stringify({ name: trimmed }) }).catch(err => console.error('addDepartment', err));
+    return true;
+  }
   try {
     const existing = JSON.parse(localStorage.getItem(DEPARTMENTS_KEY) || '[]');
     if (existing.includes(trimmed) || DEFAULT_DEPARTMENTS.includes(trimmed)) return false;
@@ -1404,12 +1422,32 @@ function removeDepartment(name) {
   } catch { return false; }
 }
 
-/* ── Employee persistence ─────────────────────────── */
+/* ── Employee persistence ─────────────────────────────────────────────
+   Con sesión de backend activa (DataStore.session), EMPLOYEES ya viene
+   poblado desde Postgres (bootstrapStore() en store.jsx) y es la única
+   fuente — por eso getRegisteredEmployees() devuelve [] en ese caso (si no,
+   [...EMPLOYEES, ...getRegisteredEmployees()] duplicaría). Sin sesión (modo
+   dev/local por defecto, sin login), se preserva el comportamiento anterior
+   100% intacto sobre localStorage. */
 const REG_EMP_KEY = 'uasd_registered_employees';
 function getRegisteredEmployees() {
+  if (typeof isBackendActive === 'function' && isBackendActive()) return [];
   try { return JSON.parse(localStorage.getItem(REG_EMP_KEY) || '[]'); } catch { return []; }
 }
 function saveRegisteredEmployee(emp) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    const idx = EMPLOYEES.findIndex(e => e.id === emp.id);
+    if (idx >= 0) EMPLOYEES[idx] = { ...EMPLOYEES[idx], ...emp };
+    else EMPLOYEES.push(emp);
+
+    const isNew = idx < 0;
+    const body = JSON.stringify(emp);
+    const req = isNew
+      ? apiFetch('/employees', { method: 'POST', body })
+      : apiFetch(`/employees/${encodeURIComponent(emp.id)}`, { method: 'PATCH', body });
+    req.catch(err => console.error('saveRegisteredEmployee', err));
+    return;
+  }
   try {
     const list = getRegisteredEmployees();
     const idx = list.findIndex(e => e.id === emp.id);
@@ -1419,6 +1457,12 @@ function saveRegisteredEmployee(emp) {
   } catch {}
 }
 function removeRegisteredEmployee(empId) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    const idx = EMPLOYEES.findIndex(e => e.id === empId);
+    if (idx >= 0) EMPLOYEES.splice(idx, 1);
+    apiFetch(`/employees/${encodeURIComponent(empId)}`, { method: 'DELETE' }).catch(err => console.error('removeRegisteredEmployee', err));
+    return;
+  }
   try {
     const list = getRegisteredEmployees().filter(e => e.id !== empId);
     localStorage.setItem(REG_EMP_KEY, JSON.stringify(list));
