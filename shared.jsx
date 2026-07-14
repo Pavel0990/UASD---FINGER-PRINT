@@ -964,7 +964,7 @@ function UserMenu({ t, lang, account, setRoute, close, onAdmin }) {
         </button>
         {(typeof userHasPermission !== 'function' || userHasPermission('vacaciones')) && (
         <button className="usermenu__action" onClick={() => { onAdmin('vacaciones'); }}>
-          <Icon name="calendar1" size={15} /> {t.vacaciones_title}
+          <Icon name="absent" size={15} /> {t.vacaciones_title}
         </button>
         )}
       </div>
@@ -1086,7 +1086,7 @@ function AdminPanel({ t, lang, setLang, setRoute, close, initialTab = 'account' 
     ...(canFarm  ? [{ id: 'finca',     label: t.farm_title,    icon: 'landPlot'   }] : []),
     ...(canLiceo ? [{ id: 'liceo',     label: t.liceo_title,   icon: 'school'     }] : []),
     { id: 'feriados', label: t.feriados_title, icon: 'calendar1' },
-    ...(canVac   ? [{ id: 'vacaciones', label: t.vacaciones_title, icon: 'calendar1' }] : []),
+    ...(canVac   ? [{ id: 'vacaciones', label: t.vacaciones_title, icon: 'absent' }] : []),
   ];
 
   return (

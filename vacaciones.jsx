@@ -2,16 +2,27 @@
 
 const VAC_EMP_KEY   = 'uasd_vacaciones_employees';
 const VAC_DAILY_KEY = 'uasd_vacaciones_daily';
+const VAC_DIAS_KEY  = 'uasd_vacaciones_dias';
 const MAX_VAC_SCENE = 10;
 
+function getVacDias()   { try { return JSON.parse(localStorage.getItem(VAC_DIAS_KEY) || '{}'); } catch(e) { return {}; } }
+function saveVacDias(d) { localStorage.setItem(VAC_DIAS_KEY, JSON.stringify(d)); }
+
 function getVacEmps() {
-  try { return JSON.parse(localStorage.getItem(VAC_EMP_KEY) || '[]'); } catch(e) { return []; }
+  try {
+    var raw = JSON.parse(localStorage.getItem(VAC_EMP_KEY) || '{}');
+    if (Array.isArray(raw)) {
+      var yr = String(new Date().getFullYear());
+      var m  = {};
+      if (raw.length) m[yr] = raw;
+      return m;
+    }
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch(e) { return {}; }
 }
-function saveVacEmps(list) { localStorage.setItem(VAC_EMP_KEY, JSON.stringify(list)); }
-function getVacDaily() {
-  try { return JSON.parse(localStorage.getItem(VAC_DAILY_KEY) || '{}'); } catch(e) { return {}; }
-}
-function saveVacDaily(data) { localStorage.setItem(VAC_DAILY_KEY, JSON.stringify(data)); }
+function saveVacEmps(obj){ localStorage.setItem(VAC_EMP_KEY, JSON.stringify(obj)); }
+function getVacDaily() { try { return JSON.parse(localStorage.getItem(VAC_DAILY_KEY) || '{}'); } catch(e) { return {}; } }
+function saveVacDaily(d){ localStorage.setItem(VAC_DAILY_KEY, JSON.stringify(d)); }
 
 const VAC_SLOTS = [
   {act:'brindis'}, {act:'baile'}, {act:'descanso'}, {act:'caminar'},
@@ -733,7 +744,6 @@ function VacDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, rost
     const rec = daily && daily[iso];
     return rec && Object.keys(rec).length > 0;
   };
-
   const pick = function(d) {
     const iso = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     setViewDate(iso);
@@ -797,14 +807,16 @@ function VacDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, rost
                 const isSel  = sel.d === d && sel.m === month && sel.y === year;
                 const isNow  = now.d === d && now.m === month && now.y === year;
                 const hasRec = hasRecords(d);
+                var dayStyle = {};
+                if (!isSel && hasRec) {
+                  dayStyle = { background:'#d4edda', color:'#1a5c1a', fontWeight:700,
+                    borderRadius:'6px', border:'1.5px solid #7ec89a', position:'relative' };
+                }
                 return (
                   <button tabIndex={-1} type="button" key={d}
                     className={'dp-cal__day'+(isSel?' dp-cal__day--sel':'')+(isNow&&!picked?' dp-cal__day--today':'')}
                     onClick={function() { pick(d); }}
-                    style={isSel ? {} : hasRec ? {
-                      background:'#d4edda',color:'#1a5c1a',fontWeight:700,
-                      borderRadius:'6px',border:'1.5px solid #7ec89a',position:'relative'
-                    } : {}}>
+                    style={isSel ? {} : dayStyle}>
                     {d}
                     {hasRec && !isSel && (
                       <span style={{position:'absolute',bottom:'1px',left:'50%',
@@ -870,27 +882,39 @@ function VacacionesView({ t, lang, setRoute }) {
     };
   }, []);
 
-  const [vacEmps,          setVacEmps]          = React.useState(getVacEmps);
+  const [vacEmpsAll,       setVacEmpsAll]       = React.useState(getVacEmps);
   const [daily,            setDaily]            = React.useState(getVacDaily);
+  const [vacDias,          setVacDias]          = React.useState(getVacDias);
+  const [selYear,          setSelYear]          = React.useState(String(new Date().getFullYear()));
+  const [yearCalOpen,      setYearCalOpen]      = React.useState(false);
+  const [yearCalMonth,     setYearCalMonth]     = React.useState(11);
+  const [yearCalYear,      setYearCalYear]      = React.useState(new Date().getFullYear());
+  const [yearCalPos,       setYearCalPos]       = React.useState({top:0,left:0});
+  const yearPillRef = React.useRef(null);
+  const yearCalRef  = React.useRef(null);
   const [viewDate,         setViewDate]         = React.useState(today);
+
+  const yearEmps = React.useMemo(function() {
+    return vacEmpsAll[selYear] || [];
+  }, [vacEmpsAll, selYear]);
   const [searchQ,          setSearchQ]          = React.useState(false);
   const [searchVal,        setSearchVal]        = React.useState('');
-  const [rosterOpen,       setRosterOpen]       = React.useState(true);
   const [flash,            setFlash]            = React.useState(null);
-  const [isDirty,          setIsDirty]          = React.useState(false);
+const [isDirty,          setIsDirty]          = React.useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = React.useState(false);
 
   const vacEmpObjects = React.useMemo(function() {
-    return vacEmps
+    return yearEmps
       .map(function(id) { return EMPLOYEES.find(function(e) { return e.id === id; }); })
       .filter(Boolean);
-  }, [vacEmps]);
+  }, [yearEmps]);
 
   const [draft, setDraft] = React.useState(function() {
     const saved = getVacDaily()[today];
     if (saved) return saved;
-    const objs = getVacEmps()
-      .map(function(id) { return EMPLOYEES.find(function(e) { return e.id === id; }); })
+    var all  = getVacEmps();
+    var ids  = all[String(new Date().getFullYear())] || [];
+    var objs = ids.map(function(id) { return EMPLOYEES.find(function(e) { return e.id === id; }); })
       .filter(Boolean);
     return getVacScheduledPresence(objs);
   });
@@ -914,6 +938,67 @@ function VacacionesView({ t, lang, setRoute }) {
     return function() { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); };
   }, []);
 
+  React.useEffect(function() {
+    setYearCalMonth(11);
+    setYearCalYear(parseInt(selYear));
+    setYearCalOpen(false);
+  }, [selYear]);
+
+  React.useEffect(function() {
+    if (!yearCalOpen) return;
+    var onOut = function(e) {
+      if (yearPillRef.current && yearPillRef.current.contains(e.target)) return;
+      if (yearCalRef.current  && yearCalRef.current.contains(e.target))  return;
+      setYearCalOpen(false);
+    };
+    document.addEventListener('mousedown', onOut);
+    return function() { document.removeEventListener('mousedown', onOut); };
+  }, [yearCalOpen]);
+
+  const openYearCal = function() {
+    if (yearPillRef.current) {
+      var r = yearPillRef.current.getBoundingClientRect();
+      setYearCalPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
+    }
+    setYearCalOpen(function(o) { return !o; });
+  };
+
+  const [rangeStart, setRangeStart] = React.useState(null);
+  const [rangeHover, setRangeHover] = React.useState(null);
+
+  React.useEffect(function() {
+    if (!rangeStart) return;
+    var onKey = function(e) { if (e.key === 'Escape') { setRangeStart(null); setRangeHover(null); } };
+    document.addEventListener('keydown', onKey);
+    return function() { document.removeEventListener('keydown', onKey); };
+  }, [rangeStart]);
+
+  const handleVacClick = function(iso) {
+    if (!canManage) return;
+    if (!rangeStart) { setRangeStart(iso); return; }
+    if (rangeStart === iso) { setRangeStart(null); setRangeHover(null); return; }
+    var a = rangeStart < iso ? rangeStart : iso;
+    var b = rangeStart < iso ? iso : rangeStart;
+    var dates = [];
+    var cur = new Date(a + 'T00:00:00');
+    var end = new Date(b + 'T00:00:00');
+    while (cur <= end) { dates.push(cur.toLocaleDateString('en-CA')); cur.setDate(cur.getDate()+1); }
+    var yr  = selYear;
+    var existing = vacDias[yr] || [];
+    var existSet = {};
+    existing.forEach(function(d) { existSet[d] = true; });
+    var allSel = dates.every(function(d) { return existSet[d]; });
+    var next = allSel
+      ? existing.filter(function(d) { return dates.indexOf(d) === -1; })
+      : existing.concat(dates.filter(function(d) { return !existSet[d]; })).sort();
+    var updated = Object.assign({}, vacDias);
+    if (next.length) updated[yr] = next; else delete updated[yr];
+    setVacDias(updated);
+    saveVacDias(updated);
+    setRangeStart(null);
+    setRangeHover(null);
+  };
+
   const canManage = typeof userHasPermission === 'function'
     ? (userHasPermission('vacaciones') || userHasPermission('admin'))
     : true;
@@ -925,7 +1010,6 @@ function VacacionesView({ t, lang, setRoute }) {
   const absentCount    = vacEmpObjects.length - presentCount;
   const totalCount     = vacEmpObjects.length;
   const sceneWorkers   = vacEmpObjects.slice(0, MAX_VAC_SCENE);
-  const isToday        = viewDate === today;
   const isAlreadySaved = !!(daily[viewDate] && Object.keys(daily[viewDate]).length);
 
   const showFlash = function(msg) {
@@ -1009,17 +1093,22 @@ function VacacionesView({ t, lang, setRoute }) {
   };
 
   const addToVac = function(empId) {
-    if (vacEmps.includes(empId)) return;
-    const list = vacEmps.concat([empId]);
-    setVacEmps(list);
-    saveVacEmps(list);
+    if (yearEmps.includes(empId)) return;
+    var list    = yearEmps.concat([empId]);
+    var updated = Object.assign({}, vacEmpsAll);
+    updated[selYear] = list;
+    setVacEmpsAll(updated);
+    saveVacEmps(updated);
     setSearchVal('');
   };
 
   const removeFromVac = function(empId) {
-    const list = vacEmps.filter(function(id) { return id !== empId; });
-    setVacEmps(list);
-    saveVacEmps(list);
+    var list    = yearEmps.filter(function(id) { return id !== empId; });
+    var updated = Object.assign({}, vacEmpsAll);
+    if (list.length) updated[selYear] = list;
+    else delete updated[selYear];
+    setVacEmpsAll(updated);
+    saveVacEmps(updated);
     const records = Object.assign({}, daily);
     Object.keys(records).forEach(function(date) {
       if (records[date] && records[date][empId]) {
@@ -1037,13 +1126,6 @@ function VacacionesView({ t, lang, setRoute }) {
     });
   };
 
-  const navDate = function(offset) {
-    const parts = viewDate.split('-').map(Number);
-    const d = new Date(parts[0], parts[1]-1, parts[2]);
-    d.setDate(d.getDate() + offset);
-    setViewDate(d.toLocaleDateString('en-CA'));
-  };
-
   const fmtDate = function(iso) {
     const parts     = iso.split('-').map(Number);
     const date      = new Date(parts[0], parts[1]-1, parts[2]);
@@ -1055,8 +1137,8 @@ function VacacionesView({ t, lang, setRoute }) {
   };
 
   const availableEmps = React.useMemo(function() {
-    return EMPLOYEES.filter(function(e) { return !vacEmps.includes(e.id) && e.status !== 'inactive'; });
-  }, [vacEmps]);
+    return EMPLOYEES.filter(function(e) { return !yearEmps.includes(e.id) && e.status !== 'inactive'; });
+  }, [yearEmps]);
 
   const filteredAvailable = React.useMemo(function() {
     if (!searchVal) return availableEmps;
@@ -1070,24 +1152,110 @@ function VacacionesView({ t, lang, setRoute }) {
 
   return (
     <div className="page">
-      <div className="page__head">
+      <div className="page__head" style={{marginBottom:24}}>
         <div>
           <div className="page__title">{isES ? 'Vacaciones Colectivas' : 'Collective Vacation'}</div>
+          <div className="page__subtitle">{isES ? 'Gestión del personal en período vacacional colectivo' : 'Staff management during collective vacation period'}</div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'10px',marginLeft:'auto'}}>
-          <VacDateNav
-            viewDate={viewDate} setViewDate={setViewDate}
-            navDate={navDate} fmtDate={fmtDate}
-            isES={isES} daily={daily} rosterOpen={true}/>
-          {!isToday && (
-            <button type="button" onClick={function() { setViewDate(today); }}
-              className="btn btn--ghost"
-              style={{fontSize:'11px',padding:'5px 12px',whiteSpace:'nowrap'}}>
-              {isES ? '↩ Hoy' : '↩ Today'}
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div ref={yearPillRef}
+            style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+              border:'1px solid '+(yearCalOpen?'var(--accent)':'var(--ink-100)'),
+              borderRadius:8,padding:'4px 6px',
+              background:'var(--paper)',width:140,boxSizing:'border-box',flexShrink:0,
+              transition:'border-color .15s'}}>
+            <button className="dp-cal__arrow" onClick={function() { setSelYear(function(y) { return String(parseInt(y)-1); }); }}>‹</button>
+            <button type="button"
+              onClick={openYearCal}
+              style={{fontFamily:'var(--font-mono)',fontSize:15,fontWeight:700,
+                color:'var(--ink-800)',flex:1,textAlign:'center',background:'none',
+                border:'none',cursor:'pointer',padding:'0 4px'}}>
+              {selYear}
             </button>
+            <button className="dp-cal__arrow" onClick={function() { setSelYear(function(y) { return String(parseInt(y)+1); }); }}>›</button>
+          </div>
+
+          {ReactDOM.createPortal(
+            <div onMouseDown={function(e) { if(yearCalOpen) e.preventDefault(); }}
+              style={{position:'fixed',top:yearCalPos.top,left:yearCalPos.left,
+                transform:'translateX(-50%)',zIndex:9999,
+                pointerEvents:yearCalOpen?'auto':'none',
+                visibility:yearCalOpen?'visible':'hidden'}}>
+              <div ref={yearCalRef} className="dp-cal" style={{boxShadow:'0 16px 48px rgba(0,0,0,.18)'}}>
+                {(function() {
+                  var firstDow = new Date(yearCalYear, yearCalMonth, 1).getDay();
+                  var daysInMo = new Date(yearCalYear, yearCalMonth+1, 0).getDate();
+                  var vacSet   = {};
+                  (vacDias[String(yearCalYear)] || []).forEach(function(d) { vacSet[d] = true; });
+                  var MONTHS_C = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+                  var DOW_C    = ['D','L','M','X','J','V','S'];
+                  var prevMo   = function() {
+                    if (yearCalMonth === 0) { setYearCalMonth(11); setYearCalYear(function(y) { return y-1; }); }
+                    else { setYearCalMonth(function(m) { return m-1; }); }
+                  };
+                  var nextMo   = function() {
+                    if (yearCalMonth === 11) { setYearCalMonth(0); setYearCalYear(function(y) { return y+1; }); }
+                    else { setYearCalMonth(function(m) { return m+1; }); }
+                  };
+                  return (
+                    <React.Fragment>
+                      <div className="dp-cal__nav">
+                        <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevMo}>‹</button>
+                        <span className="dp-cal__month">{MONTHS_C[yearCalMonth]} {yearCalYear}</span>
+                        <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={nextMo}>›</button>
+                      </div>
+                      <div className="dp-cal__grid">
+                        {DOW_C.map(function(d) { return <span key={d} className="dp-cal__dow">{d}</span>; })}
+                        {Array.from({length:firstDow}).map(function(_,i) { return <span key={'b'+i}/>; })}
+                        {Array.from({length:daysInMo},function(_,i) {
+                          var d   = i + 1;
+                          var iso = String(yearCalYear)+'-'+String(yearCalMonth+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+                          var isSaved = !!vacSet[iso];
+                          var rLo = rangeStart && rangeHover ? (rangeStart < rangeHover ? rangeStart : rangeHover) : null;
+                          var rHi = rangeStart && rangeHover ? (rangeStart < rangeHover ? rangeHover : rangeStart) : null;
+                          var dayStyle = {};
+                          var inRange  = false;
+                          if (rLo && rHi) {
+                            if (iso === rLo && iso === rHi) {
+                              dayStyle = {background:'var(--ink-800)',color:'#fff',fontWeight:700,borderRadius:'6px'}; inRange=true;
+                            } else if (iso === rLo) {
+                              dayStyle = {background:'rgba(22,27,51,0.10)',borderRadius:'6px 0 0 6px',fontWeight:600}; inRange=true;
+                            } else if (iso === rHi) {
+                              dayStyle = {background:'rgba(22,27,51,0.10)',borderRadius:'0 6px 6px 0',fontWeight:600}; inRange=true;
+                            } else if (iso > rLo && iso < rHi) {
+                              dayStyle = {background:'rgba(22,27,51,0.10)'}; inRange=true;
+                            }
+                          } else if (rangeStart === iso) {
+                            dayStyle = {background:'var(--ink-800)',color:'#fff',fontWeight:700,borderRadius:'6px'};
+                            inRange = true;
+                          }
+                          return (
+                            <button tabIndex={-1} type="button" key={d}
+                              className={'dp-cal__day'+(isSaved&&!inRange?' dp-cal__day--sel':'')}
+                              onClick={function() { handleVacClick(iso); }}
+                              onMouseEnter={rangeStart ? function() { setRangeHover(iso); } : undefined}
+                              onMouseLeave={rangeStart ? function() { setRangeHover(null); } : undefined}
+                              style={Object.assign({cursor:canManage?'pointer':'default',position:'relative'},dayStyle)}>
+                              {d}
+                              {isSaved && !inRange && (
+                                <span style={{position:'absolute',bottom:'2px',left:'50%',
+                                  transform:'translateX(-50%)',width:'4px',height:'4px',
+                                  borderRadius:'50%',background:'var(--accent)',display:'block'}}/>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </React.Fragment>
+                  );
+                })()}
+              </div>
+            </div>,
+            document.body
           )}
         </div>
       </div>
+
 
       <div style={{display:'flex',gap:'16px',alignItems:'flex-start'}}>
 
@@ -1178,19 +1346,21 @@ function VacacionesView({ t, lang, setRoute }) {
           </div>
 
           {totalCount === 0 && (
-            <div className="audit-empty" style={{animation:'body-in .2s ease both'}}>
-              <Icon name="idCard" size={24} stroke={1.2}/>
-              <div className="audit-empty__title">
-                {isES ? 'Sin personal asignado' : 'No staff assigned'}
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',
+              justifyContent:'center',gap:16,padding:'100px 24px',textAlign:'center',
+              color:'var(--ink-300)',minHeight:400,animation:'body-in .2s ease both'}}>
+              <Icon name="absent" size={48} stroke={1.2}/>
+              <div style={{fontSize:20,fontWeight:600,color:'var(--ink-500)'}}>
+                {isES ? 'Sin vacaciones configuradas' : 'No vacation roster'}
               </div>
-              <div className="audit-empty__sub">
+              <div style={{fontSize:14,color:'var(--ink-300)',maxWidth:320,lineHeight:1.5}}>
                 {canManage
                   ? (isES
-                    ? 'Usa «Agregar» para asignar personal a vacaciones.'
-                    : 'Use «Add» to assign staff to vacation.')
+                    ? 'Asigna el personal que tomará vacaciones colectivas en este período.'
+                    : 'Assign the staff taking collective vacation during this period.')
                   : (isES
-                    ? 'Contacta a un administrador para ser asignado.'
-                    : 'Contact an administrator to be assigned.')}
+                    ? 'Contacta a un administrador para configurar el año ' + selYear + '.'
+                    : 'Contact an administrator to configure ' + selYear + '.')}
               </div>
             </div>
           )}
