@@ -162,7 +162,11 @@ function userHasPermission(perm) {
     return DataStore.session.user.perms.includes(perm);
   }
   const uid = getCurrentUserId();
-  if (!uid) return true; // dev mode: no user logged in → show everything
+  // Sin sesión de backend y sin usuario local → denegar por defecto. El
+  // gate de rutas en app.jsx ya impide llegar aquí sin sesión, pero esto es
+  // defensa en profundidad: antes devolvía `true` (modo dev "mostrar todo"),
+  // lo cual dejaba todo el panel admin abierto sin login.
+  if (!uid) return false;
   const assign = getAssignments();
   const roles = getRoles();
   const asgn = assign.find(a => a.empId === uid);

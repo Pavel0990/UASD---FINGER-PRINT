@@ -359,11 +359,6 @@ function VacacionesView({ t, lang, setRoute }) {
                               onMouseLeave={rangeStart ? function() { setRangeHover(null); } : undefined}
                               style={Object.assign({cursor:canManage?'pointer':'default',position:'relative'},dayStyle)}>
                               {d}
-                              {isSaved && !inRange && (
-                                <span style={{position:'absolute',bottom:'2px',left:'50%',
-                                  transform:'translateX(-50%)',width:'4px',height:'4px',
-                                  borderRadius:'50%',background:'var(--accent)',display:'block'}}/>
-                              )}
                             </button>
                           );
                         })}

@@ -1354,7 +1354,7 @@ function FarmView({ t, lang, setRoute }) {
           var hora = viewDate === today
             ? new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
             : '—';
-          att[attKey] = { empId: emp.id, date: viewDate, time: hora, late: false, source: 'finca' };
+          att[attKey] = { empId: emp.id, date: viewDate, timeIn: hora, timeOut: null, late: false, source: 'finca' };
         }
       } else {
         /* Quitar presencia de finca si existía */
@@ -1461,10 +1461,10 @@ function FarmView({ t, lang, setRoute }) {
       </div>
 
 
-      <div style={{display:'flex',gap:'16px',alignItems:'flex-start'}}>
+      <div className="farm-layout" style={{display:'flex',gap:'16px',alignItems:'flex-start'}}>
 
         {/* LEFT — Roster (collapsible) */}
-        <div style={{
+        <div className="farm-layout__roster" style={{
           flexShrink:0,
           width: rosterOpen ? '420px' : '0',
           minWidth: rosterOpen ? '420px' : '0',

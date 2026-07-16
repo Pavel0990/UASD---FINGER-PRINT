@@ -272,7 +272,9 @@ input, select, textarea {
   animation: sectionIn 0.34s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
   animation-delay: 60ms;
 }
-.route-enter .card {
+.route-enter .card,
+.route-enter .chart-card,
+.route-enter .rep-list-card {
   animation: sectionIn 0.36s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
   animation-delay: 95ms;
 }
@@ -290,7 +292,8 @@ input, select, textarea {
 @media (prefers-reduced-motion: reduce) {
   .route-exit, .route-enter,
   .route-enter .page__head, .route-enter .kpi-grid,
-  .route-enter .card, .route-enter .kiosk, .route-enter .login {
+  .route-enter .card, .route-enter .chart-card, .route-enter .rep-list-card,
+  .route-enter .kiosk, .route-enter .login {
     animation: none;
   }
 }
@@ -1143,6 +1146,34 @@ input, select, textarea {
 }
 .kiosk__foot a:hover { color: var(--gold-500); }
 
+/* Acceso a admin — invisible hasta hover/foco, pero SÍ alcanzable por teclado
+   (antes era un <a> sin href, fuera del tab order, visible solo con mouse). */
+.kiosk__admin-link {
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--cream-100);
+  background: var(--ink-900);
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: background .15s ease, opacity .2s ease;
+}
+.kiosk__foot-actions:hover .kiosk__admin-link,
+.kiosk__admin-link:focus-visible {
+  opacity: 1;
+}
+.kiosk__admin-link:hover,
+.kiosk__admin-link:focus-visible {
+  background: var(--ink-700);
+}
+.kiosk__admin-link:focus-visible {
+  outline: 2px solid var(--gold-500);
+  outline-offset: 2px;
+}
+
 /* Demo control (temporary — until wired to a real reader) */
 .kiosk__demo {
   display: flex;
@@ -1467,36 +1498,8 @@ input, select, textarea {
   background: var(--gold-500);
 }
 
-.recog-panel__empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--ink-400);
-  padding: 24px;
-  gap: 14px;
-}
-
-.recog-panel__empty-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: 1px dashed rgba(245,242,234,0.15);
-  display: grid;
-  place-items: center;
-  color: var(--ink-400);
-}
-
-.recog-panel__empty-text {
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  max-width: 220px;
-  line-height: 1.5;
-}
-
 .recog-panel__card {
+  position: relative;
   background: linear-gradient(180deg, rgba(44,62,102,0.3), rgba(14,18,38,0.4));
   border: 1px solid rgba(201,169,97,0.2);
   border-radius: var(--radius-lg);
@@ -1588,64 +1591,6 @@ input, select, textarea {
   height: 1px;
   background: rgba(245,242,234,0.06);
   margin: 4px 0;
-}
-
-.recog-panel__entry {
-  display: grid;
-  grid-template-columns: 36px 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(245,242,234,0.04);
-}
-
-.recog-panel__entry:last-child { border-bottom: none; }
-
-.recog-panel__entry-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--ink-700);
-  color: var(--cream-100);
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.recog-panel__entry-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.recog-panel__entry-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cream-100);
-  letter-spacing: -0.005em;
-}
-
-.recog-panel__entry-dept {
-  font-size: 11px;
-  color: var(--ink-400);
-  margin-top: 1px;
-}
-
-.recog-panel__entry-time {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--gold-400);
-  font-feature-settings: "tnum";
-}
-
-.recog-panel__entry-time small {
-  display: block;
-  font-size: 9px;
-  color: var(--ink-400);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-top: 1px;
-  text-align: right;
 }
 
 /* ============================================
@@ -1807,6 +1752,36 @@ input, select, textarea {
 .kpi:hover {
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
+}
+.kpi:active {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(0) scale(0.98);
+  transition: transform .08s ease;
+}
+.kpi--clickable {
+  cursor: pointer;
+}
+.kpi--clickable:focus-visible {
+  outline: 2px solid var(--gold-500);
+  outline-offset: 2px;
+}
+.kpi--clickable::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cream-100) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236a789c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E") center/12px no-repeat;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+.kpi--clickable:hover::after,
+.kpi--clickable:focus-visible::after {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 /* Filled (hero) card */
@@ -2752,10 +2727,8 @@ tr.table__row--selected .table__actions {
 }
 .dp-cal__day--disabled:hover { background: none !important; }
 
-.dp-range-cell--mid, .dp-range-cell--start, .dp-range-cell--end,
-.dp-range-cell--single, .dp-range-cell--prev-mid,
-.dp-range-cell--prev-start, .dp-range-cell--prev-end,
-.dp-cal__day--range-pending { transition: none !important; }
+.dp-range-cell--mid, .dp-range-cell--prev-mid,
+.dp-range-cell--prev-start, .dp-range-cell--prev-end { transition: none !important; }
 
 /* ── Range picker cells (applied directly to dp-cal__day) ── */
 .dp-range-cell--mid        { background: rgba(22,27,51,0.09); }
@@ -3705,224 +3678,6 @@ tr.table__row--selected .table__actions {
   margin-top: 3px;
 }
 
-.bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 180px;
-  padding-top: 12px;
-}
-
-.bars__col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  height: 100%;
-  justify-content: flex-end;
-}
-
-.bars__bar {
-  width: 100%;
-  background: var(--ink-600);
-  border-radius: 4px 4px 0 0;
-  position: relative;
-  display: flex;
-  flex-direction: column-reverse;
-  overflow: hidden;
-  min-height: 4px;
-  transition: all 0.3s ease;
-}
-
-.bars__bar-late {
-  background: var(--gold-500);
-}
-
-.bars__col:hover .bars__bar {
-  background: var(--ink-800);
-}
-
-.bars__label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-400);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.legend {
-  display: flex;
-  gap: 14px;
-  font-size: 11px;
-  color: var(--ink-400);
-  letter-spacing: 0.04em;
-}
-.legend__item { display: flex; align-items: center; gap: 6px; }
-.legend__swatch { width: 10px; height: 10px; border-radius: 2px; }
-
-/* ── Reports legend ── */
-.rep-legend { display: flex; gap: 16px; align-items: center; }
-.rep-legend__item { display: flex; align-items: center; gap: 7px; font-family: var(--font-sans); font-size: 12px; color: var(--ink-400); }
-.rep-legend__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-/* ── Hero chart ── */
-.rep-hero-chart {
-  position: relative;
-  padding-bottom: 4px;
-}
-.rep-hero-chart__grid {
-  position: absolute;
-  inset: 0 0 40px 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  pointer-events: none;
-  z-index: 0;
-}
-.rep-hero-chart__gridline {
-  width: 100%;
-  height: 1px;
-  background: var(--ink-100);
-}
-.rep-hero-chart__dots {
-  display: flex;
-  gap: 10px;
-  padding: 0 4px;
-  margin-bottom: 8px;
-  position: relative;
-  z-index: 1;
-}
-.rep-hero-chart__dot-col {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-}
-.rep-hero-chart__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: block;
-  transition: transform .2s, background .2s;
-}
-.rep-hero-chart__bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  height: clamp(160px, 24vw, 220px);
-  position: relative;
-  z-index: 1;
-}
-
-/* ── Bar column (hero) ── */
-.rep-bar-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 100%;
-  justify-content: flex-end;
-  gap: 0;
-  cursor: default;
-  position: relative;
-}
-.rep-bar-col__track {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  position: relative;
-}
-
-/* Tag flotante (Pico/Mínimo) — absolute dentro del track, ANCLADO a la
-   altura real de la barra via `bottom` inline. Nunca empuja el layout,
-   por lo que no puede desbordar en columnas angostas (mobile). */
-.rep-bar-tag {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-family: var(--font-sans);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--cream-100);
-  z-index: 2;
-  pointer-events: none;
-  animation: repTagIn .2s cubic-bezier(0.22,1,0.36,1) both;
-}
-@keyframes repTagIn {
-  from { opacity: 0; transform: translate(-50%, 4px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
-}
-.rep-bar-col__fill {
-  width: 100%;
-  border-radius: 6px 6px 0 0;
-  position: relative;
-  overflow: hidden;
-  transition: height .3s ease;
-  min-height: 4px;
-}
-.rep-bar-col:not(.rep-bar-col--active):hover .rep-bar-col__fill {
-  background: var(--ink-300) !important;
-}
-.rep-bar-col__foot {
-  width: 100%;
-  text-align: center;
-  padding: 8px 0 4px;
-}
-.rep-bar-col__day {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-400);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.rep-bar-col__val {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  margin-top: 2px;
-  letter-spacing: -0.01em;
-  font-feature-settings: "tnum";
-  transition: color .15s ease, font-weight .15s ease;
-}
-
-/* ── Micro-stats row ── */
-.rep-microstats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid var(--ink-100);
-}
-.rep-microstat__label {
-  font-family: var(--font-sans);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-400);
-  margin-bottom: 6px;
-}
-.rep-microstat__val {
-  font-family: var(--font-serif);
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--ink-800);
-  letter-spacing: -0.02em;
-  line-height: 1;
-}
-.rep-microstat__unit {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-400);
-  margin-top: 5px;
-}
-
 /* Donut */
 .donut-wrap {
   display: flex;
@@ -4000,6 +3755,196 @@ tr.table__row--selected .table__actions {
   transition: background .12s ease;
 }
 .rep-row:hover { background: var(--cream-50); }
+
+/* ── Área con degradado + tooltip (Asistencia diaria / Tendencia de tardanzas) ──
+   Interactiva: se puede tocar/arrastrar el dedo o el mouse sobre toda la curva,
+   no solo ver el pico fijo — touch-action:none evita que arrastrar en móvil
+   scrollee la página en vez de mover el tooltip. */
+.rep-area-chart { position: relative; margin-top: 4px; }
+.rep-area-chart svg { width: 100%; height: auto; display: block; overflow: visible; touch-action: none; }
+.rep-area-chart__svg--live { cursor: crosshair; }
+
+/* La línea se "dibuja" sola al montar/cambiar de dato — pathLength="1" en el
+   <path> normaliza su longitud real a 1, así la animación no depende de la
+   forma de la curva. */
+.rep-area-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: repDrawLine 0.8s cubic-bezier(0.65,0,0.35,1) both;
+}
+@keyframes repDrawLine { to { stroke-dashoffset: 0; } }
+.rep-area-fill-draw { animation: repFadeIn 0.6s ease 0.25s both; }
+@keyframes repFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Punto "en vivo" del panel de Aspectos destacados */
+.rep-live-dot { animation: pulse 1.6s ease-in-out infinite; }
+
+/* Entrada al cambiar Resumen ⇄ Detalle (reusa el keyframe sectionIn de las
+   transiciones de ruta, para que todo el sistema se sienta como un mismo
+   lenguaje de movimiento). */
+.rep-panel-in { animation: sectionIn .32s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; }
+
+/* Entrada fila-por-fila para insights y la lista de Detalle — mismo patrón
+   escalonado que .tbody--in (tabla de empleados). */
+.rep-rows-in > * { animation: rowIn 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; }
+.rep-rows-in > *:nth-child(1) { animation-delay:   0ms; }
+.rep-rows-in > *:nth-child(2) { animation-delay:  35ms; }
+.rep-rows-in > *:nth-child(3) { animation-delay:  70ms; }
+.rep-rows-in > *:nth-child(4) { animation-delay: 105ms; }
+.rep-rows-in > *:nth-child(5) { animation-delay: 140ms; }
+.rep-rows-in > *:nth-child(6) { animation-delay: 175ms; }
+.rep-rows-in > *:nth-child(7) { animation-delay: 205ms; }
+.rep-rows-in > *:nth-child(8) { animation-delay: 230ms; }
+.rep-rows-in > *:nth-child(n+9) { animation-delay: 250ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rep-area-draw, .rep-area-fill-draw, .rep-live-dot, .rep-panel-in, .rep-rows-in > * {
+    animation: none;
+  }
+}
+.rep-area-xlabels {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-top: 6px;
+  transition: color .12s ease;
+}
+.rep-area-xlabels span { transition: color .12s ease, font-weight .12s ease; }
+.rep-area-xlabels span {
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-300);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.rep-area-tooltip {
+  position: absolute;
+  background: var(--ink-900);
+  color: var(--cream-100);
+  font-family: var(--font-sans);
+  border-radius: 9px;
+  padding: 7px 11px;
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  transition: left .08s linear, top .08s linear;
+}
+.rep-area-chart circle, .rep-area-chart line { transition: cx .08s linear, cy .08s linear, x1 .08s linear, x2 .08s linear; }
+.rep-area-tooltip b {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  margin-top: 1px;
+}
+.rep-area-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 130px;
+  font-family: var(--font-sans); font-size: 12px; color: var(--ink-300);
+}
+
+/* ── Aspectos destacados (insights) ── */
+.rep-insights { display: flex; flex-direction: column; margin-top: 6px; }
+.rep-insight-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--ink-100);
+}
+.rep-insight-row:last-child { border-bottom: none; padding-bottom: 0; }
+.rep-insight-row:first-child { padding-top: 0; }
+.rep-insight-status {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.rep-insight-status--ok { background: rgba(79,157,122,0.14); color: #2f7a5a; }
+.rep-insight-status--warn { background: var(--gold-100); color: var(--gold-600); }
+.rep-insight-text { flex: 1; font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--ink-800); line-height: 1.4; }
+.rep-insight-cat {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.rep-insight-cat--puntualidad { background: rgba(79,157,122,0.14); color: #2f7a5a; }
+.rep-insight-cat--ausencias   { background: rgba(193,85,77,0.12); color: var(--danger); }
+.rep-insight-cat--depto       { background: rgba(58,110,165,0.12); color: #3a6ea5; }
+.rep-insight-cat--tendencia   { background: var(--gold-100); color: var(--gold-600); }
+
+/* ── Filtro de chips (Detalle) ── */
+.rep-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.rep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-100);
+  background: var(--paper);
+  color: var(--ink-500);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.rep-chip:hover { border-color: var(--ink-200); }
+.rep-chip:active { transform: scale(0.97); }
+.rep-chip__count {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: var(--cream-100);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.rep-chip--active { background: var(--ink-900); color: var(--cream-100); border-color: var(--ink-900); }
+.rep-chip--active .rep-chip__count { background: rgba(245,242,234,0.16); color: var(--cream-100); }
+
+/* ── Lista unificada de detalle (Tardanzas / Ausencias / Eventualidades) ── */
+.rep-list-card {
+  background: var(--paper);
+  border: 1px solid var(--ink-100);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.rep-list-row {
+  display: grid;
+  grid-template-columns: 38px 1.5fr 0.9fr 0.7fr 1fr 0.9fr;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--ink-100);
+  transition: background .12s ease;
+}
+.rep-list-row:last-child { border-bottom: none; }
+.rep-list-row:not(.rep-list-row--head):hover { background: var(--cream-50); }
+.rep-list-row:not(.rep-list-row--head):active { background: var(--cream-100); }
+.rep-list-row--head {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-300);
+  background: var(--cream-50);
+  padding: 11px 20px;
+}
+.rep-list-who .rep-list-name { font-family: var(--font-sans); font-size: 13.5px; font-weight: 700; color: var(--ink-800); }
+.rep-list-who .rep-list-dept { font-family: var(--font-sans); font-size: 11.5px; color: var(--ink-400); margin-top: 1px; }
+@media (max-width: 900px) {
+  .rep-list-row { grid-template-columns: 32px 1.6fr 1fr; }
+  .rep-list-row > :nth-child(4), .rep-list-row > :nth-child(5), .rep-list-row > :nth-child(6) { display: none; }
+}
 
 /* ============================================
    Toolbar / Filters
@@ -4392,16 +4337,6 @@ tr.table__row--selected .table__actions {
 .kiosk--light .recog-panel__title { color: var(--gold-600); }
 .kiosk--light .recog-panel__title::before { background: var(--gold-600); }
 
-.kiosk--light .recog-panel__empty { color: var(--ink-400); }
-.kiosk--light .recog-panel__empty-icon { border-color: rgba(22,27,51,0.15); color: var(--ink-400); }
-
-.kiosk--light .recog-panel__entry { border-bottom-color: rgba(22,27,51,0.07); }
-.kiosk--light .recog-panel__entry-avatar { background: var(--ink-700); color: #fff; }
-.kiosk--light .recog-panel__entry-name { color: var(--ink-800); }
-.kiosk--light .recog-panel__entry-dept { color: var(--ink-400); }
-.kiosk--light .recog-panel__entry-time { color: var(--gold-600); }
-.kiosk--light .recog-panel__entry-time small { color: var(--ink-400); }
-
 .kiosk--light .recog-panel__card {
   background: linear-gradient(180deg, #FFFFFF, #FAF7F0);
   border: 1px solid rgba(176,142,68,0.3);
@@ -4580,19 +4515,29 @@ tr.table__row--selected .table__actions {
 }
 
 /* ---- Reports responsive ---- */
-@media (max-width: 860px) {
-  .rep-hero-chart__bars { height: clamp(130px, 26vw, 220px); }
-}
 @media (max-width: 560px) {
-  .rep-microstats { grid-template-columns: 1fr; gap: 14px; }
-  .rep-legend { flex-wrap: wrap; gap: 8px; }
   .chart-card { padding: 18px 16px; }
   .chart-card__head { flex-wrap: wrap; gap: 8px; }
-  .rep-hero-chart__bars { gap: 5px; }
-  .rep-hero-chart__dots { gap: 5px; }
-  .rep-bar-tag { font-size: 9px; padding: 2px 6px; }
   .donut-wrap { flex-direction: column; align-items: stretch; gap: 16px; }
   .donut { margin: 0 auto; }
+}
+
+/* ---- Finca / Liceo responsive ----
+   Antes no existía NINGÚN breakpoint para este layout: el panel de roster
+   tenía 420px fijos inline dentro de un flex row, y el scroll de la página
+   se bloqueaba a propósito (overflow:hidden en html/body) mientras la vista
+   estaba montada — en una pantalla angosta eso deja contenido cortado sin
+   ninguna forma de alcanzarlo. Se apila a una columna y se libera el scroll. */
+@media (max-width: 900px) {
+  .farm-layout { flex-direction: column; }
+  .farm-layout__roster,
+  .farm-layout__roster .activity-map__left {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  /* !important porque el lock de overflow se aplica como estilo inline
+     desde JS (html.style.overflow / body.style.overflow) al montar la vista. */
+  html, body { overflow-y: auto !important; }
 }
 
 /* ---- Edit modal responsive ---- */

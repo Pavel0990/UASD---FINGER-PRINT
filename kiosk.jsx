@@ -10,7 +10,6 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
   const [state, setState] = React.useState('idle'); // idle | scanning | success | error
   const [now, setNow] = React.useState(new Date());
   const [recognized, setRecognized] = React.useState(null); // employee
-  const [feed, setFeed] = React.useState(RECENT_LOG.slice(0, 4));
   const timerRef = React.useRef(null);
 
   // Clock
@@ -19,40 +18,76 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     return () => clearInterval(id);
   }, []);
 
+  // Antes esto grababa UN solo marcaje por empleado/día y la tarjeta de
+  // "entrada"/"salida" se decidía con Math.random() — nunca se guardaba una
+  // salida real, así que "horas trabajadas" era imposible de calcular. Ahora
+  // el primer marcaje del día es entrada (timeIn), el segundo es salida
+  // (timeOut) — el kind que se muestra en pantalla ya no es cosmético.
   const recordPresence = (empId, scheduleStr) => {
     try {
       const att = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}');
       const key = `${empId}:${kioskTodayStr()}`;
+      const time = formatTime(new Date(), lang);
+
       if (!att[key]) {
-        const time = formatTime(new Date(), lang);
         const late = scheduleStr ? getLateMinutes(scheduleStr, time) > 15 : false;
-        att[key] = { empId, date: kioskTodayStr(), time, late, justified: false };
+        att[key] = { empId, date: kioskTodayStr(), timeIn: time, timeOut: null, late, justified: false };
         localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
+        return { kind: 'in', time };
       }
-    } catch {}
+      if (!att[key].timeOut) {
+        att[key].timeOut = time;
+        localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
+        return { kind: 'out', time };
+      }
+      return { kind: 'done', time: att[key].timeOut };
+    } catch { return { kind: 'in', time: formatTime(new Date(), lang) }; }
   };
 
   const onScanSuccess = (credId) => {
     const map   = getCredMap();
     const empId = credId ? map[credId] : null;
     const linked = empId ? EMPLOYEES.find(e => e.id === empId) : null;
-    const pool  = EMPLOYEES.filter(e => e.status === 'ok');
-    const emp   = (linked && linked.status === 'ok') ? linked : pool[Math.floor(Math.random() * pool.length)];
-    const kind  = Math.random() > 0.4 ? 'in' : 'out';
+
+    let emp, isDemo = false;
+    if (linked && linked.status === 'ok') {
+      // Camino real: credencial WebAuthn válida, vinculada a un empleado activo.
+      emp = linked;
+    } else if (!credId) {
+      // Solo llega aquí desde runSimulation(), que ya verificó que este
+      // dispositivo no tiene NINGUNA credencial real enrolada (modo demo/dev
+      // sin hardware) — nunca se activa en un kiosco con empleados reales.
+      const pool = EMPLOYEES.filter(e => e.status === 'ok');
+      emp = pool[Math.floor(Math.random() * pool.length)];
+      isDemo = true;
+    } else {
+      // Hubo una credencial real pero no corresponde a ningún empleado activo
+      // vigente — NO se fabrica una identidad al azar, se trata como error.
+      onScanError();
+      return;
+    }
+
+    // El modo demo no persiste asistencia real, así que no hay un "estado
+    // del día" que consultar — mantiene el sorteo cosmético de siempre. El
+    // camino real usa el resultado real de recordPresence (entrada → salida
+    // → ya completó el día), nunca al azar.
+    const result = isDemo
+      ? { kind: Math.random() > 0.4 ? 'in' : 'out', time: formatTime(new Date(), lang) }
+      : recordPresence(emp.id, emp.schedule);
+    const { kind, time } = result;
+
+    if (kind === 'done') {
+      setRecognized({ ...emp, kind: 'done', time, isDemo });
+      setState('success');
+      timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 3200);
+      return;
+    }
+
     const bank  = kind === 'in' ? t.kiosk_welcome_bank : t.kiosk_farewell_bank;
     const greeting = bank[Math.floor(Math.random() * bank.length)];
-    recordPresence(emp.id, emp.schedule);
-    const time = formatTime(new Date(), lang);
-    const late = emp.schedule ? getLateMinutes(emp.schedule, time) > 15 : false;
-    setRecognized({ ...emp, kind, greeting, time, late });
+    const late = kind === 'in' && emp.schedule ? getLateMinutes(emp.schedule, time) > 15 : false;
+    setRecognized({ ...emp, kind, greeting, time, late, isDemo });
     setState('success');
-    setFeed(prev => [{
-      empId: emp.id,
-      name: emp.name.split(' ').slice(0, 2).join(' '),
-      dept: emp.dept.replace(/^Facultad de /, ''),
-      time: formatTime(new Date(), lang).slice(0, 5),
-      kind,
-    }, ...prev].slice(0, 5));
     timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 4500);
   };
 
@@ -111,50 +146,57 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     setState('scanning');
     setRecognized(null);
 
-    if (!canUseWebAuthn()) { runSimulation(); return; }
-
-    const rpId   = location.hostname;
-    const map    = getCredMap();
-
-    // Construir lista de credenciales registradas para allowCredentials
+    const map = getCredMap();
     const allowList = Object.keys(map).map(credId => ({
       type: 'public-key',
       id: Uint8Array.from(atob(credId), c => c.charCodeAt(0)),
       transports: ['internal'],
     }));
 
+    // El modo demo (empleado al azar, sin persistir asistencia) SOLO se
+    // permite cuando este dispositivo no tiene ninguna credencial real
+    // enrolada todavía — nunca en un kiosco que ya está en uso con empleados
+    // reales, para no fabricar un "reconocimiento exitoso" con la persona
+    // equivocada cuando el hardware real falla.
+    const allowDemoFallback = allowList.length === 0;
+
+    if (!canUseWebAuthn()) {
+      if (allowDemoFallback) runSimulation(); else onScanError();
+      return;
+    }
+
+    const rpId = location.hostname;
+
     PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
       .then(available => {
-        if (!available) { runSimulation(); return Promise.reject('handled'); }
+        if (!available) {
+          if (allowDemoFallback) { runSimulation(); return Promise.reject('handled'); }
+          return Promise.reject('hw-unavailable');
+        }
 
         if (allowList.length > 0) {
-          // Hay credenciales registradas — autenticar directamente
+          // Hay credenciales registradas — autenticar directamente. Cualquier
+          // fallo que no sea "el usuario canceló" se trata como error real,
+          // nunca como reingreso silencioso a un empleado default.
           return waAuth(rpId, allowList).then(cred => {
             const credId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
             return credId;
-          }).catch(err => {
-            if (err.name === 'NotAllowedError') return Promise.reject('auth-denied');
-            // Credenciales inválidas — limpiar y re-registrar
-            localStorage.removeItem(CRED_MAP_KEY);
-            const empId = empIdToRegister || 'EMP-00702';
-            return waRegister(rpId, empId).then(({ rawId, credId }) =>
-              waAuth(rpId, [{ type: 'public-key', id: rawId, transports: ['internal'] }])
-                .then(cred => btoa(String.fromCharCode(...new Uint8Array(cred.rawId))))
-            ).catch(() => Promise.reject('setup-fail'));
-          });
+          }).catch(err => Promise.reject(err.name === 'NotAllowedError' ? 'auth-denied' : 'auth-failed'));
         }
 
-        // Sin credenciales — registrar vinculada al empleado indicado
+        // Sin credenciales — registrar vinculada al empleado indicado (primer
+        // registro real, disparado desde register.jsx)
         const empId = empIdToRegister || 'EMP-00702';
-        return waRegister(rpId, empId).then(({ rawId, credId }) =>
+        return waRegister(rpId, empId).then(({ rawId }) =>
           waAuth(rpId, [{ type: 'public-key', id: rawId, transports: ['internal'] }])
             .then(cred => btoa(String.fromCharCode(...new Uint8Array(cred.rawId))))
         ).catch(() => Promise.reject('setup-fail'));
       })
       .then(credId => onScanSuccess(credId))
       .catch(err => {
-        if (err === 'auth-denied') { onScanError(); }
-        else if (err !== 'handled') { runSimulation(); }
+        if (err === 'handled') return;
+        if (err === 'auth-denied' || err === 'auth-failed' || err === 'hw-unavailable' || err === 'setup-fail') { onScanError(); return; }
+        if (allowDemoFallback) runSimulation(); else onScanError();
       });
   };
 
@@ -215,7 +257,13 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
             </div>
           </div>
 
-          <div onClick={startScan} style={{ cursor: state === 'idle' ? 'pointer' : 'default' }}>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label={t.kiosk_ready}
+            onClick={startScan}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startScan(); } }}
+            style={{ cursor: state === 'idle' ? 'pointer' : 'default' }}>
             <FingerprintScanner state={state} size={400} />
           </div>
 
@@ -239,25 +287,10 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
             <span>{t.kiosk_status_device}</span>
           </div>
 
-          <div className="hstack" style={{ gap: 12 }}
-            onMouseEnter={e => e.currentTarget.querySelector('a').style.opacity = '1'}
-            onMouseLeave={e => e.currentTarget.querySelector('a').style.opacity = '0'}>
-            <a onClick={() => setRoute('login')} style={{
-              color: "var(--cream-100)",
-              background: "var(--ink-900)",
-              fontFamily: "inherit",
-              fontWeight: 600,
-              padding: "9px 16px",
-              borderRadius: "999px",
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              opacity: 0,
-              transition: "background .15s ease, opacity .2s ease", fontSize: "12px"
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--ink-700)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--ink-900)'}>{t.kiosk_admin} →</a>
+          <div className="hstack kiosk__foot-actions" style={{ gap: 12 }}>
+            <button type="button" className="kiosk__admin-link" onClick={() => setRoute('login')}>
+              {t.kiosk_admin} →
+            </button>
           </div>
         </div>
       </div>
@@ -277,8 +310,25 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
 }
 
 function RecognizedCard({ emp, t }) {
+  if (emp.kind === 'done') {
+    return (
+      <div className="recog-panel__card recog-panel__card--error">
+        <div className="error-card">
+          <div className="error-card__icon"><Icon name="check" size={40} stroke={2.6} /></div>
+          <div className="error-card__title">{t.kiosk_already_done_title}</div>
+          <div className="error-card__sub">{t.kiosk_already_done_sub}</div>
+        </div>
+      </div>
+    );
+  }
   return (
       <div className={`recog-panel__card ${emp.kind === 'out' ? 'recog-panel__card--out' : ''}`}>
+        {emp.isDemo && (
+          <div className="badge badge--neutral" style={{ position:'absolute', top:14, right:14, fontSize:10, gap:5, zIndex:2 }}>
+            <Icon name="alertTriangle" size={11} stroke={2}/>
+            {t.kiosk_demo_badge}
+          </div>
+        )}
         <div className={`recog-banner ${emp.kind === 'out' ? 'recog-banner--out' : ''}`}>
           <div className="recog-banner__icon">
             <Icon name={emp.kind === 'out' ? 'logOut' : 'check'} size={14} stroke={2.4} />

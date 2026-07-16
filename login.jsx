@@ -1,72 +1,77 @@
 /* login.jsx — institutional login (floating card + crest panel) */
 
+// Bloqueo simple tras intentos fallidos repetidos — mitigación del lado
+// cliente (la protección real de fuerza bruta vive/debe vivir en el backend);
+// esto solo evita el caso trivial de reintentar sin fricción desde la UI.
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_SECONDS = 30;
+
 function LoginView({ t, lang, setLang, setRoute }) {
   const [email, setEmail] = React.useState('');
   const [pass, setPass] = React.useState('');
   const [showPass, setShowPass] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(false);
+  const [attempts, setAttempts] = React.useState(0);
+  const [lockedUntil, setLockedUntil] = React.useState(null);
+  const [lockCountdown, setLockCountdown] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!lockedUntil) return;
+    const id = setInterval(() => {
+      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (remaining <= 0) { setLockedUntil(null); setLockCountdown(0); setAttempts(0); clearInterval(id); }
+      else setLockCountdown(remaining);
+    }, 250);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
 
   const submit = (e) => {
     e.preventDefault();
-    if (submitting) return;
+    if (submitting || lockedUntil) return;
     setError(false);
     setSubmitting(true);
 
     (async () => {
-      // Camino real: login contra el backend (Postgres, password hasheado).
-      if (typeof loginRequest === 'function') {
-        try {
-          await loginRequest(email.trim(), pass);
-          if (typeof bootstrapStore === 'function') {
-            try { await bootstrapStore(); } catch (err) { console.error('bootstrapStore', err); }
-          }
-          setSubmitting(false);
-          setRoute('dashboard');
-          return;
-        } catch (err) {
-          if (err && err.status) {
-            // El backend respondió (credenciales inválidas o sin rol) — no cae al fallback local.
-            setSubmitting(false);
-            setError(err.body?.error === 'no_role' ? 'no_role' : 'credentials');
-            return;
-          }
-          // err.status ausente = el backend no respondió (caído / offline).
-          // Sigue con el flujo local de siempre, sin interrumpir el demo.
-        }
+      // El login exige backend real (password hasheado, sesión JWT) — ya no
+      // hay camino alterno por localStorage ni credencial maestra hardcodeada.
+      if (typeof loginRequest !== 'function') {
+        setSubmitting(false);
+        setError('offline');
+        return;
       }
-
-      // Fallback: comportamiento original sobre localStorage, intacto.
-      const creds = typeof getCredentials === 'function' ? getCredentials() : {};
-      const found = Object.entries(creds).find(([, c]) => c.email.toLowerCase() === email.trim().toLowerCase());
-      const saveLogin = () => {
-        const now = new Date();
-        const time = now.toLocaleTimeString('es-DO', { hour:'2-digit', minute:'2-digit', hour12:true });
-        const date = now.toLocaleDateString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric' });
-        localStorage.setItem('uasd_last_login', `${date} ${time}`);
-      };
-      const hasRole = (empId) => {
-        const assignments = typeof getAssignments === 'function' ? getAssignments() : [];
-        return assignments.some(a => a.empId === empId);
-      };
-      setSubmitting(false);
-      if (found && found[1].password === pass) {
-        if (!hasRole(found[0])) { setError('no_role'); return; }
-        if (typeof setCurrentUserId === 'function') setCurrentUserId(found[0]);
-        saveLogin();
+      try {
+        await loginRequest(email.trim(), pass);
+        if (typeof bootstrapStore === 'function') {
+          try { await bootstrapStore(); } catch (err) { console.error('bootstrapStore', err); }
+        }
+        setSubmitting(false);
+        setAttempts(0);
         setRoute('dashboard');
-      } else {
-        // fallback for demo: hardcoded admin
-        if (email.trim().toLowerCase() === 'ggomez@uasd.edu.do' && pass === '123456789') {
-          if (typeof setCurrentUserId === 'function') setCurrentUserId('EMP-00601');
-          saveLogin();
-          setRoute('dashboard');
+      } catch (err) {
+        setSubmitting(false);
+        if (err && err.status) {
+          // El backend respondió: credenciales inválidas o sin rol asignado.
+          setError(err.body?.error === 'no_role' ? 'no_role' : 'credentials');
+          const next = attempts + 1;
+          setAttempts(next);
+          if (next >= LOGIN_MAX_ATTEMPTS) setLockedUntil(Date.now() + LOGIN_LOCK_SECONDS * 1000);
         } else {
-          setError('credentials');
+          // Sin status = el backend no respondió (caído / red / CORS).
+          setError('offline');
         }
       }
     })();
   };
+
+  const errTitle = error === 'no_role' ? t.login_err_norole_title
+    : error === 'offline' ? t.login_err_offline_title
+    : lockedUntil ? t.login_err_locked_title
+    : t.login_err_title;
+  const errSub = error === 'no_role' ? t.login_err_norole_sub
+    : error === 'offline' ? t.login_err_offline_sub
+    : lockedUntil ? t.login_err_locked_sub.replace('{n}', lockCountdown)
+    : t.login_err_sub;
 
   return (
     <div className="login">
@@ -84,12 +89,12 @@ function LoginView({ t, lang, setLang, setRoute }) {
               <div className="login__form-sub">{t.login_sub}</div>
             </div>
 
-            {error &&
+            {(error || lockedUntil) &&
             <div className="login__error" role="alert">
-              <div className="login__error-icon"><Icon name={error === 'no_role' ? 'lock' : 'x'} size={16} stroke={2.6} /></div>
+              <div className="login__error-icon"><Icon name={error === 'no_role' || lockedUntil ? 'lock' : 'x'} size={16} stroke={2.6} /></div>
               <div>
-                <div className="login__error-title">{error === 'no_role' ? t.login_err_norole_title : t.login_err_title}</div>
-                <div className="login__error-sub">{error === 'no_role' ? t.login_err_norole_sub : t.login_err_sub}</div>
+                <div className="login__error-title">{errTitle}</div>
+                <div className="login__error-sub">{errSub}</div>
               </div>
             </div>
             }
@@ -119,9 +124,11 @@ function LoginView({ t, lang, setLang, setRoute }) {
             </div>
 
             <button className="btn btn--primary btn--lg btn--block login__submit" type="submit"
-            disabled={submitting} style={{ fontFamily: "Manrope", fontSize: "15px" }}>
+            disabled={submitting || !!lockedUntil} style={{ fontFamily: "Manrope", fontSize: "15px" }}>
               {submitting ?
               <span className="login__spinner" /> :
+              lockedUntil ?
+              <>{lockCountdown}s</> :
 
               <>{t.login_btn} <Icon name="arrowRight" size={16} /></>
               }

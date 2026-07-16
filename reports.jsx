@@ -22,6 +22,25 @@ function parseHour24(timeStr) {
   return h;
 }
 
+/* "08:14:32 AM" → 494 (minutos desde medianoche) */
+function parseTimeToMinutes(timeStr) {
+  const m = /(\d+):(\d+).*?(AM|PM)/i.exec(timeStr || '');
+  if (!m) return null;
+  let h = parseInt(m[1], 10) % 12;
+  if (/PM/i.test(m[3])) h += 12;
+  return h * 60 + parseInt(m[2], 10);
+}
+
+/* Horas trabajadas entre entrada y salida — null si falta la salida o el
+   dato es inconsistente (salida antes que entrada). */
+function hoursBetween(timeIn, timeOut) {
+  if (!timeOut) return null;
+  const a = parseTimeToMinutes(timeIn);
+  const b = parseTimeToMinutes(timeOut);
+  if (a === null || b === null || b < a) return null;
+  return (b - a) / 60;
+}
+
 function countWeekdays(year, month0, throughDay) {
   const last = throughDay || new Date(year, month0 + 1, 0).getDate();
   let n = 0;
@@ -41,13 +60,117 @@ function buildDeptDist(emps) {
     .sort((a, b) => b.value - a.value);
 }
 
+/* Agrupa la distribución completa en los `topN` departamentos más grandes +
+   un bucket "Otros" — evita una leyenda de 12 filas casi todas con valor 1. */
+function buildDeptDistGrouped(emps, topN, otherLabel) {
+  const full = buildDeptDist(emps);
+  if (full.length <= topN) return full;
+  const top = full.slice(0, topN);
+  const restValue = full.slice(topN).reduce((s, d) => s + d.value, 0);
+  if (restValue > 0) top.push({ name: otherLabel, value: restValue, color: 'var(--ink-200)' });
+  return top;
+}
+
+/* Curva suave (cardinal simplificado) + área rellena, mapeando valores reales
+   a un viewBox fijo — usado por AreaChart. */
+function buildAreaPath(values, w, h, padX, padTop, padBottom) {
+  const n = values.length;
+  const maxV = Math.max(1, ...values);
+  const plotW = w - padX * 2;
+  const baseY = h - padBottom;
+  const plotH = baseY - padTop;
+  const pts = values.map((v, i) => ({
+    x: padX + (n > 1 ? i * (plotW / (n - 1)) : plotW / 2),
+    y: padTop + (1 - v / maxV) * plotH,
+  }));
+  let line = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i], p1 = pts[i + 1];
+    const midX = (p0.x + p1.x) / 2;
+    line += ` C${midX},${p0.y} ${midX},${p1.y} ${p1.x},${p1.y}`;
+  }
+  const area = `${line} L${pts[n - 1].x},${baseY} L${pts[0].x},${baseY} Z`;
+  return { line, area, pts, baseY };
+}
+
+/* ── AreaChart — gráfica de línea con degradado, grid y tooltip en el punto
+   destacado (mismo lenguaje visual en Asistencia diaria y Tendencia de tardanzas) ── */
+/* clamp: la línea guía y el punto quedan en la posición real del dato, pero
+   el globo de texto se mueve un poco hacia adentro cerca de los bordes para
+   que nunca se salga del contenedor (eso era lo que rompía el layout en
+   móvil — un tooltip desbordado empuja TODA la página a scroll horizontal). */
+const clampPct = (pct) => Math.min(90, Math.max(10, pct));
+
+function AreaChart({ values, labels, color, gradId, peakIndex, tooltipCaption, formatValue, emptyLabel }) {
+  const W = 400, H = 170, PAD_X = 26, PAD_TOP = 18, PAD_BOTTOM = 20;
+  const hasData = values.some(v => v > 0);
+  const { line, area, pts } = buildAreaPath(values, W, H, PAD_X, PAD_TOP, PAD_BOTTOM);
+  const gridYs = [PAD_TOP, PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) / 2, H - PAD_BOTTOM];
+
+  const svgRef = React.useRef(null);
+  const [hoverIdx, setHoverIdx] = React.useState(null);
+  const activeIdx = hoverIdx !== null ? hoverIdx : peakIndex;
+  const active = hasData && activeIdx >= 0 ? pts[activeIdx] : null;
+
+  // Sigue el mouse o el dedo por toda la gráfica — engancha al día real más
+  // cercano, así se puede "tocar y mover" sobre cualquier punto, no solo el pico.
+  const trackPointer = (clientX) => {
+    const svg = svgRef.current;
+    if (!svg || !hasData) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const relX = ((clientX - rect.left) / rect.width) * W;
+    let nearest = 0, nearestDist = Infinity;
+    pts.forEach((p, i) => { const d = Math.abs(p.x - relX); if (d < nearestDist) { nearestDist = d; nearest = i; } });
+    setHoverIdx(nearest);
+  };
+
+  return (
+    <>
+      <div className="rep-area-chart">
+        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+          className={hasData ? 'rep-area-chart__svg--live' : ''}
+          onMouseMove={(e) => trackPointer(e.clientX)}
+          onMouseLeave={() => setHoverIdx(null)}
+          onTouchStart={(e) => trackPointer(e.touches[0].clientX)}
+          onTouchMove={(e) => trackPointer(e.touches[0].clientX)}
+          onTouchEnd={() => setHoverIdx(null)}>
+          {gridYs.map((y, i) => <line key={i} x1="0" y1={y} x2={W} y2={y} stroke="var(--ink-100)" strokeWidth="1"/>)}
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.30"/>
+              <stop offset="100%" stopColor={color} stopOpacity="0"/>
+            </linearGradient>
+          </defs>
+          {hasData && <path key={`fill-${values.join(',')}`} className="rep-area-fill-draw" d={area} fill={`url(#${gradId})`}/>}
+          {hasData && <path key={`line-${values.join(',')}`} className="rep-area-draw" pathLength="1" d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>}
+          {active && <>
+            <line x1={active.x} y1={active.y} x2={active.x} y2={H - PAD_BOTTOM} stroke="var(--ink-300)" strokeWidth="1" strokeDasharray="3,4"/>
+            <circle cx={active.x} cy={active.y} r={hoverIdx !== null ? 6 : 5} fill="var(--paper)" stroke={color} strokeWidth="2.5"/>
+          </>}
+        </svg>
+        {!hasData && <div className="rep-area-empty">{emptyLabel}</div>}
+        {active && (
+          <div className="rep-area-tooltip" style={{ left: `${clampPct((active.x / W) * 100)}%`, top: `${(active.y / H) * 100}%`, marginTop: -10 }}>
+            {tooltipCaption}<b>{formatValue(activeIdx)}</b>
+          </div>
+        )}
+      </div>
+      <div className="rep-area-xlabels">
+        {labels.map((l, i) => (
+          <span key={i} style={i === activeIdx ? { color: 'var(--ink-800)', fontWeight: 800 } : undefined}>{l}</span>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function ReportsView({ t, lang, setRoute }) {
   React.useEffect(() => {
     if (typeof userHasPermission === 'function' && !userHasPermission('reports')) setRoute('dashboard');
   }, []);
 
   const isES = lang === 'es';
-  const [hoveredIdx, setHoveredIdx] = React.useState(null);
 
   const [filterMonth, setFilterMonth] = React.useState(todayKey);
   const [fy, fm]    = filterMonth.split('-');
@@ -71,7 +194,7 @@ function ReportsView({ t, lang, setRoute }) {
   React.useEffect(() => {
     const sync = () => { setAllAtt(loadAttendance()); setAbsMap(loadAbsences()); };
     window.addEventListener('storage', sync);
-    const id = setInterval(sync, 4000);
+    const id = setInterval(sync, 2500);
     return () => { window.removeEventListener('storage', sync); clearInterval(id); };
   }, []);
 
@@ -88,6 +211,7 @@ function ReportsView({ t, lang, setRoute }) {
     const d = new Date(+cy, +cm - 2, 1);
     return d.toLocaleDateString('en-CA').slice(0, 7);
   }, [cy, cm]);
+  const prevMonthLabelShort = MONTHS_ES[+prevMonthKey.split('-')[1] - 1];
 
   const curMonthRecords  = React.useMemo(() => attRecords.filter(a => a.date && a.date.slice(0,7) === curMonthKey),  [attRecords, curMonthKey]);
   const prevMonthRecords = React.useMemo(() => attRecords.filter(a => a.date && a.date.slice(0,7) === prevMonthKey), [attRecords, prevMonthKey]);
@@ -120,14 +244,14 @@ function ReportsView({ t, lang, setRoute }) {
 
   /* Pill de tendencia — real, comparado con el mes anterior. Sin datos previos
      suficientes, muestra el mes en vez de inventar un porcentaje. */
-  const trendPill = (curr, prev, hasPrev, goodWhenLower) => {
+  const trendPill = (curr, prev, hasPrev, goodWhenLower, unit) => {
     if (!hasPrev) return <span className="kpi__pill">{curMonthLabel}</span>;
     const d = +(curr - prev).toFixed(1);
     const isGood = goodWhenLower ? d <= 0 : d >= 0;
     const arrow  = d === 0 ? '•' : (d > 0 ? '▲' : '▼');
     return (
-      <span className="kpi__pill" style={isGood ? undefined : {color:'var(--danger)', borderColor:'rgba(193,85,77,0.35)'}}>
-        {arrow} {Math.abs(d).toFixed(1)}%
+      <span className={`kpi__pill ${isGood ? 'kpi__pill--up' : 'kpi__pill--danger'}`}>
+        {arrow} {Math.abs(d).toFixed(1)}{unit || '%'} <span style={{opacity:0.6, fontWeight:500}}>vs. {prevMonthLabelShort}</span>
       </span>
     );
   };
@@ -148,47 +272,216 @@ function ReportsView({ t, lang, setRoute }) {
   }, [attRecords]);
 
   const last7Totals = last7.map(d => d.total);
-  const last7Max     = Math.max(1, ...last7Totals);
   const hasLast7Data = last7Totals.some(v => v > 0);
-  const last7Varies  = new Set(last7Totals).size > 1;
   const last7Peak    = hasLast7Data ? last7Totals.indexOf(Math.max(...last7Totals)) : -1;
-  const last7Low     = (hasLast7Data && last7Varies) ? last7Totals.indexOf(Math.min(...last7Totals)) : -1;
 
-  const daysWithData = last7.filter(d => d.total > 0).length;
-  const avgPerDay     = daysWithData > 0 ? Math.round(last7Totals.reduce((s,v) => s+v, 0) / daysWithData) : 0;
-  const totalLast7    = last7Totals.reduce((s,v) => s+v, 0);
-  const busiestIdx    = hasLast7Data ? last7Peak : -1;
-  const busiestDayFull = busiestIdx >= 0
-    ? (isES ? FULL_DAYS_ES : FULL_DAYS_EN)[new Date(last7[busiestIdx].iso + 'T00:00:00').getDay()]
-    : '—';
-  const busiestVal    = busiestIdx >= 0 ? last7[busiestIdx].total : 0;
+  const fullDayName = (i) => (isES ? FULL_DAYS_ES : FULL_DAYS_EN)[new Date(last7[i].iso + 'T00:00:00').getDay()];
 
-  /* ── Llegadas por hora — hoy ── */
-  const todayStr     = todayISO();
-  const todayRecords = React.useMemo(() => attRecords.filter(a => a.date === todayStr), [attRecords, todayStr]);
+  /* ── Tendencia de tardanzas — últimos 7 días (misma base de last7) ── */
+  const lateTotals  = last7.map(d => d.late);
+  const lateMax     = Math.max(...lateTotals);
+  const latePeakIdx = lateMax > 0 ? lateTotals.indexOf(lateMax) : -1;
+
+  /* ── Llegadas por hora — mes actual (para el insight de hora pico) ── */
   const hourHours  = React.useMemo(() => Array.from({length:13}, (_,i) => i + 6), []);
-  const hourCounts = React.useMemo(
-    () => hourHours.map(h => todayRecords.filter(a => parseHour24(a.time) === h).length),
-    [hourHours, todayRecords]
+  const hourCountsMonth = React.useMemo(
+    () => hourHours.map(h => curMonthRecords.filter(a => parseHour24(a.timeIn || a.time) === h).length),
+    [hourHours, curMonthRecords]
   );
+  const peakHourIdx = hourCountsMonth.some(c => c > 0) ? hourCountsMonth.indexOf(Math.max(...hourCountsMonth)) : -1;
+
+  /* ── Eventualidades — mismo patrón de sync que asistencia/ausencias ── */
+  const loadEventualidades = () => { try { return JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch { return {}; } };
+  const [evMap, setEvMap] = React.useState(loadEventualidades);
+  React.useEffect(() => {
+    const sync = () => setEvMap(loadEventualidades());
+    window.addEventListener('storage', sync);
+    const id = setInterval(sync, 2500);
+    return () => { window.removeEventListener('storage', sync); clearInterval(id); };
+  }, []);
+
+  const EVENT_TYPE_LABEL = { eventualidad: 'Eventualidad', dia_libre: 'Día libre', permiso: 'Permiso', servicio_feriado: 'Servicio feriado' };
+  const EVENT_STATUS_LABEL = { pendiente: isES ? 'Pendiente' : 'Pending', aceptado: isES ? 'Aceptado' : 'Accepted', rechazado: isES ? 'Rechazado' : 'Rejected' };
+  const EVENT_STATUS_CYCLE = ['pendiente', 'aceptado', 'rechazado'];
+
+  const cycleEventStatus = (empId, evId) => {
+    let map = {};
+    try { map = JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch {}
+    const list = map[empId] || [];
+    const idx = list.findIndex(x => x.id === evId);
+    if (idx === -1) return;
+    const current = list[idx].estado || 'pendiente';
+    const next = EVENT_STATUS_CYCLE[(EVENT_STATUS_CYCLE.indexOf(current) + 1) % EVENT_STATUS_CYCLE.length];
+    list[idx] = { ...list[idx], estado: next };
+    map = { ...map, [empId]: list };
+    localStorage.setItem('uasd_eventualidades', JSON.stringify(map));
+    setEvMap(map);
+  };
+
+  /* ── Aspectos destacados — insights calculados de datos reales, no inventados.
+     Cada uno se omite si no hay suficiente data para sostenerlo. ── */
+  const insights = React.useMemo(() => {
+    const out = [];
+
+    if (hasPrevAtt) {
+      const d = +(onTimePct - prevOnTimePct).toFixed(1);
+      out.push({
+        status: d >= 0 ? 'ok' : 'warn',
+        text: `La puntualidad ${d >= 0 ? 'subió' : 'bajó'} ${Math.abs(d).toFixed(1)}% respecto a ${prevMonthLabelShort}`,
+        cat: 'puntualidad', catLabel: isES ? 'Puntualidad' : 'Punctuality',
+      });
+    }
+
+    const byDept = {};
+    curMonthRecords.forEach(a => {
+      const emp = emps.find(e => e.id === a.empId);
+      if (!emp) return;
+      byDept[emp.dept] = byDept[emp.dept] || { total: 0, onTime: 0 };
+      byDept[emp.dept].total++;
+      if (!a.late) byDept[emp.dept].onTime++;
+    });
+    const deptRates = Object.keys(byDept)
+      .filter(d => byDept[d].total >= 2)
+      .map(d => ({ dept: d, rate: byDept[d].onTime / byDept[d].total }))
+      .sort((a, b) => b.rate - a.rate);
+    if (deptRates.length) {
+      out.push({
+        status: 'ok',
+        text: `${deptRates[0].dept} es el departamento con mejor asistencia (${Math.round(deptRates[0].rate * 100)}%)`,
+        cat: 'depto', catLabel: isES ? 'Departamento' : 'Department',
+      });
+    }
+
+    let worstAbs = null;
+    emps.forEach(emp => {
+      const list = (absMap[emp.id] || []).filter(a => a.date?.slice(0,7) === curMonthKey && !a.justified && !isHoliday(a.date));
+      if (list.length && (!worstAbs || list.length > worstAbs.count)) worstAbs = { emp, count: list.length };
+    });
+    if (worstAbs) {
+      out.push({
+        status: 'warn',
+        text: `${worstAbs.emp.name} acumula ${worstAbs.count} ausencia${worstAbs.count !== 1 ? 's' : ''} sin justificar este mes`,
+        cat: 'ausencias', catLabel: isES ? 'Ausencias' : 'Absences',
+      });
+    }
+
+    if (peakHourIdx >= 0) {
+      out.push({
+        status: 'ok',
+        text: isES
+          ? `El pico de marcajes ocurre entre las ${hourHours[peakHourIdx]}:00 y ${hourHours[peakHourIdx] + 1}:00`
+          : `Check-ins peak between ${hourHours[peakHourIdx]}:00 and ${hourHours[peakHourIdx] + 1}:00`,
+        cat: 'tendencia', catLabel: isES ? 'Tendencia' : 'Trend',
+      });
+    }
+
+    return out.slice(0, 4);
+  }, [hasPrevAtt, onTimePct, prevOnTimePct, curMonthRecords, emps, absMap, curMonthKey, peakHourIdx, hourHours, isES, prevMonthLabelShort]);
+
+  /* ── Lista unificada de Detalle — Tardanzas + Ausencias + Eventualidades del
+     mes filtrado, en un solo feed ordenable por chips (evita 3 cajas separadas). ── */
+  const detailRows = React.useMemo(() => {
+    const rows = [];
+    Object.values(allAtt).forEach(a => {
+      if (!a.late || a.date?.slice(0,7) !== filterMonth) return;
+      const emp = emps.find(e => e.id === a.empId);
+      if (!emp) return;
+      rows.push({
+        key: `t-${emp.id}-${a.date}`, type: 'tardanza', emp, date: a.date,
+        detail: a.justified ? (isES ? '✓ Justificada' : '✓ Justified') : (isES ? 'Sin justificar' : 'Unjustified'),
+        detailOk: !!a.justified,
+      });
+    });
+    emps.forEach(emp => {
+      (absMap[emp.id] || []).forEach(ab => {
+        if (ab.date?.slice(0,7) !== filterMonth || isHoliday(ab.date)) return;
+        rows.push({
+          key: `a-${emp.id}-${ab.date}`, type: 'ausencia', emp, date: ab.date,
+          detail: ab.justified ? (isES ? '✓ Justificada' : '✓ Justified') : `${ab.auto ? (isES ? 'Automática · ' : 'Automatic · ') : ''}${isES ? 'sin justificar' : 'unjustified'}`,
+          detailOk: !!ab.justified,
+        });
+      });
+    });
+    emps.forEach(emp => {
+      (evMap[emp.id] || []).forEach(ev => {
+        if (ev.date?.slice(0,7) !== filterMonth) return;
+        rows.push({
+          key: `e-${emp.id}-${ev.id}`, type: 'eventualidad', emp, date: ev.date, evType: ev.type, evId: ev.id,
+          detail: ev.motivo || EVENT_TYPE_LABEL[ev.type] || ev.type,
+          detailOk: true,
+          estado: ev.estado || 'pendiente',
+        });
+      });
+    });
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
+  }, [allAtt, absMap, evMap, emps, filterMonth, isES]);
+
+  const [detailFilter, setDetailFilter] = React.useState('todos');
+  const detailCounts = React.useMemo(() => ({
+    todos: detailRows.length,
+    tardanza: detailRows.filter(r => r.type === 'tardanza').length,
+    ausencia: detailRows.filter(r => r.type === 'ausencia').length,
+    eventualidad: detailRows.filter(r => r.type === 'eventualidad').length,
+  }), [detailRows]);
+  const visibleDetailRows = detailFilter === 'todos' ? detailRows : detailRows.filter(r => r.type === detailFilter);
+  const detailChips = [
+    { id: 'todos', label: isES ? 'Todos' : 'All' },
+    { id: 'tardanza', label: isES ? 'Tardanzas' : 'Late arrivals' },
+    { id: 'ausencia', label: isES ? 'Ausencias' : 'Absences' },
+    { id: 'eventualidad', label: isES ? 'Eventualidades' : 'Events' },
+  ];
+  const fmtShortDate = (iso) => { const [y,m,d] = iso.split('-'); return `${d} ${MONTHS_ES[+m-1].slice(0,3).toLowerCase()}`; };
+
+  /* ── Horas trabajadas — mes filtrado, calculado de entrada/salida reales
+     del kiosco (antes no existía: solo se guardaba una hora, la de entrada,
+     y "salida" era cosmético). Marca los días con entrada pero sin salida
+     registrada en vez de fingir un total. ── */
+  const monthAttForHours = React.useMemo(
+    () => attRecords.filter(a => a.date?.slice(0,7) === filterMonth),
+    [attRecords, filterMonth]
+  );
+  const hoursRows = React.useMemo(() => {
+    const byEmp = {};
+    monthAttForHours.forEach(a => {
+      const h = hoursBetween(a.timeIn || a.time, a.timeOut);
+      if (!byEmp[a.empId]) byEmp[a.empId] = { totalHours: 0, days: 0, incomplete: 0 };
+      byEmp[a.empId].days++;
+      if (h !== null) byEmp[a.empId].totalHours += h;
+      else byEmp[a.empId].incomplete++;
+    });
+    return emps
+      .map(emp => {
+        const agg = byEmp[emp.id];
+        if (!agg) return null;
+        return { emp, totalHours: agg.totalHours, days: agg.days, incomplete: agg.incomplete };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.totalHours - a.totalHours);
+  }, [monthAttForHours, emps]);
 
   const exportCSV = () => {
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const esc = (v) => `"${csvSafe(v).replace(/"/g, '""')}"`;
     let evMap = {};
     try { evMap = JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch {}
 
-    const rows = [['Sección', 'Empleado', 'Departamento', 'Fecha', 'Detalle']];
+    const rows = [['Sección', 'Empleado', 'Departamento', 'Fecha', 'Detalle', 'Estado']];
 
     emps.forEach(emp => {
       Object.values(allAtt)
         .filter(a => a.empId === emp.id && a.late && a.date?.slice(0, 7) === filterMonth)
-        .forEach(a => rows.push(['Tardanza', emp.name, emp.dept, a.date, a.justified ? 'Justificada' : 'No justificada']));
+        .forEach(a => rows.push(['Tardanza', emp.name, emp.dept, a.date, '', a.justified ? 'Justificada' : 'No justificada']));
+    });
+
+    emps.forEach(emp => {
+      (absMap[emp.id] || [])
+        .filter(a => a.date?.slice(0, 7) === filterMonth && !isHoliday(a.date))
+        .forEach(a => rows.push(['Ausencia', emp.name, emp.dept, a.date, a.auto ? 'Automática' : '', a.justified ? 'Justificada' : 'No justificada']));
     });
 
     emps.forEach(emp => {
       (evMap[emp.id] || [])
         .filter(e => e.date?.slice(0, 7) === filterMonth)
-        .forEach(e => rows.push(['Eventualidad', emp.name, emp.dept, e.dateEnd ? `${e.date} → ${e.dateEnd}` : e.date, `${e.type}${e.motivo ? ' — ' + e.motivo : ''}`]));
+        .forEach(e => rows.push(['Eventualidad', emp.name, emp.dept, e.dateEnd ? `${e.date} - ${e.dateEnd}` : e.date, `${e.type}${e.motivo ? ' - ' + e.motivo : ''}`, EVENT_STATUS_LABEL[e.estado || 'pendiente']]));
     });
 
     const csv = '\uFEFF' + rows.map(r => r.map(esc).join(',')).join('\r\n');
@@ -200,6 +493,73 @@ function ReportsView({ t, lang, setRoute }) {
     URL.revokeObjectURL(a.href);
   };
 
+  /* ── Resumen (pulso en vivo) vs Detalle (histórico por mes) ──
+     Mismo patrón seg-filter que dashboard.jsx (filtro de estado) y
+     changelog.jsx (filtro de tipo) — pill animado que se desliza al ítem activo. */
+  const [view, setView] = React.useState('resumen');
+  const viewOptions = [
+    { id: 'resumen', label: t.rep_view_summary },
+    { id: 'detalle', label: t.rep_view_detail },
+    { id: 'calendario', label: t.rep_view_calendar },
+  ];
+
+  // KPIs cliqueables: los KPI de Resumen reflejan siempre el mes actual, así
+  // que al saltar a Detalle hay que fijar ese mismo mes ahí — si no, el
+  // usuario tocaría "Tardanzas" y vería el filtro de mes que tenía antes,
+  // que podría ser uno completamente distinto.
+  const goToDetalle = (filterId) => {
+    setFilterMonth(curMonthKey);
+    setDetailFilter(filterId);
+    setView('detalle');
+  };
+  const viewRef = React.useRef(null);
+  const viewItemRefs = React.useRef({});
+  const [viewPill, setViewPill] = React.useState({ opacity: 0 });
+
+  React.useLayoutEffect(() => {
+    const el = viewItemRefs.current[view];
+    const wrap = viewRef.current;
+    if (!el || !wrap) return;
+    const er = el.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    setViewPill({
+      opacity: 1,
+      width: er.width,
+      height: er.height,
+      transform: `translateX(${Math.round(er.left - wr.left)}px)`,
+    });
+  }, [view]);
+
+  /* ── Calendario — cumpleaños del mes + feriados del período ── */
+  const birthdaysThisMonth = React.useMemo(() => {
+    const targetMonth = +filterMonth.split('-')[1];
+    return emps
+      .filter(e => e.status !== 'inactive' && e.dob)
+      .map(e => {
+        const [d, m] = (e.dob || '').split('/').map(n => parseInt(n, 10));
+        return { emp: e, day: d, month: m };
+      })
+      .filter(e => e.month === targetMonth && !isNaN(e.day))
+      .sort((a, b) => a.day - b.day);
+  }, [emps, filterMonth]);
+
+  const holidaysThisMonth = React.useMemo(
+    () => (typeof getHolidays === 'function' ? getHolidays() : []).filter(h => h.date.slice(0,7) === filterMonth),
+    [filterMonth, evMap]
+  );
+
+  const holidayWorkers = React.useMemo(() => {
+    const byDate = {};
+    emps.forEach(emp => {
+      (evMap[emp.id] || []).forEach(ev => {
+        if (ev.type === 'servicio_feriado' && ev.date?.slice(0,7) === filterMonth) {
+          (byDate[ev.date] = byDate[ev.date] || []).push(emp);
+        }
+      });
+    });
+    return byDate;
+  }, [emps, evMap, filterMonth]);
+
   return (
     <div className="page">
       {/* ── Header ── */}
@@ -209,174 +569,103 @@ function ReportsView({ t, lang, setRoute }) {
           <div className="page__subtitle">{t.rep_sub}</div>
         </div>
         <div className="page__actions">
+          <div className="seg-filter" ref={viewRef}>
+            <span className="seg-filter__pill" style={viewPill} aria-hidden="true"/>
+            {viewOptions.map(o => (
+              <button key={o.id}
+                ref={el => (viewItemRefs.current[o.id] = el)}
+                className={`seg-filter__item ${view === o.id ? 'seg-filter__item--active' : ''}`}
+                onClick={() => setView(o.id)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
           <button className="btn btn--ghost" onClick={exportCSV}>
             <Icon name="download" size={14}/> {t.dash_export}
           </button>
         </div>
       </div>
 
-      {/* ── KPIs — mes actual, datos reales, comparados con el mes anterior ── */}
+      {/* ── RESUMEN — pulso en vivo del mes actual ── */}
+      {view === 'resumen' && <div key="resumen" className="rep-panel-in">
+
+      {/* ── KPIs — mes actual, datos reales, comparados con el mes anterior ──
+           label → valor → tendencia (reutiliza .kpi/.kpi__label/.kpi__value/
+           .kpi__pill del sistema, solo se reordena el contenido interno). ── */}
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
-        <div className="kpi kpi--fill">
-          <div className="kpi__top">
-            <div className="kpi__icon"><Icon name="check" size={18}/></div>
-            {trendPill(onTimePct, prevOnTimePct, hasPrevAtt, false)}
-          </div>
-          <div className="kpi__foot">
-            <div className="kpi__label">{t.rep_punctual_on}</div>
-            <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,opacity:0.6}}>%</span></div>
-          </div>
+        <div className="kpi kpi--clickable" role="button" tabIndex={0}
+          onClick={() => goToDetalle('todos')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
+          <div className="kpi__label">{t.rep_punctual_on}</div>
+          <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+          <div style={{ marginTop: 12 }}>{trendPill(onTimePct, prevOnTimePct, hasPrevAtt, false)}</div>
         </div>
-        <div className="kpi">
-          <div className="kpi__top">
-            <div className="kpi__icon"><Icon name="clock" size={18}/></div>
-            {trendPill(latePct, prevLatePct, hasPrevAtt, true)}
-          </div>
-          <div className="kpi__foot">
-            <div className="kpi__label">{t.rep_punctual_late}</div>
-            <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
-          </div>
+        <div className="kpi kpi--clickable" role="button" tabIndex={0}
+          onClick={() => goToDetalle('tardanza')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('tardanza'); } }}>
+          <div className="kpi__label">{t.rep_punctual_late}</div>
+          <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+          <div style={{ marginTop: 12 }}>{trendPill(latePct, prevLatePct, hasPrevAtt, true)}</div>
         </div>
-        <div className="kpi">
-          <div className="kpi__top">
-            <div className="kpi__icon"><Icon name="x" size={18}/></div>
-            {trendPill(absentPct, prevAbsentPct, true, true)}
-          </div>
-          <div className="kpi__foot">
-            <div className="kpi__label">{t.rep_punctual_absent}</div>
-            <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
-          </div>
+        <div className="kpi kpi--clickable" role="button" tabIndex={0}
+          onClick={() => goToDetalle('ausencia')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('ausencia'); } }}>
+          <div className="kpi__label">{t.rep_punctual_absent}</div>
+          <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+          <div style={{ marginTop: 12 }}>{trendPill(absentPct, prevAbsentPct, true, true)}</div>
         </div>
-        <div className="kpi">
-          <div className="kpi__top">
-            <div className="kpi__icon"><Icon name="barChart" size={18}/></div>
-            <span className="kpi__pill">{curMonthLabel}</span>
-          </div>
-          <div className="kpi__foot">
-            <div className="kpi__label">{isES ? 'Marcajes del mes' : 'Check-ins this month'}</div>
-            <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}</div>
-          </div>
+        <div className="kpi kpi--clickable" role="button" tabIndex={0}
+          onClick={() => goToDetalle('todos')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
+          <div className="kpi__label">{isES ? 'Marcajes del mes' : 'Check-ins this month'}</div>
+          <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}<span style={{fontSize:15,color:'var(--ink-400)'}}>{isES ? 'total' : 'total'}</span></div>
+          <div style={{ marginTop: 12 }}>{trendPill(curMonthRecords.length, prevMonthRecords.length, prevMonthRecords.length > 0, false, '')}</div>
         </div>
       </div>
 
-      {/* ── Hero chart — asistencia semanal ── */}
-      <div className="chart-card" style={{ marginBottom: 20 }}>
-        <div className="chart-card__head">
-          <div>
-            <div className="chart-card__title">{t.rep_attend}</div>
-            <div className="chart-card__sub">{t.rep_attend_sub} · {isES ? 'últimos 7 días' : 'last 7 days'}</div>
-          </div>
-          <div className="rep-legend">
-            <div className="rep-legend__item">
-              <span className="rep-legend__dot" style={{ background:'var(--ink-700)' }}/>
-              {t.rep_punctual_on}
-            </div>
-            <div className="rep-legend__item">
-              <span className="rep-legend__dot" style={{ background:'var(--gold-500)' }}/>
-              {t.rep_punctual_late}
-            </div>
-          </div>
-        </div>
-
-        {/* barra hero estilo Interstellar */}
-        <div className="rep-hero-chart">
-          {/* líneas de guía horizontales */}
-          <div className="rep-hero-chart__grid">
-            {[0,1,2,3].map(i => <div key={i} className="rep-hero-chart__gridline"/>)}
-          </div>
-
-          {/* dots de datos encima de las barras */}
-          <div className="rep-hero-chart__dots">
-            {last7.map((d, i) => {
-              const isHigh = i === last7Peak;
-              const isLow  = i === last7Low;
-              return (
-                <div key={i} className="rep-hero-chart__dot-col">
-                  <span className="rep-hero-chart__dot" style={{
-                    background: isHigh ? 'var(--gold-500)' : isLow ? 'var(--danger)' : 'var(--ink-200)',
-                    transform: (hoveredIdx === i || isHigh || isLow) ? 'scale(1.4)' : 'scale(1)',
-                  }}/>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* columnas de barras */}
-          <div className="rep-hero-chart__bars">
-            {last7.map((d, i) => {
-              const total   = d.total;
-              const totalH  = (total / last7Max) * 100;
-              const lateH   = total > 0 ? (d.late / total) * 100 : 0;
-              const isHigh  = i === last7Peak;
-              const isLow   = i === last7Low;
-              const isHover = hoveredIdx === i;
-              const isActive = isHigh || isLow;
-
-              return (
-                <div key={i} className={`rep-bar-col${isActive ? ' rep-bar-col--active' : ''}`}
-                  onMouseEnter={() => setHoveredIdx(i)}
-                  onMouseLeave={() => setHoveredIdx(null)}>
-
-                  {/* barra — el tag flotante vive DENTRO del track (absolute) para
-                      no empujar el layout ni desbordar en pantallas angostas */}
-                  <div className="rep-bar-col__track">
-                    {isActive && (
-                      <div className="rep-bar-tag"
-                        style={{ bottom: `calc(${totalH}% + 8px)`, background: isHigh ? 'var(--ink-900)' : 'var(--ink-500)' }}>
-                        {isHigh ? (isES ? 'Pico' : 'Peak') : (isES ? 'Mínimo' : 'Low')}
-                      </div>
-                    )}
-                    <div className="rep-bar-col__fill" style={{
-                      height: `${totalH}%`,
-                      background: isHigh ? 'var(--ink-800)' : isLow ? 'var(--ink-400)' : (isHover ? 'var(--ink-300)' : 'var(--ink-100)'),
-                    }}>
-                      {/* segmento tarde */}
-                      <div style={{
-                        position:'absolute', bottom:0, left:0, right:0,
-                        height:`${lateH}%`,
-                        background: isHigh ? 'var(--gold-500)' : isLow ? 'var(--ink-300)' : 'var(--ink-200)',
-                        borderRadius: '6px 6px 0 0',
-                        opacity: isActive || isHover ? 1 : 0.6,
-                      }}/>
-                    </div>
-                  </div>
-
-                  {/* etiqueta día + valor — siempre visible, nunca vacío */}
-                  <div className="rep-bar-col__foot">
-                    <div className="rep-bar-col__day">{d.day}</div>
-                    <div className="rep-bar-col__val" style={{
-                      color: isHigh ? 'var(--gold-600)' : isLow ? 'var(--ink-500)' : 'var(--ink-300)',
-                      fontWeight: isActive ? 700 : 600,
-                    }}>
-                      {total}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* micro-stats debajo del chart */}
-        <div className="rep-microstats">
-          <MicroStat label={t.rep_micro_avg}   val={avgPerDay}      unit={t.rep_micro_avg_unit}/>
-          <MicroStat label={t.rep_micro_peak}  val={busiestDayFull} unit={busiestIdx >= 0 ? `${busiestVal} ${isES ? 'marcajes' : 'clock-ins'}` : (isES ? 'sin datos' : 'no data')}/>
-          <MicroStat label={t.rep_micro_total} val={totalLast7}     unit={isES ? 'últimos 7 días' : 'last 7 days'}/>
-        </div>
-      </div>
-
-      {/* ── Fila inferior: histograma + donut + actividad ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20, marginBottom:20 }}>
+      {/* ── Asistencia diaria + Tendencia de tardanzas — últimos 7 días ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20 }}>
         <div className="chart-card">
           <div className="chart-card__head">
             <div>
-              <div className="chart-card__title">{t.rep_hours_title}</div>
-              <div className="chart-card__sub">{t.rep_hours_sub}</div>
+              <div className="chart-card__title">{t.rep_attend}</div>
+              <div className="chart-card__sub">{t.rep_attend_sub} · {isES ? 'últimos 7 días' : 'last 7 days'}</div>
             </div>
           </div>
-          <HourHistogram hours={hourHours} counts={hourCounts} todayCount={todayRecords.length} isES={isES}/>
+          <AreaChart
+            values={last7.map(d => d.total)}
+            labels={last7.map(d => d.day)}
+            color="var(--ink-700)"
+            gradId="repGradAsistencia"
+            peakIndex={last7Peak}
+            tooltipCaption={isES ? 'Marcajes' : 'Check-ins'}
+            formatValue={(i) => `${last7[i].total} · ${fullDayName(i)}`}
+            emptyLabel={isES ? 'Sin marcajes esta semana' : 'No check-ins this week'}
+          />
         </div>
 
+        <div className="chart-card">
+          <div className="chart-card__head">
+            <div>
+              <div className="chart-card__title">{isES ? 'Tendencia de tardanzas' : 'Late arrival trend'}</div>
+              <div className="chart-card__sub">{isES ? 'Llegadas tarde · últimos 7 días' : 'Late check-ins · last 7 days'}</div>
+            </div>
+          </div>
+          <AreaChart
+            values={lateTotals}
+            labels={last7.map(d => d.day)}
+            color="var(--gold-600)"
+            gradId="repGradTardanzas"
+            peakIndex={latePeakIdx}
+            tooltipCaption={isES ? 'Tardanzas' : 'Late arrivals'}
+            formatValue={(i) => `${lateTotals[i]} · ${fullDayName(i)}`}
+            emptyLabel={isES ? 'Sin tardanzas esta semana' : 'No late arrivals this week'}
+          />
+        </div>
+      </div>
+
+      {/* ── Distribución por departamento + Aspectos destacados ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20 }}>
         <div className="chart-card">
           <div className="chart-card__head">
             <div>
@@ -384,68 +673,267 @@ function ReportsView({ t, lang, setRoute }) {
               <div className="chart-card__sub">{t.rep_dept_sub}</div>
             </div>
           </div>
-          <DepartmentDonut t={t}/>
+          <DepartmentDonut t={t} isES={isES}/>
         </div>
 
         <div className="chart-card">
           <div className="chart-card__head">
             <div>
-              <div className="chart-card__title">{t.rep_top}</div>
-              <div className="chart-card__sub">{isES ? 'Marcajes de hoy' : "Today's check-ins"}</div>
+              <div className="chart-card__title">{isES ? 'Aspectos destacados' : 'Highlights'}</div>
             </div>
             <span className="badge badge--ok">
-              <span className="badge__dot"/>
+              <span className="badge__dot rep-live-dot"/>
               {t.rep_live}
             </span>
           </div>
-          <ActivityFeed isES={isES}/>
+          {insights.length === 0 ? (
+            <div className="audit-empty">
+              <Icon name="activity" size={26} stroke={1.2}/>
+              <div className="audit-empty__title">{isES ? 'Aún sin datos suficientes' : 'Not enough data yet'}</div>
+              <div className="audit-empty__sub">{isES ? 'Los aspectos destacados aparecen cuando hay marcajes registrados.' : 'Highlights appear once check-ins are recorded.'}</div>
+            </div>
+          ) : (
+            <div className="rep-insights rep-rows-in">
+              {insights.map((ins, i) => (
+                <div className="rep-insight-row" key={i}>
+                  <span className={`rep-insight-status rep-insight-status--${ins.status}`}>
+                    <Icon name={ins.status === 'ok' ? 'check' : 'alertTriangle'} size={13} stroke={2.6}/>
+                  </span>
+                  <span className="rep-insight-text">{ins.text}</span>
+                  <span className={`rep-insight-cat rep-insight-cat--${ins.cat}`}>{ins.catLabel}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Tardanzas · Ausencias · Eventualidades ── */}
-      <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:20, marginBottom:12 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:4, border:'1px solid var(--ink-100)', borderRadius:8, padding:'4px 6px', background:'var(--paper)' }}>
-          <button onClick={prevMonth} style={{ background:'none', border:'none', width:24, height:24, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--ink-500)', borderRadius:4 }}>
+      </div>}
+
+      {/* ── DETALLE — histórico filtrable por mes ── */}
+      {view === 'detalle' && <div key="detalle" className="rep-panel-in">
+
+      {/* ── Selector de mes + chips de filtro (Tardanzas · Ausencias · Eventualidades) ── */}
+      <div className="toolbar" style={{ marginBottom: 16 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:4, border:'1px solid var(--ink-100)', borderRadius:999, padding:'5px 6px', background:'var(--paper)' }}>
+          <button onClick={prevMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--ink-500)', borderRadius:'50%' }}>
             <Icon name="arrowLeft" size={12}/>
           </button>
-          <span style={{ fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600, color:'var(--ink-800)', minWidth:96, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
-            <span style={{ color:'var(--ink-400)', display:'flex' }}><Icon name="filter" size={12} stroke={1.6}/></span>
+          <span style={{ fontFamily:'var(--font-mono)', fontSize:12.5, fontWeight:700, color:'var(--ink-800)', minWidth:96, textAlign:'center' }}>
             {monthLabel}
           </span>
-          <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background:'none', border:'none', width:24, height:24, display:'grid', placeItems:'center', cursor: isCurrentMonth ? 'default' : 'pointer', color: isCurrentMonth ? 'var(--ink-200)' : 'var(--ink-500)', borderRadius:4 }}>
+          <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor: isCurrentMonth ? 'default' : 'pointer', color: isCurrentMonth ? 'var(--ink-200)' : 'var(--ink-500)', borderRadius:'50%' }}>
             <Icon name="arrowRight" size={12}/>
           </button>
         </div>
-        <div style={{ fontFamily:'var(--font-sans)', fontSize:12, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase' }}>
-          Detalle del período
+        <div className="rep-chips">
+          {detailChips.map(c => (
+            <button key={c.id} className={`rep-chip ${detailFilter === c.id ? 'rep-chip--active' : ''}`} onClick={() => setDetailFilter(c.id)}>
+              {c.label} <span className="rep-chip__count">{detailCounts[c.id]}</span>
+            </button>
+          ))}
         </div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20 }}>
-        <TardanzasReport filterMonth={filterMonth} monthLabel={monthLabel}/>
-        <StrikesReport   filterMonth={filterMonth} monthLabel={monthLabel}/>
-        <EventualidadesReport filterMonth={filterMonth} monthLabel={monthLabel}/>
+
+      {/* ── Lista unificada — Tardanzas + Ausencias + Eventualidades del mes ── */}
+      {visibleDetailRows.length === 0 ? (
+        <div className="rep-list-card">
+          <div className="audit-empty">
+            <Icon name="calendar" size={26} stroke={1.2}/>
+            <div className="audit-empty__title">{isES ? 'Sin registros' : 'No records'}</div>
+            <div className="audit-empty__sub">{isES ? `No hay registros para ${monthLabel.toLowerCase()}.` : `No records for ${monthLabel}.`}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="rep-list-card rep-rows-in" key={detailFilter}>
+          <div className="rep-list-row rep-list-row--head">
+            <span></span><span>{isES ? 'Empleado' : 'Employee'}</span><span>{isES ? 'Tipo' : 'Type'}</span><span>{isES ? 'Fecha' : 'Date'}</span><span>{isES ? 'Detalle' : 'Detail'}</span><span>{isES ? 'Estado' : 'Status'}</span>
+          </div>
+          {visibleDetailRows.map(r => (
+            <div className="rep-list-row" key={r.key}>
+              <div className="table__avatar" style={{ width:32, height:32, fontSize:10 }}>{initials(r.emp.name)}</div>
+              <div className="rep-list-who">
+                <div className="rep-list-name">{r.emp.name}</div>
+                <div className="rep-list-dept">{r.emp.dept}</div>
+              </div>
+              <span className={`badge ${r.type === 'tardanza' ? 'badge--warn' : r.type === 'ausencia' ? 'badge--err' : 'badge--info'}`} style={{ fontSize:10.5, padding:'3px 9px', width:'fit-content' }}>
+                {r.type === 'tardanza' ? (isES ? 'Tardanza' : 'Late') : r.type === 'ausencia' ? (isES ? 'Ausencia' : 'Absence') : (EVENT_TYPE_LABEL[r.evType] || (isES ? 'Eventualidad' : 'Event'))}
+              </span>
+              <span className="mono" style={{ fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink-500)' }}>{fmtShortDate(r.date)}</span>
+              <span style={{ fontFamily:'var(--font-sans)', fontSize:12.5, color: r.detailOk ? 'var(--success,#2f7a5a)' : 'var(--ink-400)', fontWeight: r.detailOk ? 700 : 400 }}>{r.detail}</span>
+              {r.type === 'eventualidad' ? (
+                <button
+                  className={`badge ${r.estado === 'aceptado' ? 'badge--ok' : r.estado === 'rechazado' ? 'badge--err' : 'badge--warn'}`}
+                  style={{ fontSize:10.5, padding:'3px 9px', width:'fit-content', border:'none', cursor:'pointer' }}
+                  title={isES ? 'Tocar para cambiar el estado' : 'Tap to change status'}
+                  onClick={() => cycleEventStatus(r.emp.id, r.evId)}>
+                  {EVENT_STATUS_LABEL[r.estado] || EVENT_STATUS_LABEL.pendiente}
+                </button>
+              ) : <span style={{ color:'var(--ink-200)', fontSize:12 }}>—</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Horas trabajadas — mes filtrado ── */}
+      <div className="chart-card" style={{ marginBottom: 20 }}>
+        <div className="chart-card__head">
+          <div>
+            <div className="chart-card__title">{isES ? 'Horas trabajadas' : 'Hours worked'}</div>
+            <div className="chart-card__sub">{monthLabel} · {isES ? 'calculado de entrada y salida reales' : 'calculated from real entry/exit'}</div>
+          </div>
+        </div>
+        {hoursRows.length === 0 ? (
+          <div className="audit-empty">
+            <Icon name="clock" size={26} stroke={1.2}/>
+            <div className="audit-empty__title">{isES ? 'Sin marcajes' : 'No check-ins'}</div>
+            <div className="audit-empty__sub">{isES ? `No hay marcajes para ${monthLabel.toLowerCase()}.` : `No check-ins for ${monthLabel}.`}</div>
+          </div>
+        ) : (
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign:'left', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Empleado' : 'Employee'}</th>
+                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Días marcados' : 'Days'}</th>
+                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Horas totales' : 'Total hours'}</th>
+                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Promedio/día' : 'Avg/day'}</th>
+                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Sin salida' : 'No exit'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hoursRows.map(r => {
+                  const completeDays = r.days - r.incomplete;
+                  const avg = completeDays > 0 ? r.totalHours / completeDays : 0;
+                  return (
+                    <tr key={r.emp.id} className="rep-row">
+                      <td style={{ padding:'10px 4px', borderBottom:'1px solid var(--ink-100)' }}>
+                        <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{r.emp.name}</div>
+                        <div style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)' }}>{r.emp.dept}</div>
+                      </td>
+                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)', fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink-600)' }}>{r.days}</td>
+                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)', fontFamily:'var(--font-mono)', fontSize:13, fontWeight:700, color:'var(--ink-800)' }}>{r.totalHours.toFixed(1)}h</td>
+                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)', fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink-600)' }}>{completeDays > 0 ? `${avg.toFixed(1)}h` : '—'}</td>
+                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)' }}>
+                        {r.incomplete > 0
+                          ? <span className="badge badge--warn" style={{ fontSize:10 }}>{r.incomplete}</span>
+                          : <span style={{ color:'var(--ink-200)', fontFamily:'var(--font-mono)', fontSize:12 }}>—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <FaltasSemanalReport filterMonth={filterMonth} monthLabel={monthLabel}/>
-    </div>
-  );
-}
 
-/* ── MicroStat ── */
-function MicroStat({ label, val, unit }) {
-  return (
-    <div className="rep-microstat">
-      <div className="rep-microstat__label">{label}</div>
-      <div className="rep-microstat__val">{val}</div>
-      <div className="rep-microstat__unit">{unit}</div>
+      </div>}
+
+      {/* ── CALENDARIO — cumpleaños del mes + feriados del período ── */}
+      {view === 'calendario' && <div key="calendario" className="rep-panel-in">
+
+      <div className="toolbar" style={{ marginBottom: 20 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:4, border:'1px solid var(--ink-100)', borderRadius:999, padding:'5px 6px', background:'var(--paper)' }}>
+          <button onClick={prevMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--ink-500)', borderRadius:'50%' }}>
+            <Icon name="arrowLeft" size={12}/>
+          </button>
+          <span style={{ fontFamily:'var(--font-mono)', fontSize:12.5, fontWeight:700, color:'var(--ink-800)', minWidth:96, textAlign:'center' }}>
+            {monthLabel}
+          </span>
+          <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor: isCurrentMonth ? 'default' : 'pointer', color: isCurrentMonth ? 'var(--ink-200)' : 'var(--ink-500)', borderRadius:'50%' }}>
+            <Icon name="arrowRight" size={12}/>
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20 }}>
+        <div className="chart-card">
+          <div className="chart-card__head">
+            <div>
+              <div className="chart-card__title">{isES ? 'Cumpleaños del mes' : 'Birthdays this month'}</div>
+              <div className="chart-card__sub">{monthLabel}</div>
+            </div>
+          </div>
+          {birthdaysThisMonth.length === 0 ? (
+            <div className="audit-empty">
+              <Icon name="calendar" size={26} stroke={1.2}/>
+              <div className="audit-empty__title">{isES ? 'Sin cumpleaños' : 'No birthdays'}</div>
+              <div className="audit-empty__sub">{isES ? `Nadie cumple años en ${monthLabel.toLowerCase()}.` : `No one has a birthday in ${monthLabel}.`}</div>
+            </div>
+          ) : (
+            <div className="rep-rows-in">
+              {birthdaysThisMonth.map(b => (
+                <div className="rep-row" key={b.emp.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 4px' }}>
+                  <div className="table__avatar" style={{ width:34, height:34, fontSize:11 }}>{initials(b.emp.name)}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{b.emp.name}</div>
+                    <div style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)' }}>{b.emp.dept}</div>
+                  </div>
+                  <span className="badge badge--neutral" style={{ fontFamily:'var(--font-mono)', fontSize:11 }}>
+                    {isES ? 'Día' : 'Day'} {b.day}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="chart-card">
+          <div className="chart-card__head">
+            <div>
+              <div className="chart-card__title">{isES ? 'Feriados del período' : 'Holidays this period'}</div>
+              <div className="chart-card__sub">{monthLabel}</div>
+            </div>
+          </div>
+          {holidaysThisMonth.length === 0 ? (
+            <div className="audit-empty">
+              <Icon name="calendar" size={26} stroke={1.2}/>
+              <div className="audit-empty__title">{isES ? 'Sin feriados' : 'No holidays'}</div>
+              <div className="audit-empty__sub">{isES ? `No hay feriados en ${monthLabel.toLowerCase()}.` : `No holidays in ${monthLabel}.`}</div>
+            </div>
+          ) : (
+            <div className="rep-rows-in">
+              {holidaysThisMonth.map(h => {
+                const workers = holidayWorkers[h.date] || [];
+                return (
+                  <div key={h.date} style={{ padding:'10px 4px', borderBottom:'1px solid var(--ink-100)' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <span className="mono" style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-500)', minWidth:38 }}>{fmtShortDate(h.date)}</span>
+                      <span style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)', flex:1 }}>{isES ? h.name_es : h.name_en}</span>
+                      {workers.length > 0 && (
+                        <span className="badge badge--info" style={{ fontSize:10 }}>{workers.length} {isES ? 'trabajaron' : 'worked'}</span>
+                      )}
+                    </div>
+                    {workers.length > 0 && (
+                      <div style={{ marginTop:6, marginLeft:48, display:'flex', flexWrap:'wrap', gap:6 }}>
+                        {workers.map(w => (
+                          <span key={w.id} style={{ fontFamily:'var(--font-sans)', fontSize:11.5, color:'var(--ink-500)', background:'var(--cream-50)', padding:'3px 9px', borderRadius:999 }}>{w.name}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      </div>}
     </div>
   );
 }
 
 /* ── DepartmentDonut ── */
-function DepartmentDonut({ t }) {
+function DepartmentDonut({ t, isES }) {
   const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
-  const dist = React.useMemo(() => buildDeptDist(emps), [emps]);
+  const dist = React.useMemo(
+    () => buildDeptDistGrouped(emps, 4, isES ? 'Otros departamentos' : 'Other departments'),
+    [emps, isES]
+  );
 
   const total    = dist.reduce((s, d) => s + d.value, 0);
   const r        = 52;
@@ -482,374 +970,10 @@ function DepartmentDonut({ t }) {
           <div className="donut__legend-row" key={i}>
             <span className="donut__legend-swatch" style={{ background:d.color }}/>
             <span className="donut__legend-name">{d.name}</span>
-            <span className="donut__legend-val">{d.value}</span>
+            <span className="donut__legend-val">{d.value} · {total > 0 ? Math.round((d.value / total) * 100) : 0}%</span>
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-/* ── HourHistogram — llegadas de hoy, datos reales ── */
-function HourHistogram({ hours, counts, todayCount, isES }) {
-  const hasData = todayCount > 0;
-  const maxH    = Math.max(1, ...counts);
-  const peakI   = hasData ? counts.indexOf(Math.max(...counts)) : -1;
-
-  return (
-    <div style={{ padding:'8px 0' }}>
-      <div className="bars" style={{ height:'clamp(110px, 22vw, 160px)', gap:6 }}>
-        {counts.map((h, i) => (
-          <div className="bars__col" key={i}>
-            <div className="bars__bar" style={{
-              height: hasData ? `${Math.max(h / maxH * 100, h > 0 ? 4 : 0)}%` : '2px',
-              background: i === peakI ? 'var(--ink-800)' : 'var(--ink-150, var(--ink-100))',
-              borderRadius: '5px 5px 0 0',
-            }}>
-              {i === peakI && h > 0 && (
-                <div style={{
-                  position:'absolute', top:0, left:0, right:0,
-                  height:'35%', background:'var(--gold-500)',
-                  borderRadius:'5px 5px 0 0',
-                }}/>
-              )}
-            </div>
-            <div className="bars__label" style={{ fontSize:9 }}>{String(hours[i]).padStart(2,'0')}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{
-        marginTop:12, padding:'10px 12px',
-        background:'var(--cream-100)', borderRadius:'var(--radius-sm)',
-        fontSize:12, color:'var(--ink-600)',
-        display:'flex', alignItems:'center', gap:8,
-      }}>
-        <Icon name="clock" size={13} stroke={1.8}/>
-        {hasData ? (
-          <span>
-            {isES ? 'Pico de marcajes a las ' : 'Peak clock-ins at '}
-            <strong style={{ color:'var(--ink-800)' }}>
-              {String(hours[peakI]).padStart(2,'0')}:00 — {String(hours[peakI] + 1).padStart(2,'0')}:00
-            </strong>
-            {isES ? ` con ${maxH} entrada${maxH !== 1 ? 's' : ''}.` : ` with ${maxH} ${maxH !== 1 ? 'entries' : 'entry'}.`}
-          </span>
-        ) : (
-          <span>{isES ? 'Aún no hay marcajes registrados hoy.' : 'No check-ins recorded yet today.'}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── ActivityFeed — marcajes reales de hoy ── */
-function ActivityFeed({ isES }) {
-  const [allAtt, setAllAtt] = React.useState(loadAttendance);
-  React.useEffect(() => {
-    const sync = () => setAllAtt(loadAttendance());
-    window.addEventListener('storage', sync);
-    const id = setInterval(sync, 4000);
-    return () => { window.removeEventListener('storage', sync); clearInterval(id); };
-  }, []);
-
-  const today = todayISO();
-  const emps  = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
-
-  const feed = React.useMemo(() => {
-    return Object.values(allAtt)
-      .filter(a => a.date === today)
-      .map(a => {
-        const emp = emps.find(e => e.id === a.empId);
-        return emp ? { name: emp.name, dept: emp.dept, time: a.time, late: a.late } : null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.time.localeCompare(a.time))
-      .slice(0, 8);
-  }, [allAtt, today]);
-
-  if (feed.length === 0) {
-    return (
-      <div className="audit-empty" style={{ padding:'32px 16px' }}>
-        <Icon name="activity" size={26} stroke={1.2}/>
-        <div className="audit-empty__title">{isES ? 'Sin actividad hoy' : 'No activity today'}</div>
-        <div className="audit-empty__sub">{isES ? 'Aún no hay marcajes registrados hoy.' : 'No check-ins recorded yet today.'}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display:'flex', flexDirection:'column', padding:'4px 0' }}>
-      {feed.map((e, i) => (
-        <div key={i} style={{
-          display:'grid', gridTemplateColumns:'28px 1fr auto',
-          alignItems:'center', gap:10,
-          padding:'9px 0',
-          borderBottom: i < feed.length - 1 ? '1px solid var(--ink-100)' : 'none',
-        }}>
-          <div className="table__avatar" style={{ width:28, height:28, fontSize:9 }}>
-            {initials(e.name)}
-          </div>
-          <div>
-            <div style={{ fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600, color:'var(--ink-800)', lineHeight:1.3 }}>{e.name}</div>
-            <div style={{ fontFamily:'var(--font-sans)', fontSize:10, color:'var(--ink-400)', marginTop:1 }}>{e.dept} · <span style={{ fontFamily:'var(--font-mono)' }}>{e.time.slice(0,5)}</span></div>
-          </div>
-          <span className={`badge ${e.late ? 'badge--warn' : 'badge--ok'}`} style={{ fontSize:9, padding:'2px 7px' }}>
-            {e.late ? (isES ? 'TARDE' : 'LATE') : 'IN'}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ── StrikesReport ── */
-function StrikesReport({ filterMonth, monthLabel }) {
-  const [absencesMap, setAbsencesMap] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('uasd_absences') || '{}'); } catch { return {}; }
-  });
-
-  const rows = React.useMemo(() => {
-    const emps = (typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : []);
-    return emps
-      .map(emp => {
-        const allAbs  = absencesMap[emp.id] || [];
-        const absences = filterMonth ? allAbs.filter(a => a.date?.slice(0, 7) === filterMonth && !isHoliday(a.date)) : allAbs.filter(a => !isHoliday(a.date));
-        const unjustified = absences.filter(a => !a.justified).length;
-        return { emp, absences, unjustified };
-      })
-      .filter(r => r.absences.length > 0)
-      .sort((a, b) => b.unjustified - a.unjustified);
-  }, [absencesMap, filterMonth]);
-
-  React.useEffect(() => {
-    const sync = () => {
-      try { setAbsencesMap(JSON.parse(localStorage.getItem('uasd_absences') || '{}')); } catch {}
-    };
-    window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
-  }, []);
-
-  return (
-    <div className="chart-card">
-      <div className="chart-card__head">
-        <div>
-          <div className="chart-card__title" style={{ display:'flex', alignItems:'center', gap:10 }}>
-            Ausencias
-            {rows.some(r => r.unjustified >= 3) && (
-              <span className="badge badge--err" style={{ fontSize:10, gap:5 }}>
-                <Icon name="baseball" size={11} stroke={1.8}/>
-                OUT
-              </span>
-            )}
-          </div>
-          <div className="chart-card__sub">Sin justificación · {monthLabel || 'Mes actual'} · 3 = OUT</div>
-        </div>
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="audit-empty">
-          <Icon name="baseball" size={26} stroke={1.2}/>
-          <div className="audit-empty__title">Sin ausencias</div>
-          <div className="audit-empty__sub">No hay ausencias registradas para {(monthLabel || 'este período').toLowerCase()}.</div>
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column' }}>
-          {rows.map((r, i) => {
-            const isOut = r.unjustified >= 3;
-            return (
-              <div key={r.emp.id} className="rep-row" style={{
-                display:'grid', gridTemplateColumns:'36px 1fr auto auto',
-                alignItems:'center', gap:14,
-                padding:'12px 0',
-                borderBottom: i < rows.length - 1 ? '1px solid var(--ink-100)' : 'none',
-                background: isOut ? 'rgba(193,85,77,0.025)' : 'transparent',
-              }}>
-                <div className="table__avatar" style={{ width:34, height:34, fontSize:11 }}>
-                  {initials(r.emp.name)}
-                </div>
-                <div>
-                  <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{r.emp.name}</div>
-                  <div style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', marginTop:2 }}>
-                    {r.emp.dept} · {r.absences.length} ausencia{r.absences.length !== 1 ? 's' : ''}
-                    {r.absences.some(a => a.auto && !a.justified) && (
-                      <span style={{ marginLeft:5, color:'var(--ink-300)', fontStyle:'italic' }}>
-                        · {r.absences.filter(a => a.auto && !a.justified).length} automática{r.absences.filter(a => a.auto && !a.justified).length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                  {[0,1,2].map(j => (
-                    <span key={j} style={{
-                      width:9, height:9, borderRadius:'50%',
-                      background: j < r.unjustified ? (isOut ? 'var(--danger)' : 'var(--gold-500)') : 'var(--ink-100)',
-                      border:`1.5px solid ${j < r.unjustified ? (isOut ? 'var(--danger)' : 'var(--gold-400)') : 'var(--ink-200)'}`,
-                    }}/>
-                  ))}
-                  <span style={{ marginLeft:6, fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700, color: isOut ? 'var(--danger)' : 'var(--gold-600)' }}>
-                    {r.unjustified}/3
-                  </span>
-                </div>
-                {isOut ? (
-                  <div style={{ display:'flex', alignItems:'center', gap:5, color:'var(--danger)', fontWeight:700, fontSize:13 }}>
-                    <Icon name="baseball" size={15} stroke={1.8}/>
-                    <span style={{ fontFamily:'var(--font-sans)', letterSpacing:'0.05em' }}>OUT</span>
-                  </div>
-                ) : <div style={{ width:48 }}/>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── TardanzasReport ── */
-function TardanzasReport({ filterMonth, monthLabel }) {
-  const [allAtt, setAllAtt] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}'); } catch { return {}; }
-  });
-
-  React.useEffect(() => {
-    const sync = () => { try { setAllAtt(JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}')); } catch {} };
-    window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
-  }, []);
-
-  const rows = React.useMemo(() => {
-    const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
-    return emps
-      .map(emp => {
-        const tards = Object.values(allAtt).filter(a => a.empId === emp.id && a.late && (!filterMonth || a.date?.slice(0, 7) === filterMonth));
-        const unjustified = tards.filter(t => !t.justified).length;
-        return { emp, tards, unjustified, total: tards.length };
-      })
-      .filter(r => r.total > 0)
-      .sort((a, b) => b.total - a.total);
-  }, [allAtt, filterMonth]);
-
-  return (
-    <div className="chart-card">
-      <div className="chart-card__head">
-        <div>
-          <div className="chart-card__title" style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <Icon name="clock" size={15}/>
-            Tardanzas
-          </div>
-          <div className="chart-card__sub">Empleados con tardanzas · {monthLabel}</div>
-        </div>
-        {rows.length > 0 && (
-          <span className="badge badge--warn" style={{ fontSize:11 }}>{rows.reduce((s, r) => s + r.total, 0)} total</span>
-        )}
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="audit-empty">
-          <Icon name="clock" size={26} stroke={1.2}/>
-          <div className="audit-empty__title">Sin tardanzas</div>
-          <div className="audit-empty__sub">No hay tardanzas registradas para {(monthLabel || 'este período').toLowerCase()}.</div>
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column' }}>
-          {rows.map((r, i) => (
-            <div key={r.emp.id} className="rep-row" style={{
-              display:'grid', gridTemplateColumns:'34px 1fr auto auto',
-              alignItems:'center', gap:12,
-              padding:'11px 0',
-              borderBottom: i < rows.length - 1 ? '1px solid var(--ink-100)' : 'none',
-            }}>
-              <div className="table__avatar" style={{ width:34, height:34, fontSize:11 }}>{initials(r.emp.name)}</div>
-              <div>
-                <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{r.emp.name}</div>
-                <div style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', marginTop:2 }}>
-                  {r.emp.dept} · {r.total} tardanza{r.total !== 1 ? 's' : ''}
-                </div>
-              </div>
-              <span className="badge badge--warn" style={{ fontSize:10, padding:'2px 8px' }}>{r.total}</span>
-              {r.unjustified > 0
-                ? <span className="badge badge--err" style={{ fontSize:10, padding:'2px 8px' }}>{r.unjustified} s/j</span>
-                : <span className="badge badge--ok"  style={{ fontSize:10, padding:'2px 8px' }}>Justif.</span>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── EventualidadesReport ── */
-function EventualidadesReport({ filterMonth, monthLabel }) {
-  const [map, setMap] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch { return {}; }
-  });
-
-  React.useEffect(() => {
-    const sync = () => { try { setMap(JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}')); } catch {} };
-    window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
-  }, []);
-
-  const rows = React.useMemo(() => {
-    const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
-    return emps
-      .map(emp => {
-        const allItems = map[emp.id] || [];
-        const items = filterMonth ? allItems.filter(e => e.date?.slice(0, 7) === filterMonth) : allItems;
-        const eventualidades = items.filter(e => e.type === 'eventualidad').length;
-        const diasLibres     = items.filter(e => e.type === 'dia_libre').length;
-        return { emp, items, eventualidades, diasLibres, total: items.length };
-      })
-      .filter(r => r.total > 0)
-      .sort((a, b) => b.total - a.total);
-  }, [map, filterMonth]);
-
-  return (
-    <div className="chart-card">
-      <div className="chart-card__head">
-        <div>
-          <div className="chart-card__title" style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <Icon name="calendar" size={15}/>
-            Eventualidades
-          </div>
-          <div className="chart-card__sub">Eventualidades y días libres · {monthLabel || 'Mes actual'}</div>
-        </div>
-        {rows.length > 0 && (
-          <span className="badge badge--neutral" style={{ fontSize:11 }}>{rows.reduce((s, r) => s + r.total, 0)} total</span>
-        )}
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="audit-empty">
-          <Icon name="calendar" size={26} stroke={1.2}/>
-          <div className="audit-empty__title">Sin eventualidades</div>
-          <div className="audit-empty__sub">No hay eventualidades registradas para {(monthLabel || 'este período').toLowerCase()}.</div>
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column' }}>
-          {rows.map((r, i) => (
-            <div key={r.emp.id} className="rep-row" style={{
-              display:'grid', gridTemplateColumns:'34px 1fr auto auto',
-              alignItems:'center', gap:12,
-              padding:'11px 0',
-              borderBottom: i < rows.length - 1 ? '1px solid var(--ink-100)' : 'none',
-            }}>
-              <div className="table__avatar" style={{ width:34, height:34, fontSize:11 }}>{initials(r.emp.name)}</div>
-              <div>
-                <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{r.emp.name}</div>
-                <div style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', marginTop:2 }}>
-                  {r.emp.dept} · {r.total} registro{r.total !== 1 ? 's' : ''}
-                </div>
-              </div>
-              {r.eventualidades > 0 && (
-                <span className="badge badge--neutral" style={{ fontSize:10, padding:'2px 8px' }}>{r.eventualidades} event.</span>
-              )}
-              {r.diasLibres > 0 && (
-                <span className="badge badge--ok" style={{ fontSize:10, padding:'2px 8px' }}>{r.diasLibres} libre{r.diasLibres !== 1 ? 's' : ''}</span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

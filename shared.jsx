@@ -61,6 +61,7 @@ const I18N = {
     kiosk_demo_in: 'Entrada',
     kiosk_demo_out: 'Salida',
     kiosk_demo_error: 'No reconocido',
+    kiosk_demo_badge: 'Modo demostración — no se guardó asistencia',
     kiosk_recent: 'Marcajes recientes',
     kiosk_recent_empty: 'Aún no hay marcajes registrados en este turno.',
     kiosk_welcome: 'Bienvenido,',
@@ -118,6 +119,8 @@ const I18N = {
     kiosk_late: 'Tardanza',
     kiosk_clockin: 'Entrada registrada',
     kiosk_clockout: 'Salida registrada',
+    kiosk_already_done_title: 'Marcaje del día completo',
+    kiosk_already_done_sub: 'Ya registró su entrada y salida de hoy.',
     kiosk_not_recognized: 'Huella no reconocida',
     kiosk_try_again: 'Intente nuevamente.',
     kiosk_status_secure: 'Conexión segura',
@@ -144,6 +147,10 @@ const I18N = {
     login_err_sub: 'Verifique su correo institucional y contraseña.',
     login_err_norole_title: 'Acceso denegado',
     login_err_norole_sub: 'Su cuenta no tiene un rol asignado. Contacte al administrador del sistema.',
+    login_err_offline_title: 'Servicio no disponible',
+    login_err_offline_sub: 'No se pudo conectar con el servidor. Intente de nuevo en unos momentos.',
+    login_err_locked_title: 'Demasiados intentos',
+    login_err_locked_sub: 'Espere {n} segundos antes de volver a intentar.',
     login_terms: 'Términos y condiciones',
     login_chip_mark: 'Marcaje registrado',
     login_chip_welcome: 'Bienvenida',
@@ -255,6 +262,9 @@ const I18N = {
     // Reports
     rep_title: 'Reportes y estadísticas',
     rep_sub: 'Análisis de asistencia y actividad biométrica.',
+    rep_view_summary: 'Resumen',
+    rep_view_detail: 'Detalle',
+    rep_view_calendar: 'Calendario',
     rep_range: 'Últimos 7 días',
     rep_attend: 'Asistencia diaria',
     rep_attend_sub: 'Marcajes válidos por día',
@@ -403,6 +413,7 @@ const I18N = {
     kiosk_demo_in: 'Entry',
     kiosk_demo_out: 'Exit',
     kiosk_demo_error: 'Not recognized',
+    kiosk_demo_badge: 'Demo mode — attendance not saved',
     kiosk_recent: 'Recent activity',
     kiosk_recent_empty: 'No clock-ins recorded in this shift yet.',
     kiosk_welcome: 'Welcome,',
@@ -460,6 +471,8 @@ const I18N = {
     kiosk_late: 'Late',
     kiosk_clockin: 'Entry recorded',
     kiosk_clockout: 'Exit recorded',
+    kiosk_already_done_title: 'Daily check-in complete',
+    kiosk_already_done_sub: 'You already recorded your entry and exit today.',
     kiosk_not_recognized: 'Fingerprint not recognized',
     kiosk_try_again: 'Please try again.',
     kiosk_status_secure: 'Secure connection',
@@ -485,6 +498,10 @@ const I18N = {
     login_err_sub: 'Check your institutional email and password.',
     login_err_norole_title: 'Access denied',
     login_err_norole_sub: 'Your account has no assigned role. Contact the system administrator.',
+    login_err_offline_title: 'Service unavailable',
+    login_err_offline_sub: 'Could not reach the server. Please try again shortly.',
+    login_err_locked_title: 'Too many attempts',
+    login_err_locked_sub: 'Wait {n} seconds before trying again.',
     login_terms: 'Terms & conditions',
     login_chip_mark: 'Entry recorded',
     login_chip_welcome: 'Welcome',
@@ -595,6 +612,9 @@ const I18N = {
 
     rep_title: 'Reports & analytics',
     rep_sub: 'Attendance and biometric activity analysis.',
+    rep_view_summary: 'Summary',
+    rep_view_detail: 'Detail',
+    rep_view_calendar: 'Calendar',
     rep_range: 'Last 7 days',
     rep_attend: 'Daily attendance',
     rep_attend_sub: 'Valid clock-ins per day',
@@ -1242,6 +1262,15 @@ function formatTime(date, lang) {
 function formatDate(date, lang) {
   const opts = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
   return date.toLocaleDateString(lang === 'es' ? 'es-DO' : 'en-US', opts);
+}
+
+// Antepone un apóstrofo a celdas que empiezan con =,+,-,@ antes de exportar a
+// CSV/Excel — sin esto, Excel/Sheets puede interpretar el valor como fórmula
+// (CSV/formula injection clásico) si un campo de texto libre (ej. comentario
+// de un empleado) empieza con esos caracteres.
+function csvSafe(v) {
+  const s = String(v ?? '');
+  return /^[=+\-@]/.test(s) ? `'${s}` : s;
 }
 
 /* Render template with <strong> */

@@ -75,6 +75,12 @@ async function loginRequest(email, password) {
     throw err;
   }
   DataStore.session = { accessToken: body.accessToken, user: body.user };
+  try {
+    const now = new Date();
+    const time = now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const date = now.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    localStorage.setItem('uasd_last_login', `${date} ${time}`);
+  } catch {}
   return body.user;
 }
 

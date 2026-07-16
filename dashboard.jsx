@@ -956,6 +956,8 @@ function StatusPicker({ status, inactiveReason, onChange, t }) {
               const on = newColor === bg;
               return (
                 <div key={bg} className="color-swatch" data-tip={PRESET_COLOR_NAMES[bg]} onClick={() => pickPreset(bg)}
+                  role="button" tabIndex={0} aria-label={PRESET_COLOR_NAMES[bg]} aria-pressed={on}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickPreset(bg); } }}
                   style={{width:'28px',height:'28px',borderRadius:'50%',background:bg,cursor:'pointer',
                     border: on ? '2px solid var(--ink-800)' : '2px solid var(--ink-100)',
                     boxShadow: on ? '0 0 0 3px rgba(201,169,97,0.25)' : 'none'}} />
@@ -1575,6 +1577,15 @@ function saveEventualidades(map) {
   localStorage.setItem(EVENT_KEY, JSON.stringify(map));
 }
 
+/* ── Vacaciones (normales, por empleado) ───────────────────── */
+const VAC_NORM_KEY = 'uasd_vacaciones_normales';
+function getVacacionesNormales() {
+  try { return JSON.parse(localStorage.getItem(VAC_NORM_KEY) || '{}'); } catch { return {}; }
+}
+function saveVacacionesNormales(map) {
+  localStorage.setItem(VAC_NORM_KEY, JSON.stringify(map));
+}
+
 function toDisplayDate(v) {
   if (!v) return v;
   const [y, m, d] = v.split('-');
@@ -1593,6 +1604,15 @@ const EVENT_TYPE = {
   permiso:          { label_es: 'Permiso',            label_en: 'Leave permit',      cls: 'badge--neutral' },
   servicio_feriado: { label_es: 'Servicio en feriado', label_en: 'Holiday service',  cls: 'badge--info'    },
 };
+
+// Estado de aprobación de una eventualidad — antes no existía, se guardaba
+// directo sin ningún flujo de revisión.
+const EVENT_STATUS = {
+  pendiente: { label_es: 'Pendiente', label_en: 'Pending',  cls: 'badge--warn' },
+  aceptado:  { label_es: 'Aceptado',  label_en: 'Accepted', cls: 'badge--ok'   },
+  rechazado: { label_es: 'Rechazado', label_en: 'Rejected', cls: 'badge--err'  },
+};
+const EVENT_STATUS_CYCLE = ['pendiente', 'aceptado', 'rechazado'];
 
 function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, onAddAbsence, onRemoveAbsenceById, onBatchAddAbsences }) {
   const [customLabels, setCustomLabels] = React.useState(function() {
@@ -1784,7 +1804,10 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
       }
     }
 
-    const entry = { date: sd, type, motivo: motivo.trim() };
+    // Preserva el estado de aprobación si ya existía (editar no debe resetear
+    // una eventualidad ya aceptada/rechazada de vuelta a pendiente).
+    const existingEntry = editingEvId ? (evMap[empId] || []).find(function(x) { return x.id === editingEvId; }) : null;
+    const entry = { date: sd, type, motivo: motivo.trim(), estado: (existingEntry && existingEntry.estado) || 'pendiente' };
     if (se && se !== sd) entry.dateEnd = se;
     if (editingEvId) {
       entry.id = editingEvId;
@@ -2066,6 +2089,336 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
   );
 }
 
+function VacacionesSection({ empId, lang, vacMap, saveVacMap, absences, allAtt, onAddAbsence, onRemoveAbsenceById, onBatchAddAbsences }) {
+  const [open,          setOpen         ] = React.useState(false);
+  const [date,          setDate         ] = React.useState('');
+  const [dateEnd,       setDateEnd      ] = React.useState('');
+  const [motivo,        setMotivo       ] = React.useState('');
+  const [err,           setErr          ] = React.useState({});
+  const [hoveredVacId,  setHoveredVacId ] = React.useState(null);
+  const [editingVacId,  setEditingVacId ] = React.useState(null);
+  const [deletingVacId, setDeletingVacId] = React.useState(null);
+
+  const items = (vacMap[empId] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+
+  const usedVacDates = React.useMemo(() => {
+    const set = new Set();
+    items.forEach(function(v) {
+      if (v.dateEnd) {
+        let d = new Date(v.date + 'T00:00:00');
+        const end = new Date(v.dateEnd + 'T00:00:00');
+        while (d <= end) { set.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+      } else {
+        set.add(v.date);
+      }
+    });
+    return set;
+  }, [items]);
+
+  const reset = () => { setDate(''); setDateEnd(''); setMotivo(''); setErr({}); setEditingVacId(null); };
+
+  const checkDateConflict = React.useCallback(function(dateStr, dateEndStr, excludeId) {
+    const sd = toStorageDate(dateStr);
+    const se = toStorageDate(dateEndStr);
+    if (!sd) return false;
+    var excludeSet = {};
+    if (excludeId) {
+      items.forEach(function(v) {
+        if (v.id === excludeId) {
+          excludeSet[v.date] = true;
+          if (v.dateEnd) {
+            var d = new Date(v.date + 'T00:00:00');
+            var end = new Date(v.dateEnd + 'T00:00:00');
+            while (d <= end) { excludeSet[d.toISOString().slice(0, 10)] = true; d.setDate(d.getDate() + 1); }
+          }
+        }
+      });
+    }
+    if (!se) return (!excludeSet[sd] && usedVacDates.has(sd)) ? 'dup' : false;
+    const overlaps = [];
+    let d = new Date(sd + 'T00:00:00');
+    const end = new Date(se + 'T00:00:00');
+    while (d <= end) {
+      const ds = d.toISOString().slice(0, 10);
+      if (!excludeSet[ds] && usedVacDates.has(ds)) overlaps.push(ds);
+      d.setDate(d.getDate() + 1);
+    }
+    return overlaps.length > 0 ? overlaps : false;
+  }, [usedVacDates, items]);
+
+  const submit = () => {
+    const e = {};
+    const sd = toStorageDate(date);
+    const se = toStorageDate(dateEnd);
+    if (!sd) { e.date = true; }
+    else {
+      const conflict = checkDateConflict(date, dateEnd, editingVacId);
+      if (conflict) e.date = conflict;
+    }
+    if (Object.keys(e).length) { setErr(e); return; }
+
+    // ── remover ausencias en el nuevo rango ──
+    if (onRemoveAbsenceById) {
+      var nd = new Date(sd + 'T00:00:00');
+      var ne = se && se !== sd ? new Date(se + 'T00:00:00') : new Date(sd + 'T00:00:00');
+      while (nd <= ne) {
+        var nds = nd.toISOString().slice(0, 10);
+        (absences || []).forEach(function(a) {
+          if (a.date === nds) onRemoveAbsenceById(empId, a.id);
+        });
+        nd.setDate(nd.getDate() + 1);
+      }
+    }
+
+    const entry = { date: sd, motivo: motivo.trim() };
+    if (se && se !== sd) entry.dateEnd = se;
+    if (editingVacId) {
+      entry.id = editingVacId;
+      const next = { ...vacMap, [empId]: (vacMap[empId] || []).map(function(x) { return x.id === editingVacId ? entry : x; }) };
+      saveVacMap(next);
+
+      // ── crear ausencias en fechas viejas que ya no cubre ──
+      if (onBatchAddAbsences) {
+        var old = (vacMap[empId] || []).find(function(x) { return x.id === editingVacId; });
+        if (old) {
+          var absentDates = [];
+          var od = new Date(old.date + 'T00:00:00');
+          var oe = old.dateEnd ? new Date(old.dateEnd + 'T00:00:00') : new Date(old.date + 'T00:00:00');
+          while (od <= oe) {
+            var ods = od.toISOString().slice(0, 10);
+            var inNew = false;
+            var nd2 = new Date(sd + 'T00:00:00');
+            var ne2 = se && se !== sd ? new Date(se + 'T00:00:00') : new Date(sd + 'T00:00:00');
+            while (nd2 <= ne2) {
+              if (nd2.toISOString().slice(0, 10) === ods) { inNew = true; break; }
+              nd2.setDate(nd2.getDate() + 1);
+            }
+            if (!inNew && !allAtt[empId + ':' + ods] && !isHoliday(ods)) absentDates.push(ods);
+            od.setDate(od.getDate() + 1);
+          }
+          if (absentDates.length) onBatchAddAbsences(empId, absentDates);
+        }
+      }
+
+      reset(); setOpen(false);
+    } else {
+      entry.id = Date.now() + Math.random();
+      const next = { ...vacMap, [empId]: [...(vacMap[empId] || []), entry] };
+      saveVacMap(next);
+      reset(); setOpen(false);
+    }
+  };
+
+  const remove = (id) => {
+    const v = items.find(x => x.id === id);
+    const next = { ...vacMap, [empId]: (vacMap[empId] || []).filter(x => x.id !== id) };
+    saveVacMap(next);
+    if (v && onBatchAddAbsences) {
+      var absentDates = [];
+      var d = new Date(v.date + 'T00:00:00');
+      var end = v.dateEnd ? new Date(v.dateEnd + 'T00:00:00') : new Date(v.date + 'T00:00:00');
+      while (d <= end) {
+        var ds = d.toISOString().slice(0, 10);
+        if (!allAtt[empId + ':' + ds] && !isHoliday(ds)) absentDates.push(ds);
+        d.setDate(d.getDate() + 1);
+      }
+      if (absentDates.length) onBatchAddAbsences(empId, absentDates);
+    }
+  };
+
+  return (
+    <div>
+      <div className="acc-sec__title" style={{ marginBottom: open ? 16 : 18 }}>
+        <Icon name="absent" size={15}/>
+        {lang === 'es' ? 'Vacaciones' : 'Vacation'}
+        {items.length > 0 && <span className="badge badge--neutral" style={{fontSize:10,padding:'2px 8px'}}>{items.length}</span>}
+        <button className="btn btn--ghost" style={{ marginLeft:'auto', fontSize:13, padding:'7px 16px', gap:6 }}
+          onClick={() => setOpen(o => !o)}>
+          <Icon name="plus" size={13}/> {lang === 'es' ? 'Agregar vacaciones' : 'Add vacation'}
+        </button>
+      </div>
+
+      <div style={{
+        display:'grid',
+        gridTemplateRows: open ? '1fr' : '0fr',
+        transition:'grid-template-rows 0.30s cubic-bezier(0, 0, 0.2, 1)',
+        overflow:'hidden',
+      }}><div style={{ minHeight:0 }}>
+        <div style={{
+          background:'var(--cream-100)', border:'1px solid var(--ink-100)',
+          borderRadius:'var(--radius-md)', padding:'16px', marginBottom:16,
+          display:'flex', flexDirection:'column', gap:14,
+        }}>
+          <div className={`field${err.date ? ' field--error' : ''}`}>
+            <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'} <span className="field__req">*</span></span>
+            <DateRangePickerField
+              start={date} end={dateEnd}
+              onChange={function(v) {
+                setDate(v.start); setDateEnd(v.end);
+                const conflict = v.end ? checkDateConflict(v.start, v.end) : false;
+                setErr(p => ({...p, date: conflict}));
+              }}
+              disabledDates={usedVacDates}
+            />
+            {err.date === 'dup'     && <span className="field__err">{lang === 'es' ? 'Ya existen vacaciones en esta fecha.' : 'Vacation already registered for this date.'}</span>}
+            {Array.isArray(err.date) && <span className="field__err">{lang === 'es' ? 'Fechas ya registradas en el rango.' : 'Dates already registered in range.'}</span>}
+          </div>
+          <div className="field">
+            <span className="field__label">{lang === 'es' ? 'Nota' : 'Note'}</span>
+            <input className="field__input" value={motivo}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder={lang === 'es' ? 'Nota opcional, ej. Vacaciones anuales…' : 'Optional note, e.g. Annual vacation…'} />
+          </div>
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+            <button className="btn btn--ghost" onClick={() => { setOpen(false); reset(); }}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
+            <button className="btn btn--primary" onClick={submit}>{lang === 'es' ? 'Guardar' : 'Save'}</button>
+          </div>
+        </div>
+      </div></div>
+
+      {(() => {
+        const currentYear = String(new Date().getFullYear());
+        const yearItems = items.filter(v => v.date.startsWith(currentYear));
+        if (yearItems.length === 0) return (
+          <p style={{ fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)', margin:0 }}>
+            {lang === 'es' ? `Sin vacaciones en ${currentYear}.` : `No vacation in ${currentYear}.`}
+          </p>
+        );
+        const groups = [];
+        yearItems.forEach(v => {
+          const key = v.date.slice(0, 7);
+          let g = groups.find(g => g.key === key);
+          if (!g) { groups.push({ key, items: [] }); g = groups[groups.length - 1]; }
+          g.items.push(v);
+        });
+        return (
+          <div style={{ display:'flex', flexDirection:'column' }}>
+            {groups.map((g, gi) => {
+              const [y, m] = g.key.split('-');
+              const label = `${MONTHS_ES[+m - 1]} ${y}`;
+              return (
+                <MonthGroup key={g.key} label={label} total={g.items.length} defaultOpen={gi === 0}>
+                  {g.items.map(v => (
+                    <div key={v.id}>
+                      <div
+                        onMouseEnter={e => { setHoveredVacId(v.id); e.currentTarget.style.background='var(--cream-100)'; }}
+                        onMouseLeave={e => { setHoveredVacId(null); e.currentTarget.style.background='transparent'; }}
+                        style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 10px', borderRadius:8, background:'transparent', transition:'background .12s' }}>
+                        <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', flexShrink:0 }}>
+                          {v.dateEnd ? `${toDisplayDate(v.date)} — ${toDisplayDate(v.dateEnd)}` : toDisplayDate(v.date)}
+                        </span>
+                        {v.dateEnd ? (() => {
+                          const days = Math.round((new Date(v.dateEnd + 'T00:00:00') - new Date(v.date + 'T00:00:00')) / 86400000) + 1;
+                          return <span style={{ fontFamily:'var(--font-mono)', fontSize:10, color:'var(--ink-400)', flexShrink:0, background:'var(--cream-100)', padding:'2px 7px', borderRadius:4, border:'1px solid var(--ink-100)' }}>{days} {lang === 'es' ? 'días' : 'days'}</span>;
+                        })() : (
+                          <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-300)', flexShrink:0 }}>
+                            {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(v.date + 'T00:00:00').getDay()]}
+                          </span>
+                        )}
+                        <span className="badge badge--ok" style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>
+                          {lang === 'es' ? 'Vacaciones' : 'Vacation'}
+                        </span>
+                        {v.motivo && (
+                          <span style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {v.motivo}
+                          </span>
+                        )}
+                        <div style={{ marginLeft:'auto', display:'flex', gap:2, opacity: hoveredVacId === v.id || editingVacId === v.id || deletingVacId === v.id ? 1 : 0, transition:'opacity .15s' }}>
+                          <button onClick={() => {
+                            if (editingVacId === v.id) { setEditingVacId(null); reset(); }
+                            else {
+                              setEditingVacId(v.id);
+                              setDate(toDisplayDate(v.date));
+                              setDateEnd(v.dateEnd ? toDisplayDate(v.dateEnd) : '');
+                              setMotivo(v.motivo || '');
+                              setDeletingVacId(null);
+                              setOpen(false);
+                              setErr({});
+                            }
+                          }}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--ink-700)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
+                            <Icon name="edit" size={12} stroke={1.8}/>
+                          </button>
+                          <button onClick={() => { setDeletingVacId(deletingVacId === v.id ? null : v.id); setEditingVacId(null); }}
+                            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-400)', display:'flex', alignItems:'center', padding:4, borderRadius:4, transition:'color .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-400)'}>
+                            <Icon name="trash" size={12} stroke={1.8}/>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ── editar inline ── */}
+                      <div style={{
+                        display:'grid',
+                        gridTemplateRows: editingVacId === v.id ? '1fr' : '0fr',
+                        transition:'grid-template-rows 0.30s cubic-bezier(0, 0, 0.2, 1)',
+                        overflow:'hidden',
+                      }}><div style={{ minHeight:0 }}>
+                          <div style={{
+                            background:'var(--cream-100)', borderRadius:'var(--radius-md)',
+                            border:'1px solid var(--ink-100)',
+                            padding:'16px', marginBottom:16,
+                            display:'flex', flexDirection:'column', gap:14,
+                          }}>
+                            <div className={`field${err.date ? ' field--error' : ''}`}>
+                              <span className="field__label">{lang === 'es' ? 'Fecha' : 'Date'}</span>
+                              <DateRangePickerField
+                                start={date} end={dateEnd}
+                                onChange={function(vv) {
+                                  setDate(vv.start); setDateEnd(vv.end);
+                                  const conflict = vv.end ? checkDateConflict(vv.start, vv.end, editingVacId) : false;
+                                  setErr(p => ({...p, date: conflict}));
+                                }}
+                                disabledDates={usedVacDates}
+                              />
+                              {err.date === 'dup'     && <span className="field__err">{lang === 'es' ? 'Ya existen vacaciones en esta fecha.' : 'Vacation already registered for this date.'}</span>}
+                              {Array.isArray(err.date) && <span className="field__err">{lang === 'es' ? 'Fechas ya registradas en el rango.' : 'Dates already registered in range.'}</span>}
+                            </div>
+                            <div className="field">
+                              <span className="field__label">{lang === 'es' ? 'Nota' : 'Note'}</span>
+                              <input className="field__input" value={motivo}
+                                onChange={e => setMotivo(e.target.value)}
+                                placeholder={lang === 'es' ? 'Nota opcional, ej. Vacaciones anuales…' : 'Optional note, e.g. Annual vacation…'} />
+                            </div>
+                            <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+                              <button className="btn btn--ghost" style={{ fontSize:11, padding:'3px 10px' }}
+                                onClick={() => { setEditingVacId(null); reset(); }}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                              <button className="btn btn--primary" style={{ fontSize:11, padding:'3px 10px' }}
+                                onClick={submit}>{lang === 'es' ? 'Actualizar' : 'Update'}</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── eliminar ── */}
+                      <div style={{ display:'grid', gridTemplateRows: deletingVacId === v.id ? '1fr' : '0fr', transition:'grid-template-rows 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)', overflow:'hidden' }}>
+                        <div style={{ minHeight:0, opacity: deletingVacId === v.id ? 1 : 0, transform: deletingVacId === v.id ? 'translateY(0)' : 'translateY(-4px)', transition:'opacity 0.18s ease, transform 0.18s ease' }}>
+                          <div style={{ margin:'4px 0 8px', padding:'10px 14px', background:'rgba(220,38,38,0.06)', borderRadius:'var(--radius-md)', border:'1px solid rgba(220,38,38,0.2)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}>
+                            <span style={{ fontFamily:'var(--font-sans)', fontSize:12, color:'var(--danger)' }}>{lang === 'es' ? '¿Eliminar estas vacaciones? Esta acción no se puede deshacer.' : 'Delete this vacation record? This action cannot be undone.'}</span>
+                            <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                              <button className="btn btn--ghost" style={{ fontSize:11, padding:'3px 10px' }}
+                                onClick={() => setDeletingVacId(null)}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
+                              <button style={{ fontSize:11, padding:'3px 10px', background:'var(--danger)', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontFamily:'var(--font-sans)', fontWeight:600 }}
+                                onClick={() => { remove(v.id); setDeletingVacId(null); }}>{lang === 'es' ? 'Eliminar' : 'Delete'}</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </MonthGroup>
+              );
+            })}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 function StrikeBadge({ count }) {
   const color = count >= 3 ? 'var(--danger)'
               : count === 2 ? 'var(--gold-500)'
@@ -2127,6 +2480,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
 
   const [evMap, setEvMap] = React.useState(getEventualidades);
   const saveEvMap = (next) => { setEvMap(next); saveEventualidades(next); };
+  const [vacMap, setVacMap] = React.useState(getVacacionesNormales);
+  const saveVacMap = (next) => { setVacMap(next); saveVacacionesNormales(next); };
   const batchAddAbsences = (empId, dates) => {
     if (!dates || !dates.length) return;
     const prev = absencesMap[empId] || [];
@@ -2393,7 +2748,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const addTardanza = (empId, date, time, justified, note) => {
     const key = `${empId}:${date}`;
     const existing = allAtt[key];
-    saveAllAtt({ ...allAtt, [key]: { ...existing, empId, date, time, late: true, justified: !!justified, justifyNote: justified ? (note || '') : (existing?.justifyNote || '') } });
+    saveAllAtt({ ...allAtt, [key]: { ...existing, empId, date, timeIn: time, timeOut: existing?.timeOut ?? null, late: true, justified: !!justified, justifyNote: justified ? (note || '') : (existing?.justifyNote || '') } });
   };
 
   // Poll for real-time attendance updates
@@ -2421,7 +2776,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
 
   const getLiveLastIn = (empId) => {
     const records = Object.values(allAtt).filter(a => a.empId === empId);
-    return records.sort((a, b) => b.date.localeCompare(a.date))[0]?.time?.slice(0, 5) || null;
+    const rec = records.sort((a, b) => b.date.localeCompare(a.date))[0];
+    return (rec?.timeIn || rec?.time)?.slice(0, 5) || null;
   };
 
   const kpis = [
@@ -2437,7 +2793,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     setExportOpen(false);
     const headers = ['ID', 'Cédula', t.dash_col_employee, t.dash_col_dept, t.dash_col_role, t.dash_col_schedule, t.dash_col_status, t.dash_fld_dob || 'Fecha nac.', t.dash_col_comment, t.dash_col_last];
     const rows = displayList.map(e => [e.id, e.cedula, e.name, e.dept, e.role, e.schedule, statusLabel(e), e.dob || '—', e.inactiveComment || t.dash_no_comment, e.lastIn]);
-    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const esc = (v) => `"${csvSafe(v).replace(/"/g, '""')}"`;
     const csv = '\uFEFF' + [headers, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -2841,6 +3197,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                 { id:'tardanzas',      label:'Tardanzas' },
                 { id:'eventualidades', label:'Eventualidades' },
                 { id:'absences',       label:'Ausencias' },
+                { id:'vacaciones',     label:'Vacaciones' },
               ].map(tab => (
                 <button key={tab.id}
                   className={`edit-modal__tab ${editTab === tab.id ? 'edit-modal__tab--active' : ''}`}
@@ -3101,7 +3458,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                                           {['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][new Date(t.date).getDay()]}
                                         </span>
                                         <span style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-400)', flexShrink:0 }}>
-                                          {t.time?.slice(0, 5)} <span style={{ fontSize:10 }}>{t.time?.slice(-2)}</span>
+                                          {(t.timeIn || t.time)?.slice(0, 5)} <span style={{ fontSize:10 }}>{(t.timeIn || t.time)?.slice(-2)}</span>
                                         </span>
                                         {t.justified
                                           ? <span className="badge badge--ok"  style={{ fontSize:10, padding:'2px 8px', flexShrink:0 }}>Justificada</span>
@@ -3206,6 +3563,12 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                         var end = ev.dateEnd ? new Date(ev.dateEnd + 'T00:00:00') : new Date(ev.date + 'T00:00:00');
                         while (d <= end) { s.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
                       });
+                      var vacs = (vacMap[editTarget?.id] || []);
+                      vacs.forEach(function(v) {
+                        var d = new Date(v.date + 'T00:00:00');
+                        var end = v.dateEnd ? new Date(v.dateEnd + 'T00:00:00') : new Date(v.date + 'T00:00:00');
+                        while (d <= end) { s.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+                      });
                       return s;
                     })()}
                   />
@@ -3216,6 +3579,19 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                     lang={lang}
                     evMap={evMap}
                     saveEvMap={saveEvMap}
+                    absences={absencesMap[editTarget?.id] || []}
+                    allAtt={allAtt}
+                    onAddAbsence={addAbsence}
+                    onRemoveAbsenceById={removeAbsence}
+                    onBatchAddAbsences={batchAddAbsences}
+                  />
+              </div></div>
+              <div ref={el => paneRefs.current['vacaciones'] = el} className={`edit-modal__pane${editTab === 'vacaciones' ? ' edit-modal__pane--open' : ''}`}><div className="edit-modal__pane__inner edit-modal__grid" style={{ gridTemplateColumns:'1fr' }}>
+                  <VacacionesSection
+                    empId={editTarget?.id}
+                    lang={lang}
+                    vacMap={vacMap}
+                    saveVacMap={saveVacMap}
                     absences={absencesMap[editTarget?.id] || []}
                     allAtt={allAtt}
                     onAddAbsence={addAbsence}

@@ -36,10 +36,20 @@ function pushAuditEntry(entry) {
   localStorage.setItem(AUDIT_KEY, JSON.stringify(log.slice(0, 200)));
 }
 
+// Actor real de la sesión local — antes SIEMPRE se atribuía a AUDIT_ADMINS[0]
+// sin importar quién estuviera logueado, así que el log de auditoría no
+// reflejaba quién hizo qué de verdad.
+function currentActor() {
+  const uid = typeof getCurrentUserId === 'function' ? getCurrentUserId() : '';
+  const emp = uid && typeof EMPLOYEES !== 'undefined' ? EMPLOYEES.find(e => e.id === uid) : null;
+  if (!emp) return AUDIT_ADMINS[0]; // último recurso si no hay forma de determinar quién es
+  return { name: emp.name, id: emp.id, initials: initials(emp.name), dept: emp.dept };
+}
+
 window.auditLog = {
-  add:    (subject) => pushAuditEntry({ actor: AUDIT_ADMINS[0], type: 'add',    subject }),
-  edit:   (subject) => pushAuditEntry({ actor: AUDIT_ADMINS[0], type: 'edit',   subject }),
-  delete: (subject) => pushAuditEntry({ actor: AUDIT_ADMINS[0], type: 'delete', subject }),
+  add:    (subject) => pushAuditEntry({ actor: currentActor(), type: 'add',    subject }),
+  edit:   (subject) => pushAuditEntry({ actor: currentActor(), type: 'edit',   subject }),
+  delete: (subject) => pushAuditEntry({ actor: currentActor(), type: 'delete', subject }),
 };
 
 const AUDIT_SEED_VER = 'uasd_audit_seed_v3';

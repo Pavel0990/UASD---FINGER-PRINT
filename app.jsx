@@ -1,65 +1,12 @@
 /* app.jsx — main router */
 
+// Rutas administrativas — requieren sesión de backend real. Sin sesión,
+// cualquier intento de navegar a una de estas rebota a 'login' (antes no
+// existía ningún gate: la app arrancaba directo en 'dashboard' y
+// userHasPermission() concedía todo sin sesión).
+const ADMIN_ROUTES = ['dashboard', 'register', 'reports', 'roles', 'finca', 'liceo', 'vacaciones'];
+
 function App() {
-  // Intenta restaurar la sesión de backend desde la cookie de refresh (httpOnly)
-  // al montar — evita pedir login de nuevo en cada recarga si el token sigue
-  // vigente. Si el backend está caído o no hay cookie, no hace nada (la app
-  // sigue funcionando en modo localStorage como siempre).
-  React.useEffect(() => {
-    if (typeof restoreSession === 'function') restoreSession().catch(() => {});
-  }, []);
-
-  // Seed demo attendance with tardanza for Ana Cristina
-  React.useEffect(() => {
-    if (localStorage.getItem('uasd_demo_seeded')) return;
-    try {
-      const att = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}');
-      const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
-      const yStr = yesterday.toLocaleDateString('en-CA');
-      const key = `EMP-00298:${yStr}`;
-      if (!att[key]) {
-        att[key] = { empId: 'EMP-00298', date: yStr, time: '08:42:00 AM', late: true, justified: false };
-      }
-      const todayKey = `EMP-00298:${new Date().toLocaleDateString('en-CA')}`;
-      if (!att[todayKey]) {
-        att[todayKey] = { empId: 'EMP-00298', date: new Date().toLocaleDateString('en-CA'), time: '08:35:00 AM', late: true, justified: false };
-      }
-      // Justified tardanza for Carlos Méndez (EMP-00187)
-      if (!att[`EMP-00187:${yStr}`]) {
-        att[`EMP-00187:${yStr}`] = { empId: 'EMP-00187', date: yStr, time: '08:55:00 AM', late: true, justified: true, justifyNote: 'Médico' };
-      }
-      // Ensure all existing late records have justified field
-      Object.keys(att).forEach(k => {
-        if (att[k].late && att[k].justified === undefined) att[k].justified = false;
-      });
-      localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
-      // Seed absences for StrikeBadge demo
-      const abs = JSON.parse(localStorage.getItem('uasd_absences') || '{}');
-      const m = new Date().toLocaleDateString('en-CA').slice(0, 7); // YYYY-MM
-      // EMP-00214 → 1 absence (green)
-      if (!abs['EMP-00214']) {
-        abs['EMP-00214'] = [{ id: Date.now()+1, date: m+'-02', reason: 'Inasistencia automática', justified: false, auto: true }];
-      }
-      // EMP-00187 → 2 absences (gold)
-      if (!abs['EMP-00187']) {
-        abs['EMP-00187'] = [
-          { id: Date.now()+2, date: m+'-03', reason: 'Inasistencia automática', justified: false, auto: true },
-          { id: Date.now()+3, date: m+'-04', reason: 'Inasistencia automática', justified: false, auto: true },
-        ];
-      }
-      // EMP-00342 → 3 absences (red)
-      if (!abs['EMP-00342']) {
-        abs['EMP-00342'] = [
-          { id: Date.now()+4, date: m+'-05', reason: 'Inasistencia automática', justified: false, auto: true },
-          { id: Date.now()+5, date: m+'-06', reason: 'Inasistencia automática', justified: false, auto: true },
-          { id: Date.now()+6, date: m+'-07', reason: 'Inasistencia automática', justified: false, auto: true },
-        ];
-      }
-      localStorage.setItem('uasd_absences', JSON.stringify(abs));
-      localStorage.setItem('uasd_demo_seeded', '1');
-    } catch {}
-  }, []);
-
   const [t_state, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
   // Apply tweaks as CSS vars
@@ -77,15 +24,30 @@ function App() {
     }
   }, [t_state]);
 
-  const [route, setRoute_] = React.useState('dashboard'); // dev default: start at dashboard
+  const [route, setRoute_] = React.useState('kiosk'); // arranca en el terminal público, no en el dashboard
   const [lang, setLang] = React.useState('es');
   const [flash, setFlash] = React.useState(null);
   const [addedEmployees, setAddedEmployees] = React.useState([]);
   const kioskTheme = t_state.kioskTheme || 'light';
 
   const go = (r) => {
+    if (ADMIN_ROUTES.includes(r)) {
+      const hasSession = typeof isBackendActive === 'function' && isBackendActive();
+      if (!hasSession) { setRoute_('login'); return; }
+    }
     setRoute_(r);
   };
+
+  // Intenta restaurar la sesión de backend desde la cookie de refresh (httpOnly,
+  // dura 7 días y se renueva en cada visita) al montar. Si había una sesión
+  // válida, salta directo a 'dashboard' — así solo hace falta loguearse la
+  // primera vez, no en cada recarga mientras se trabaja. Sin cookie válida o
+  // con el backend caído, se queda en 'kiosk' como siempre (sin gate roto:
+  // 'dashboard' sigue exigiendo sesión real vía go()).
+  React.useEffect(() => {
+    if (typeof restoreSession !== 'function') return;
+    restoreSession().then((ok) => { if (ok) go('dashboard'); }).catch(() => {});
+  }, []);
 
   const t = I18N[lang];
 
