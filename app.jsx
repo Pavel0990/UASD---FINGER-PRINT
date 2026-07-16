@@ -110,6 +110,8 @@ function App() {
       {visibleRoute === 'reports'   && <ReportsView    t={t} lang={lang} setRoute={go}/>}
       {visibleRoute === 'finca'     && <FarmView      t={t} lang={lang} setRoute={go}/>}
       {visibleRoute === 'liceo'     && <LiceoView    t={t} lang={lang} setRoute={go}/>}
+      {visibleRoute === 'roles'      && <RolesView      t={t} setRoute={go}/>}
+      {visibleRoute === 'vacaciones' && <VacacionesView t={t} lang={lang} setRoute={go}/>}
       </div>
 
 
@@ -119,7 +121,7 @@ function App() {
         <TweakSection label="Vista inicial"/>
         <TweakRadio label="Pantalla"
                     value={route}
-                    options={['kiosk','login','dashboard','register','reports','finca','liceo']}
+                    options={['kiosk','login','dashboard','register','reports','finca','liceo','roles','vacaciones']}
                     onChange={(v) => go(v)}/>
         <TweakSection label="Terminal de marcaje"/>
         <TweakRadio label="Fondo del terminal"

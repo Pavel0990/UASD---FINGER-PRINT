@@ -6,6 +6,21 @@ const kioskTodayStr = () => new Date().toLocaleDateString('en-CA');
 const getCredMap  = () => { try { return JSON.parse(localStorage.getItem(CRED_MAP_KEY) || '{}'); } catch { return {}; } };
 const saveCredMap = (map) => { try { localStorage.setItem(CRED_MAP_KEY, JSON.stringify(map)); } catch {} };
 
+// El `timeout` de WebAuthn es solo una sugerencia, no una garantía — si el
+// authenticator de la plataforma no completa la ceremonia, la promesa puede
+// quedar colgada indefinidamente sin resolver ni rechazar. Este wrapper
+// asegura que SIEMPRE se libera el kiosco, incluso si el navegador nunca
+// respeta su propio timeout.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(
+      () => reject(Object.assign(new Error('El lector no respondió a tiempo'), { name: 'TimeoutError' })),
+      ms
+    )),
+  ]);
+}
+
 function KioskView({ t, lang, setLang, setRoute, theme }) {
   const [state, setState] = React.useState('idle'); // idle | scanning | success | error
   const [now, setNow] = React.useState(new Date());
@@ -111,7 +126,7 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
 
   // Registra una credencial y la vincula a un empleado
   const waRegister = (rpId, empId) =>
-    navigator.credentials.create({ publicKey: {
+    withTimeout(navigator.credentials.create({ publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       rp: { name: 'UASD Sistema de Asistencia', id: rpId },
       user: {
@@ -122,7 +137,7 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
       authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
       timeout: WA_TIMEOUT,
-    }}).then(cred => {
+    }}), WA_TIMEOUT + 2000).then(cred => {
       const credId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
       const map = getCredMap();
       map[credId] = empId;
@@ -131,13 +146,13 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     });
 
   const waAuth = (rpId, allowList) =>
-    navigator.credentials.get({ publicKey: {
+    withTimeout(navigator.credentials.get({ publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       rpId,
       allowCredentials: allowList,
       userVerification: 'required',
       timeout: WA_TIMEOUT,
-    }});
+    }}), WA_TIMEOUT + 2000);
 
   // ── Entry point ───────────────────────────────────────────────────────
   const startScan = (empIdToRegister) => {
@@ -185,12 +200,15 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
         }
 
         // Sin credenciales — registrar vinculada al empleado indicado (primer
-        // registro real, disparado desde register.jsx)
+        // registro real, disparado desde register.jsx). waRegister() ya exige
+        // userVerification:'required' para crear la credencial, así que la
+        // huella ya quedó confirmada ahí mismo — encadenar un waAuth() extra
+        // aquí (sin un click nuevo de por medio) violaba el requisito de
+        // "user activation" de WebAuthn y fallaba justo después de registrar.
         const empId = empIdToRegister || 'EMP-00702';
-        return waRegister(rpId, empId).then(({ rawId }) =>
-          waAuth(rpId, [{ type: 'public-key', id: rawId, transports: ['internal'] }])
-            .then(cred => btoa(String.fromCharCode(...new Uint8Array(cred.rawId))))
-        ).catch(() => Promise.reject('setup-fail'));
+        return waRegister(rpId, empId)
+          .then(({ credId }) => credId)
+          .catch(() => Promise.reject('setup-fail'));
       })
       .then(credId => onScanSuccess(credId))
       .catch(err => {

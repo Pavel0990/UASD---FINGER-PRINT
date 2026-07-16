@@ -2,6 +2,22 @@
 
 const FINGERS = ['T-I', 'I-I', 'M-I', 'A-I', 'P-I', 'T-D', 'I-D', 'M-D', 'A-D', 'P-D'];
 
+// El campo `timeout` de WebAuthn es solo una sugerencia — el navegador NO
+// está obligado a respetarlo, y si el authenticator de la plataforma no
+// completa la ceremonia (Touch ID no configurado, diálogo del SO que no
+// aparece, etc.) la promesa puede quedar colgada para siempre sin resolver
+// ni rechazar. Sin este timeout de nuestro lado, la pantalla de "Escaneando…"
+// se trababa indefinidamente — eso era el "error al registrar la huella".
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(
+      () => reject(Object.assign(new Error('El lector no respondió a tiempo'), { name: 'TimeoutError' })),
+      ms
+    )),
+  ]);
+}
+
 function generateNextCode() {
   const all = typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [];
   const max = [...EMPLOYEES, ...all].reduce((m, e) => {
@@ -175,17 +191,17 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
         if (credIdRef.current) {
           // Credencial ya creada → solo verifica con Touch ID (sin diálogo "Guardar contraseña")
           const rawId = Uint8Array.from(atob(credIdRef.current), c => c.charCodeAt(0));
-          const assertion = await navigator.credentials.get({ publicKey: {
+          const assertion = await withTimeout(navigator.credentials.get({ publicKey: {
             challenge,
             allowCredentials: [{ type: 'public-key', id: rawId, transports: ['internal'] }],
             userVerification: 'required',
             timeout: 30000,
-          }});
+          }}), 12000);
           verified = !!assertion;
         } else {
           // Primera vez: crear credencial (aparece "Add a passkey?" solo esta vez)
           const label = (FL && FL[finger]) || finger;
-          const cred = await navigator.credentials.create({ publicKey: {
+          const cred = await withTimeout(navigator.credentials.create({ publicKey: {
             challenge,
             rp: { name: 'UASD Fingerprint System' },
             user: {
@@ -196,7 +212,7 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
             pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
             authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
             timeout: 30000,
-          }});
+          }}), 12000);
           if (cred) {
             // Guardar ID para todos los dedos restantes
             const b64 = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
@@ -214,11 +230,17 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
           setQuality(finalQ);
           setCaptureState('success');
           const next = FINGERS.find(f => !newCaptures[f]);
+          // NO se encadena automáticamente al siguiente dedo — WebAuthn exige
+          // un gesto de usuario (click) real para cada llamada. Encadenar
+          // aquí, dentro del callback de éxito de la llamada anterior, no
+          // cuenta como una nueva activación: el navegador la rechaza, y eso
+          // es exactamente el "error después de poner la huella" — el primer
+          // dedo funcionaba y el segundo fallaba siempre. Ahora el usuario
+          // toca el botón de nuevo para cada dedo (los botones ya existían).
           captureTimerRef.current = setTimeout(() => {
             setCaptureState('idle');
             if (next) setActiveFinger(next);
           }, 900);
-          if (next) await startCapture(next);
         }
       } catch (err) {
         console.warn('WebAuthn:', err.name, err.message);
@@ -310,6 +332,21 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
   const save = () => {
     const emp = { ...form, id: form.code, lastIn: '—' };
     saveRegisteredEmployee(emp);
+
+    // Vincula la credencial WebAuthn capturada en el paso 2 (guardada solo en
+    // sessionStorage, aislada de todo) al mapa que SÍ lee el kiosco
+    // (localStorage['uasd_cred_map_v1']). Antes de esto, registrar la huella
+    // aquí nunca habilitaba el reconocimiento en el kiosco — eran dos
+    // almacenamientos completamente desconectados, por eso daba "huella no
+    // reconocida" siempre, sin importar que la captura hubiera funcionado.
+    if (credIdRef.current) {
+      try {
+        const map = JSON.parse(localStorage.getItem('uasd_cred_map_v1') || '{}');
+        map[credIdRef.current] = emp.id;
+        localStorage.setItem('uasd_cred_map_v1', JSON.stringify(map));
+      } catch {}
+    }
+
     onRegister?.(emp);
     window.auditLog?.add({ name: form.name || 'Nuevo empleado', id: form.cedula || '—' });
     setFlash(t.reg_saved);

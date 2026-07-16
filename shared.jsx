@@ -272,9 +272,9 @@ const I18N = {
     rep_dept: 'Distribución por departamento',
     rep_dept_sub: 'Empleados registrados por unidad',
     rep_top: 'Actividad reciente',
-    rep_punctual_on: 'A tiempo',
-    rep_punctual_late: 'Tarde',
-    rep_punctual_absent: 'Ausentes',
+    rep_punctual_on: 'Puntualidad',
+    rep_punctual_late: 'Tardanzas',
+    rep_punctual_absent: 'Ausencias',
     rep_kpi_hours: 'Horas trabajadas',
     rep_delta_week: 'vs. semana pasada',
     rep_avg_month: 'Promedio mensual',
@@ -622,9 +622,9 @@ const I18N = {
     rep_dept: 'Distribution by department',
     rep_dept_sub: 'Employees registered per unit',
     rep_top: 'Recent activity',
-    rep_punctual_on: 'On time',
-    rep_punctual_late: 'Late',
-    rep_punctual_absent: 'Absent',
+    rep_punctual_on: 'Punctuality',
+    rep_punctual_late: 'Late arrivals',
+    rep_punctual_absent: 'Absences',
     rep_kpi_hours: 'Hours worked',
     rep_delta_week: 'vs. last week',
     rep_avg_month: 'Monthly average',
@@ -902,7 +902,7 @@ function TopBar({ route, setRoute, lang, setLang, t }) {
   return (
     <div className="topbar">
       <div className="topbar__brand">
-        <Crest size={58} />
+        <Crest size={66} />
         <div>
           <div className="topbar__title">{t.appName}</div>
           <div className="topbar__subtitle">{t.appSub}</div>
@@ -916,7 +916,7 @@ function TopBar({ route, setRoute, lang, setLang, t }) {
             className={`topbar__nav-item ${route === n.id ? 'topbar__nav-item--active' : ''}`}
             onClick={() => setRoute(n.id)}
             title={`${n.label}  ·  ${n.key}`}>
-            <Icon name={n.icon} size={15} />
+            <Icon name={n.icon} size={17} />
             {n.label}
           </button>
         ))}

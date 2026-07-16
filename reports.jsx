@@ -202,9 +202,14 @@ function ReportsView({ t, lang, setRoute }) {
   const activeEmps = React.useMemo(() => emps.filter(e => e.status !== 'inactive'), [emps]);
   const attRecords = React.useMemo(() => Object.values(allAtt), [allAtt]);
 
-  /* KPIs + hero chart reflejan SIEMPRE el mes/semana actual (no el filtro de abajo) —
-     así el resumen de arriba es un "pulso en vivo", igual que el resto del sistema. */
-  const curMonthKey  = todayKey();
+  /* Los KPIs de Resumen ahora siguen el mismo mes seleccionado en la píldora
+     central del header (filterMonth) — antes estaban fijos al mes de hoy sin
+     poder navegarlos; ahora la píldora central controla el mes para toda la
+     página (Resumen, Detalle y Calendario comparten el mismo selector). Las
+     gráficas de "últimos 7 días" siguen siendo una ventana móvil real
+     (relativa a hoy), no al mes seleccionado — muestran el pulso reciente
+     real sin importar qué mes estés navegando arriba. */
+  const curMonthKey  = filterMonth;
   const [cy, cm]     = curMonthKey.split('-');
   const curMonthLabel = `${MONTHS_ES[+cm - 1]} ${cy}`;
   const prevMonthKey = React.useMemo(() => {
@@ -245,7 +250,11 @@ function ReportsView({ t, lang, setRoute }) {
   /* Pill de tendencia — real, comparado con el mes anterior. Sin datos previos
      suficientes, muestra el mes en vez de inventar un porcentaje. */
   const trendPill = (curr, prev, hasPrev, goodWhenLower, unit) => {
-    if (!hasPrev) return <span className="kpi__pill">{curMonthLabel}</span>;
+    // El mes ya se muestra una sola vez, centrado en el header (antes se
+    // repetía "Julio 2026" en cada una de las 4 tarjetas) — sin datos del mes
+    // anterior no hay nada que comparar, así que se avisa en vez de
+    // simplemente repetir el mes otra vez.
+    if (!hasPrev) return <span style={{ fontSize: 12, color: 'var(--ink-300)' }}>{isES ? 'Sin datos previos' : 'No prior data'}</span>;
     const d = +(curr - prev).toFixed(1);
     const isGood = goodWhenLower ? d <= 0 : d >= 0;
     const arrow  = d === 0 ? '•' : (d > 0 ? '▲' : '▼');
@@ -459,12 +468,14 @@ function ReportsView({ t, lang, setRoute }) {
       .sort((a, b) => b.totalHours - a.totalHours);
   }, [monthAttForHours, emps]);
 
-  const exportCSV = () => {
-    const esc = (v) => `"${csvSafe(v).replace(/"/g, '""')}"`;
+  // Construye las mismas filas (Tardanzas + Ausencias + Eventualidades del
+  // mes filtrado) para los dos formatos de export — mismo patrón que
+  // dashboard.jsx (dropdown Exportar → PDF / Excel).
+  const buildExportRows = () => {
     let evMap = {};
     try { evMap = JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch {}
 
-    const rows = [['Sección', 'Empleado', 'Departamento', 'Fecha', 'Detalle', 'Estado']];
+    const rows = [];
 
     emps.forEach(emp => {
       Object.values(allAtt)
@@ -484,13 +495,56 @@ function ReportsView({ t, lang, setRoute }) {
         .forEach(e => rows.push(['Eventualidad', emp.name, emp.dept, e.dateEnd ? `${e.date} - ${e.dateEnd}` : e.date, `${e.type}${e.motivo ? ' - ' + e.motivo : ''}`, EVENT_STATUS_LABEL[e.estado || 'pendiente']]));
     });
 
-    const csv = '\uFEFF' + rows.map(r => r.map(esc).join(',')).join('\r\n');
+    return rows;
+  };
+
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const exportRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!exportOpen) return;
+    const onDoc = (e) => { if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [exportOpen]);
+
+  const exportExcel = () => {
+    setExportOpen(false);
+    const esc = (v) => `"${csvSafe(v).replace(/"/g, '""')}"`;
+    const header = ['Secci\u00F3n', 'Empleado', 'Departamento', 'Fecha', 'Detalle', 'Estado'];
+    const csv = '\uFEFF' + [header, ...buildExportRows()].map(r => r.map(esc).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `UASD_reportes_${filterMonth}.xls`;
     a.click();
     URL.revokeObjectURL(a.href);
+  };
+
+  const exportPDF = () => {
+    setExportOpen(false);
+    const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    const rowsHtml = buildExportRows().map(r => `<tr>${r.map(c => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('');
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t.rep_title} - UASD</title>
+      <style>
+        * { font-family: 'Manrope', Arial, sans-serif; }
+        body { padding: 40px; color: #1A1F3A; }
+        h1 { font-size: 20px; margin: 0 0 2px; }
+        .sub { color: #5a6a90; font-size: 12px; margin-bottom: 22px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { text-align: left; text-transform: uppercase; letter-spacing: 0.06em; font-size: 9px; color: #5a6a90; border-bottom: 2px solid #1A1F3A; padding: 8px 6px; }
+        td { padding: 8px 6px; border-bottom: 1px solid #e8ebf1; }
+        @media print { @page { margin: 16mm; } }
+      </style></head><body>
+      <h1>${t.rep_title} - UASD</h1>
+      <div class="sub">${monthLabel} - ${new Date().toLocaleDateString(isES ? 'es-DO' : 'en-US')}</div>
+      <table><thead><tr>
+        <th>Sección</th><th>Empleado</th><th>Departamento</th><th>Fecha</th><th>Detalle</th><th>Estado</th>
+      </tr></thead><tbody>${rowsHtml}</tbody></table>
+      </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 350);
   };
 
   /* ── Resumen (pulso en vivo) vs Detalle (histórico por mes) ──
@@ -562,14 +616,39 @@ function ReportsView({ t, lang, setRoute }) {
 
   return (
     <div className="page">
-      {/* ── Header ── */}
-      <div className="page__head">
-        <div>
+      {/* ── Header — una sola fila: título a la izquierda; a la derecha, el
+           panel de navegación (Resumen/Detalle/Calendario) al lado de Exportar. ── */}
+      <div className="page__head" style={{ alignItems: 'center' }}>
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="page__title">{t.rep_title}</div>
           <div className="page__subtitle">{t.rep_sub}</div>
         </div>
-        <div className="page__actions">
-          <div className="seg-filter" ref={viewRef}>
+
+        {/* Mes actual — centrado centro a centro, mismo truco que usa la barra
+           de navegación Empleados/Reportes: ambos lados llevan flex:1 1 0
+           (crecen igual), así el elemento del medio queda en el centro real
+           de la fila sin importar cuánto contenido tenga cada lado. Ahora con
+           flechas para navegar el mes — controla filterMonth para toda la
+           página (Resumen, Detalle y Calendario comparten el mismo mes). */}
+        <div className="dash-clock" style={{ flex: '0 0 auto', flexDirection: 'row', alignItems: 'center', gap: 12, padding: '7px 14px' }}>
+          <button onClick={prevMonth} aria-label={isES ? 'Mes anterior' : 'Previous month'}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.35)', color: '#fff', cursor: 'pointer', width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: '50%', flexShrink: 0 }}>
+            <Icon name="arrowLeft" size={13}/>
+          </button>
+          <div className="month-pill-in" key={filterMonth} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 68 }}>
+            <div className="dash-clock__time">
+              <span className="dash-clock__hm">{MONTHS_ES[+cm - 1]}</span>
+            </div>
+            <div className="dash-clock__date">{cy}</div>
+          </div>
+          <button onClick={nextMonth} disabled={isCurrentMonth} aria-label={isES ? 'Mes siguiente' : 'Next month'}
+            style={{ background: 'none', border: `1px solid ${isCurrentMonth ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.35)'}`, color: isCurrentMonth ? 'rgba(255,255,255,0.3)' : '#fff', cursor: isCurrentMonth ? 'default' : 'pointer', width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: '50%', flexShrink: 0 }}>
+            <Icon name="arrowRight" size={13}/>
+          </button>
+        </div>
+
+        <div className="page__actions" style={{ gap: 16, flex: '1 1 0', justifyContent: 'flex-end', minWidth: 0 }}>
+          <div className="seg-filter seg-filter--lg" ref={viewRef}>
             <span className="seg-filter__pill" style={viewPill} aria-hidden="true"/>
             {viewOptions.map(o => (
               <button key={o.id}
@@ -580,9 +659,21 @@ function ReportsView({ t, lang, setRoute }) {
               </button>
             ))}
           </div>
-          <button className="btn btn--ghost" onClick={exportCSV}>
-            <Icon name="download" size={14}/> {t.dash_export}
-          </button>
+          <div className="export-wrap" ref={exportRef}>
+            <button className="btn btn--ghost" onClick={() => setExportOpen(o => !o)}>
+              <Icon name="download" size={14}/> {t.dash_export} <Icon name="chevDown" size={12}/>
+            </button>
+            {exportOpen && (
+              <div className="export-menu">
+                <button className="export-menu__item" onClick={exportPDF}>
+                  <span className="export-menu__tag export-menu__tag--pdf">PDF</span> {t.dash_export_pdf}
+                </button>
+                <button className="export-menu__item" onClick={exportExcel}>
+                  <span className="export-menu__tag export-menu__tag--xls">XLS</span> {t.dash_export_excel}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -597,28 +688,28 @@ function ReportsView({ t, lang, setRoute }) {
           onClick={() => goToDetalle('todos')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
           <div className="kpi__label">{t.rep_punctual_on}</div>
-          <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+          <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
           <div style={{ marginTop: 12 }}>{trendPill(onTimePct, prevOnTimePct, hasPrevAtt, false)}</div>
         </div>
         <div className="kpi kpi--clickable" role="button" tabIndex={0}
           onClick={() => goToDetalle('tardanza')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('tardanza'); } }}>
           <div className="kpi__label">{t.rep_punctual_late}</div>
-          <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+          <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
           <div style={{ marginTop: 12 }}>{trendPill(latePct, prevLatePct, hasPrevAtt, true)}</div>
         </div>
         <div className="kpi kpi--clickable" role="button" tabIndex={0}
           onClick={() => goToDetalle('ausencia')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('ausencia'); } }}>
           <div className="kpi__label">{t.rep_punctual_absent}</div>
-          <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)'}}>%</span></div>
+          <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
           <div style={{ marginTop: 12 }}>{trendPill(absentPct, prevAbsentPct, true, true)}</div>
         </div>
         <div className="kpi kpi--clickable" role="button" tabIndex={0}
           onClick={() => goToDetalle('todos')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
           <div className="kpi__label">{isES ? 'Marcajes del mes' : 'Check-ins this month'}</div>
-          <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}<span style={{fontSize:15,color:'var(--ink-400)'}}>{isES ? 'total' : 'total'}</span></div>
+          <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>{isES ? 'Total' : 'Total'}</span></div>
           <div style={{ marginTop: 12 }}>{trendPill(curMonthRecords.length, prevMonthRecords.length, prevMonthRecords.length > 0, false, '')}</div>
         </div>
       </div>
@@ -713,26 +804,14 @@ function ReportsView({ t, lang, setRoute }) {
       {/* ── DETALLE — histórico filtrable por mes ── */}
       {view === 'detalle' && <div key="detalle" className="rep-panel-in">
 
-      {/* ── Selector de mes + chips de filtro (Tardanzas · Ausencias · Eventualidades) ── */}
-      <div className="toolbar" style={{ marginBottom: 16 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:4, border:'1px solid var(--ink-100)', borderRadius:999, padding:'5px 6px', background:'var(--paper)' }}>
-          <button onClick={prevMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--ink-500)', borderRadius:'50%' }}>
-            <Icon name="arrowLeft" size={12}/>
+      {/* ── Chips de filtro (Tardanzas · Ausencias · Eventualidades) — el mes ya
+           se controla desde la píldora central del header, arriba. ── */}
+      <div className="rep-chips" style={{ marginBottom: 16 }}>
+        {detailChips.map(c => (
+          <button key={c.id} className={`rep-chip ${detailFilter === c.id ? 'rep-chip--active' : ''}`} onClick={() => setDetailFilter(c.id)}>
+            {c.label} <span className="rep-chip__count">{detailCounts[c.id]}</span>
           </button>
-          <span style={{ fontFamily:'var(--font-mono)', fontSize:12.5, fontWeight:700, color:'var(--ink-800)', minWidth:96, textAlign:'center' }}>
-            {monthLabel}
-          </span>
-          <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor: isCurrentMonth ? 'default' : 'pointer', color: isCurrentMonth ? 'var(--ink-200)' : 'var(--ink-500)', borderRadius:'50%' }}>
-            <Icon name="arrowRight" size={12}/>
-          </button>
-        </div>
-        <div className="rep-chips">
-          {detailChips.map(c => (
-            <button key={c.id} className={`rep-chip ${detailFilter === c.id ? 'rep-chip--active' : ''}`} onClick={() => setDetailFilter(c.id)}>
-              {c.label} <span className="rep-chip__count">{detailCounts[c.id]}</span>
-            </button>
-          ))}
-        </div>
+        ))}
       </div>
 
       {/* ── Lista unificada — Tardanzas + Ausencias + Eventualidades del mes ── */}
@@ -834,20 +913,6 @@ function ReportsView({ t, lang, setRoute }) {
 
       {/* ── CALENDARIO — cumpleaños del mes + feriados del período ── */}
       {view === 'calendario' && <div key="calendario" className="rep-panel-in">
-
-      <div className="toolbar" style={{ marginBottom: 20 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:4, border:'1px solid var(--ink-100)', borderRadius:999, padding:'5px 6px', background:'var(--paper)' }}>
-          <button onClick={prevMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor:'pointer', color:'var(--ink-500)', borderRadius:'50%' }}>
-            <Icon name="arrowLeft" size={12}/>
-          </button>
-          <span style={{ fontFamily:'var(--font-mono)', fontSize:12.5, fontWeight:700, color:'var(--ink-800)', minWidth:96, textAlign:'center' }}>
-            {monthLabel}
-          </span>
-          <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background:'none', border:'none', width:26, height:26, display:'grid', placeItems:'center', cursor: isCurrentMonth ? 'default' : 'pointer', color: isCurrentMonth ? 'var(--ink-200)' : 'var(--ink-500)', borderRadius:'50%' }}>
-            <Icon name="arrowRight" size={12}/>
-          </button>
-        </div>
-      </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20 }}>
         <div className="chart-card">
