@@ -2707,6 +2707,35 @@ tr.table__row--selected .table__actions {
 }
 .month-pill-in { animation: monthPillIn 0.26s cubic-bezier(0.16,1,0.3,1) both; }
 @media (prefers-reduced-motion: reduce) { .month-pill-in { animation: none; } }
+
+/* Flechas del pill de mes (Reportes) — viven sobre fondo oscuro (dash-clock),
+   así que al pasar el mouse se llenan de blanco en vez de oscurecer. */
+.rep-month-arrow {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+  cursor: pointer;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-size: 19px;
+  line-height: 1;
+  transition: background .15s, color .15s, border-color .15s, box-shadow .15s;
+}
+.rep-month-arrow:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.55);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.10);
+}
+.rep-month-arrow:disabled {
+  border-color: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.3);
+  cursor: default;
+}
 .dp-cal__arrow:hover { background: var(--ink-600); color: #fff; border-color: var(--ink-600); }
 .dp-cal__month { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--ink-800); }
 .dp-cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }

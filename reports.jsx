@@ -627,23 +627,22 @@ function ReportsView({ t, lang, setRoute }) {
         {/* Mes actual — centrado centro a centro, mismo truco que usa la barra
            de navegación Empleados/Reportes: ambos lados llevan flex:1 1 0
            (crecen igual), así el elemento del medio queda en el centro real
-           de la fila sin importar cuánto contenido tenga cada lado. Ahora con
-           flechas para navegar el mes — controla filterMonth para toda la
-           página (Resumen, Detalle y Calendario comparten el mismo mes). */}
-        <div className="dash-clock" style={{ flex: '0 0 auto', flexDirection: 'row', alignItems: 'center', gap: 12, padding: '7px 14px' }}>
-          <button onClick={prevMonth} aria-label={isES ? 'Mes anterior' : 'Previous month'}
-            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.35)', color: '#fff', cursor: 'pointer', width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: '50%', flexShrink: 0 }}>
-            <Icon name="arrowLeft" size={13}/>
+           de la fila sin importar cuánto contenido tenga cada lado. Mismo pill
+           azul oscuro que el reloj (DashClock) de Empleados, con flechas para
+           navegar el mes — controla filterMonth para toda la página (Resumen,
+           Detalle y Calendario comparten el mismo mes). */}
+        <div className="dash-clock" style={{ flex: '0 0 auto', flexDirection: 'row', alignItems: 'center', gap: 18, padding: '11px 22px' }}>
+          <button className="rep-month-arrow" onClick={prevMonth} aria-label={isES ? 'Mes anterior' : 'Previous month'}>
+            ‹
           </button>
-          <div className="month-pill-in" key={filterMonth} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 68 }}>
+          <div className="month-pill-in" key={filterMonth} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 92 }}>
             <div className="dash-clock__time">
-              <span className="dash-clock__hm">{MONTHS_ES[+cm - 1]}</span>
+              <span className="dash-clock__hm" style={{ fontSize: '1.8rem' }}>{MONTHS_ES[+cm - 1]}</span>
             </div>
-            <div className="dash-clock__date">{cy}</div>
+            <div className="dash-clock__date" style={{ fontSize: 12.5 }}>{cy}</div>
           </div>
-          <button onClick={nextMonth} disabled={isCurrentMonth} aria-label={isES ? 'Mes siguiente' : 'Next month'}
-            style={{ background: 'none', border: `1px solid ${isCurrentMonth ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.35)'}`, color: isCurrentMonth ? 'rgba(255,255,255,0.3)' : '#fff', cursor: isCurrentMonth ? 'default' : 'pointer', width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: '50%', flexShrink: 0 }}>
-            <Icon name="arrowRight" size={13}/>
+          <button className="rep-month-arrow" onClick={nextMonth} disabled={isCurrentMonth} aria-label={isES ? 'Mes siguiente' : 'Next month'}>
+            ›
           </button>
         </div>
 

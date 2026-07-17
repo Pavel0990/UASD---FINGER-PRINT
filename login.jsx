@@ -47,7 +47,7 @@ function LoginView({ t, lang, setLang, setRoute }) {
         }
         setSubmitting(false);
         setAttempts(0);
-        setRoute('dashboard');
+        setRoute('reports'); // TEMP: mientras trabajamos en Reportes, aterriza aquí en vez de 'dashboard'
       } catch (err) {
         setSubmitting(false);
         if (err && err.status) {

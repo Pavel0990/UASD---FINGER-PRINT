@@ -29,6 +29,24 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/backend') || req.path.startsWith('/.git')) return res.status(404).end();
   next();
 });
+
+// Auto-reload en desarrollo: vigila los .jsx/.css/.html del frontend (no hay
+// bundler/HMR — Babel transpila en el navegador) y le avisa al navegador que
+// recargue solo al guardar. connect-livereload inyecta el script en el HTML;
+// el servidor de livereload escucha en su propio puerto (35729, estándar),
+// separado de la app — no toca el origen :8080 que usan las cookies/WebAuthn.
+if (!env.isProduction) {
+  const livereload = require('livereload');
+  const connectLivereload = require('connect-livereload');
+  const lrServer = livereload.createServer({
+    exts: ['html', 'css', 'jsx'],
+    exclusions: [/node_modules/, /\.git/, /^backend/, /screenshots/, /vendor/],
+    delay: 150,
+  });
+  lrServer.watch(REPO_ROOT);
+  app.use(connectLivereload());
+}
+
 app.use(express.static(REPO_ROOT));
 
 app.use(errorHandler);

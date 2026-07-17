@@ -24,7 +24,7 @@ function App() {
     }
   }, [t_state]);
 
-  const [route, setRoute_] = React.useState('kiosk'); // arranca en el terminal público, no en el dashboard
+  const [route, setRoute_] = React.useState('login'); // TEMP: mientras trabajamos en Reportes (normalmente 'kiosk')
   const [lang, setLang] = React.useState('es');
   const [flash, setFlash] = React.useState(null);
   const [addedEmployees, setAddedEmployees] = React.useState([]);
@@ -46,7 +46,20 @@ function App() {
   // 'dashboard' sigue exigiendo sesión real vía go()).
   React.useEffect(() => {
     if (typeof restoreSession !== 'function') return;
-    restoreSession().then((ok) => { if (ok) go('dashboard'); }).catch(() => {});
+    restoreSession().then(async (ok) => {
+      if (ok) { go('reports'); return; }
+      // TEMP: sin sesión, auto-login con credenciales reales de desarrollo para
+      // no perder tiempo tecleando login mientras iteramos en Reportes. Sigue
+      // siendo una sesión real vía backend (no bypassea userHasPermission) —
+      // quitar este bloque junto con los demás marcados TEMP al terminar.
+      if (typeof loginRequest === 'function') {
+        try {
+          await loginRequest('ggomez@uasd.edu.do', '123456789');
+          if (typeof bootstrapStore === 'function') await bootstrapStore();
+          go('reports');
+        } catch (err) { /* backend caído u otro error: se queda en login */ }
+      }
+    }).catch(() => {});
   }, []);
 
   const t = I18N[lang];
