@@ -2,6 +2,25 @@ const prisma = require('../../db/prisma');
 
 const roleInclude = { permissions: true };
 
+// Techo de permisos: un actor nunca puede otorgar (a un rol o al asignar un
+// rol a alguien) un permiso que él mismo no tiene. Antes esto solo se
+// validaba en roles.jsx (grantablePerms), del lado del navegador — cualquiera
+// podía saltárselo llamando la API directo. Ver auditoría: escalamiento
+// role_viewer → role_admin en 2 llamadas HTTP.
+class PermCeilingError extends Error {
+  constructor(missing) {
+    super('perm_ceiling_exceeded');
+    this.status = 403;
+    this.publicMessage = 'perm_ceiling_exceeded';
+    this.missing = missing;
+  }
+}
+
+function assertPermCeiling(actorPerms, targetPerms) {
+  const missing = (targetPerms || []).filter((p) => !actorPerms.includes(p));
+  if (missing.length) throw new PermCeilingError(missing);
+}
+
 async function listRoles() {
   return prisma.role.findMany({ include: roleInclude, orderBy: { name: 'asc' } });
 }
@@ -10,7 +29,8 @@ async function listPermissions() {
   return prisma.permission.findMany({ orderBy: { id: 'asc' } });
 }
 
-async function createRole({ id, name, description, color, perms = [] }) {
+async function createRole(actorPerms, { id, name, description, color, perms = [] }) {
+  assertPermCeiling(actorPerms, perms);
   return prisma.$transaction(async (tx) => {
     const role = await tx.role.create({ data: { id, name, description, color } });
     if (perms.length) {
@@ -20,7 +40,8 @@ async function createRole({ id, name, description, color, perms = [] }) {
   });
 }
 
-async function updateRole(id, { name, description, color, perms }) {
+async function updateRole(actorPerms, id, { name, description, color, perms }) {
+  if (perms !== undefined) assertPermCeiling(actorPerms, perms);
   return prisma.$transaction(async (tx) => {
     const data = {};
     if (name !== undefined) data.name = name;
@@ -36,6 +57,10 @@ async function updateRole(id, { name, description, color, perms }) {
   });
 }
 
+async function getRole(id) {
+  return prisma.role.findUnique({ where: { id } });
+}
+
 async function deleteRole(id) {
   return prisma.role.delete({ where: { id } });
 }
@@ -47,10 +72,13 @@ async function countRoleMembers(roleId) {
   return prisma.roleAssignment.count({ where: { roleId } });
 }
 
-async function assignRole(employeeId, roleId) {
+async function assignRole(actorPerms, employeeId, roleId) {
+  const targetRole = await prisma.role.findUnique({ where: { id: roleId }, include: roleInclude });
+  if (!targetRole) throw Object.assign(new Error('role_not_found'), { status: 404, publicMessage: 'role_not_found' });
+  assertPermCeiling(actorPerms, targetRole.permissions.map((p) => p.permissionId));
+
   const memberCount = await countRoleMembers(roleId);
-  const role = await prisma.role.findUnique({ where: { id: roleId } });
-  const limit = role?.maxMembers ?? MAX_ROLE_MEMBERS;
+  const limit = targetRole.maxMembers ?? MAX_ROLE_MEMBERS;
   const existing = await prisma.roleAssignment.findUnique({ where: { employeeId } });
   if (!existing && memberCount >= limit) {
     throw Object.assign(new Error('role_full'), { status: 409, publicMessage: 'role_full' });
@@ -71,6 +99,6 @@ async function listAssignments() {
 }
 
 module.exports = {
-  listRoles, listPermissions, createRole, updateRole, deleteRole,
+  listRoles, listPermissions, createRole, updateRole, getRole, deleteRole,
   assignRole, unassignRole, listAssignments,
 };

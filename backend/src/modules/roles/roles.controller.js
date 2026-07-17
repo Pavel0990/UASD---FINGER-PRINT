@@ -14,22 +14,21 @@ async function postRole(req, res, next) {
   try {
     const { id, name, description, color, perms } = req.body;
     if (!id || !name) return res.status(400).json({ error: 'id_and_name_required' });
-    const role = await svc.createRole({ id, name, description, color, perms });
+    const role = await svc.createRole(req.user.perms, { id, name, description, color, perms });
     res.status(201).json(serializeRole(role));
   } catch (err) { next(err); }
 }
 
 async function patchRole(req, res, next) {
   try {
-    const role = await svc.updateRole(req.params.id, req.body);
+    const role = await svc.updateRole(req.user.perms, req.params.id, req.body);
     res.json(serializeRole(role));
   } catch (err) { next(err); }
 }
 
 async function deleteRole(req, res, next) {
   try {
-    const roles = await svc.listRoles();
-    const role = roles.find((r) => r.id === req.params.id);
+    const role = await svc.getRole(req.params.id);
     if (role && role.isProtected) return res.status(403).json({ error: 'protected_role' });
     await svc.deleteRole(req.params.id);
     res.status(204).send();
@@ -47,7 +46,7 @@ async function postAssignment(req, res, next) {
   try {
     const { empId, roleId } = req.body;
     if (!empId || !roleId) return res.status(400).json({ error: 'empId_and_roleId_required' });
-    await svc.assignRole(empId, roleId);
+    await svc.assignRole(req.user.perms, empId, roleId);
     await logAudit({ actorEmployeeId: req.user.employeeId, actionType: 'edit', subjectEmployeeId: empId, detail: { roleId } });
     res.status(201).json({ empId, roleId });
   } catch (err) { next(err); }

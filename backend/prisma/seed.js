@@ -59,7 +59,7 @@ const EMPLOYEES = [
 const SEED_ROLES = [
   { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll', 'reports', 'manage', 'roles', 'audit', 'farm', 'liceo', 'vacaciones', 'feriados', 'kiosk_admin'], isProtected: true, maxMembers: 5 },
   { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll', 'reports', 'manage', 'farm', 'liceo', 'vacaciones', 'feriados', 'roles'], isProtected: true, maxMembers: 5 },
-  { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports', 'audit', 'roles'], isProtected: false, maxMembers: 5 },
+  { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports', 'audit'], isProtected: false, maxMembers: 5 },
 ];
 
 const SEED_ASSIGNMENTS = [
@@ -153,6 +153,13 @@ async function main() {
         create: { roleId: r.id, permissionId: permId },
       });
     }
+    // Poda permisos que ya no están en SEED_ROLES (ej. 'roles' se quitó de
+    // role_viewer) — sin esto, upsert solo agrega y nunca retira, así que un
+    // permiso otorgado por error en un seed anterior queda pegado para
+    // siempre en la DB aunque se corrija este archivo.
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: r.id, permissionId: { notIn: r.perms } },
+    });
   }
 
   console.log('Seeding role_assignments...');

@@ -467,7 +467,7 @@ function DateStatFilter({ log, dateFilter, onChange }) {
             style={{ position:'fixed', top:pos.top, left:pos.left, zIndex:9999,
               background:'var(--paper)', border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)',
               boxShadow:'0 8px 28px rgba(0,0,0,0.10)', minWidth:180, overflow:'hidden',
-              animation: menuClosing ? 'menuClose .18s cubic-bezier(0.4,0,1,1) forwards' : 'menuOpen .18s cubic-bezier(0,0,0.2,1) both' }}>
+              animation: menuClosing ? 'menuClose 0.22s cubic-bezier(0.4,0,1,1) forwards' : 'menuOpen 0.22s cubic-bezier(0.16,1,0.3,1) both' }}>
 
           {!calYM ? (
             /* ── Lista de meses — selección múltiple ── */

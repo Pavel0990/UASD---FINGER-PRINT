@@ -4,15 +4,16 @@ const ROLES_KEY = 'uasd_roles_v1';
 const ASSIGN_KEY = 'uasd_role_assignments_v1';
 const CRED_KEY = 'uasd_credentials_v1';
 const CURR_USER_KEY = 'uasd_current_user';
-const ROLE_SEED_VER = 'uasd_role_seed_v10';
+const ROLE_SEED_VER = 'uasd_role_seed_v11'; // v11: quita 'roles' de Solo lectura (escalamiento de privilegios)
 const CRED_PATCH_V1 = 'uasd_cred_patch_v1';
 const CRED_PATCH_V2 = 'uasd_cred_patch_v2';
 const DEFAULT_PASS   = '123456789';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // misma regex que register.jsx:308
 
 const SEED_ROLES = [
   { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','liceo','vacaciones','feriados','kiosk_admin'] },
   { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll','reports','manage','farm','liceo','vacaciones','feriados','roles'] },
-  { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports','audit','roles'] },
+  { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports','audit'] },
 ];
 
 const SEED_ASSIGNMENTS = [
@@ -57,8 +58,13 @@ const ALL_PERMS = [
     if (r.id === 'role_hr' && !perms.includes('roles')) {
       return { ...r, perms: [...perms, 'roles'] };
     }
-    if (r.id === 'role_viewer' && !perms.includes('roles')) {
-      return { ...r, perms: [...perms, 'roles'] };
+    // 'Solo lectura' NUNCA debe tener 'roles' (gestionar roles/permisos) —
+    // su descripción es "acceso solo a reportes y control de actividad".
+    // Un seed anterior lo otorgó por error, lo que permitía a cualquier
+    // cuenta de solo-lectura auto-asignarse el rol de Administrador vía la
+    // API. Esta migración lo retira de instalaciones existentes.
+    if (r.id === 'role_viewer' && perms.includes('roles')) {
+      return { ...r, perms: perms.filter(p => p !== 'roles') };
     }
     if (perms !== r.perms) return { ...r, perms };
     return r;
@@ -454,7 +460,7 @@ function RolesView({ t, setRoute }) {
   const confirmAssign = () => {
     if (!assignEmp) return;
     if (roleAssignees.length >= MAX_ROLE_MEMBERS) return;
-    const errEmail = !assignEmail.trim();
+    const errEmail = !EMAIL_RE.test(assignEmail.trim());
     const errPass  = !assignPass.trim() || assignPass.length < 6;
     if (errEmail || errPass) {
       setAssignFieldErr({ email: errEmail, pass: errPass });
@@ -494,7 +500,7 @@ function RolesView({ t, setRoute }) {
 
   const saveEditCred = () => {
     if (!editCred) return;
-    const errEmail = !editCredEmail.trim();
+    const errEmail = !EMAIL_RE.test(editCredEmail.trim());
     const errPass  = !editCredPass.trim() || editCredPass.length < 6;
     if (errEmail || errPass) { setEditCredFieldErr({ email: errEmail, pass: errPass }); return; }
     setEditCredFieldErr({ email: false, pass: false });
@@ -633,6 +639,8 @@ function RolesView({ t, setRoute }) {
                   <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
                     {PRESET_COLORS.map(c =>
                       <div key={c} className="color-swatch" data-tip={PRESET_COLOR_NAMES[c]} onClick={() => { setEditing({...editing,color:c}); setFormError(null); }}
+                        role="button" tabIndex={0} aria-label={PRESET_COLOR_NAMES[c]} aria-pressed={editing.color===c}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing({...editing,color:c}); setFormError(null); } }}
                         style={{width:'28px',height:'28px',borderRadius:'50%',background:c,cursor:'pointer',border:editing.color===c?'2px solid var(--ink-800)':'2px solid var(--ink-100)',boxShadow:editing.color===c?'0 0 0 3px rgba(201,169,97,0.25)':'none'}} />
                     )}
                     {(() => {
@@ -788,7 +796,7 @@ function RolesView({ t, setRoute }) {
                           {isES ? 'Correo institucional' : 'Institutional email'}<span className="field__req">*</span>
                         </label>
                         <input type="email" className={`field__input status-new__input${assignFieldErr.email?' field__input--err':''}`} value={assignEmail}
-                          onChange={e => { const v=e.target.value; setAssignEmail(v); setAssignFieldErr(p=>({...p,email:p.email?!v.trim():false})); }}
+                          onChange={e => { const v=e.target.value; setAssignEmail(v); setAssignFieldErr(p=>({...p,email:p.email?!EMAIL_RE.test(v.trim()):false})); }}
                           onKeyDown={e => e.key==='Enter' && confirmAssign()}
                           placeholder="usuario@uasd.edu.do" autoFocus />
                       </div>
@@ -923,7 +931,7 @@ function RolesView({ t, setRoute }) {
                       <div style={{display:'flex',flexDirection:'column',gap:'4px'}}>
                         <label className="field__label">{isES ? 'Correo' : 'Email'}<span className="field__req">*</span></label>
                         <input type="email" className={`field__input status-new__input${editCredFieldErr.email?' field__input--err':''}`} value={editCredEmail}
-                          onChange={e => { const v=e.target.value; setEditCredEmail(v); setEditCredFieldErr(p=>({...p,email:p.email?!v.trim():false})); }}
+                          onChange={e => { const v=e.target.value; setEditCredEmail(v); setEditCredFieldErr(p=>({...p,email:p.email?!EMAIL_RE.test(v.trim()):false})); }}
                           onKeyDown={e => e.key==='Enter' && saveEditCred()}
                           placeholder="usuario@uasd.edu.do" autoFocus />
                       </div>
@@ -984,7 +992,7 @@ function RolesView({ t, setRoute }) {
             </div>
           ) : (
             <div className="audit-empty" style={{minHeight:'480px',justifyContent:'center'}}>
-            12  <Icon name="shield" size={28} stroke={1.2} />
+              <Icon name="shield" size={28} stroke={1.2} />
               <div className="audit-empty__title">{isES ? 'Selecciona un rol' : 'Select a role'}</div>
               <div className="audit-empty__sub">{isES ? 'Presiona «Ver roles» para elegir un rol y gestionar sus asignaciones.' : 'Click «View roles» to pick a role and manage its assignments.'}</div>
             </div>

@@ -246,13 +246,22 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
   const [ageError, setAgeError] = React.useState(false);
   const [calPos,   setCalPos  ] = React.useState({ top: 0, left: 0, minWidth: 0 });
   const [calReady, setCalReady] = React.useState(false);
+  const [closing,  setClosing ] = React.useState(false);
   const trigRef   = React.useRef(null);
   const calRef    = React.useRef(null);
   const manualRef = React.useRef(null);
 
+  React.useEffect(() => {
+    if (open) { setClosing(false); return; }
+    if (!calReady) return;
+    setClosing(true);
+    const id = setTimeout(() => { setClosing(false); setCalReady(false); }, 220);
+    return () => clearTimeout(id);
+  }, [open]);
+
   // Recalculate fixed position whenever calendar opens or window scrolls/resizes
   React.useLayoutEffect(() => {
-    if (!open || !trigRef.current) { setCalReady(false); return; }
+    if (!open || !trigRef.current) { if (!closing) setCalReady(false); return; }
     const update = () => {
       const r = trigRef.current.getBoundingClientRect();
       const calH = calRef.current?.offsetHeight || 300;
@@ -385,7 +394,7 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
     }
   };
 
-  const calStyle = { position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000, animation:'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both' };
+  const calStyle = { position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000, animation: closing ? 'dp-close-vac 0.22s cubic-bezier(0.4,0,1,1) both' : 'dp-open-vac 0.22s cubic-bezier(0.16,1,0.3,1) both' };
 
   return (
     <div className="dp-wrap" ref={trigRef}>
@@ -402,7 +411,7 @@ function DatePickerField({ value, onChange, minAge = 0, maxAge = 0, disabledDate
           </svg>
         </button>
       </div>
-      {open && calReady && ReactDOM.createPortal(
+      {(open || closing) && calReady && ReactDOM.createPortal(
         <div className="dp-cal" ref={calRef} style={calStyle}
           onKeyDown={(e) => {
             if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key) && e.target.tagName !== 'INPUT')
@@ -1020,72 +1029,6 @@ function DashClock({ lang }) {
   );
 }
 
-function EditPhotoField({ gender, photo, onChange, t }) {
-  const fileRef = React.useRef(null);
-  const [dragging, setDragging] = React.useState(false);
-  const [lightbox, setLightbox] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!lightbox) return;
-    const onKey = e => { if (e.key === 'Escape') setLightbox(false); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [lightbox]);
-
-  function loadFile(file) {
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = e => onChange(e.target.result);
-    reader.readAsDataURL(file);
-  }
-
-  const iconName = gender === 'M' ? 'photoMale' : gender === 'F' ? 'photoFemale' : 'user';
-
-  return (
-    <div className="edit-photo">
-      <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}}
-        onChange={e => loadFile(e.target.files[0])}/>
-
-      <div className={`edit-photo__avatar${gender ? ' edit-photo__avatar--active' : ''}`}
-        onClick={() => photo ? setLightbox(true) : fileRef.current.click()}
-        style={{cursor: photo ? 'zoom-in' : 'pointer'}}
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); loadFile(e.dataTransfer.files[0]); }}>
-        {photo
-          ? <img src={photo} alt="" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}}/>
-          : <Icon name={iconName} size={30} stroke={1.4}/>}
-        {dragging && <div className="edit-photo__drag-overlay"/>}
-      </div>
-
-      <div className="edit-photo__actions">
-        <div className="edit-photo__hint">
-          {photo ? 'Toca la foto para ampliar' : 'JPG / PNG · máx. 2MB'}
-        </div>
-        <button type="button" className="btn btn--ghost" style={{fontSize:12,padding:'6px 14px'}}
-          onClick={() => fileRef.current.click()}>
-          <Icon name="upload" size={13}/> {photo ? 'Cambiar foto' : (t.reg_photo_upload || 'Subir foto')}
-        </button>
-        {photo && (
-          <button type="button" className="btn btn--ghost" style={{fontSize:12,padding:'6px 14px',color:'var(--danger)',borderColor:'rgba(193,85,77,.3)'}}
-            onClick={() => onChange(null)}>
-            <Icon name="trash" size={13}/> Quitar
-          </button>
-        )}
-      </div>
-
-      {lightbox && (
-        <div className="photo-lightbox" onClick={() => setLightbox(false)}>
-          <img src={photo} alt="" className="photo-lightbox__img" onClick={e => e.stopPropagation()}/>
-          <button className="photo-lightbox__close" onClick={() => setLightbox(false)}>
-            <Icon name="x" size={20} stroke={2}/>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function MonthGroup({ label, unjust, total, defaultOpen, children }) {
   const [open, setOpen] = React.useState(defaultOpen);
   return (
@@ -1102,7 +1045,7 @@ function MonthGroup({ label, unjust, total, defaultOpen, children }) {
         }}>▾</span>
         <span style={{
           fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700,
-          textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--ink-400)',
+          letterSpacing:'0.02em', color:'var(--ink-400)',
           flex:1, textAlign:'left',
         }}>{label}</span>
         {unjust > 0 && (
@@ -1353,6 +1296,7 @@ function DateRangePickerField({ start, end, onChange, disabledDates }) {
   const [hover,    setHover ] = React.useState(null);
   const [manual,   setManual] = React.useState('');
   const [calPos,   setCalPos] = React.useState({ top: 0, left: 0, minWidth: 0 });
+  const [closing,  setClosing] = React.useState(false);
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -1389,6 +1333,14 @@ function DateRangePickerField({ start, end, onChange, disabledDates }) {
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
     return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (open) { setClosing(false); return; }
+    if (!trigRef.current) return;
+    setClosing(true);
+    const id = setTimeout(() => setClosing(false), 220);
+    return () => clearTimeout(id);
   }, [open]);
 
   React.useEffect(() => {
@@ -1503,9 +1455,9 @@ function DateRangePickerField({ start, end, onChange, disabledDates }) {
         </button>
       </div>
 
-      {open && (
+      {(open || closing) && (
         <div className="dp-cal" ref={calRef}
-          style={{ position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000, animation:'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both' }}>
+          style={{ position:'fixed', top: calPos.top, left: calPos.left, minWidth: calPos.minWidth, zIndex:2000, animation: closing ? 'dp-close-vac 0.22s cubic-bezier(0.4,0,1,1) both' : 'dp-open-vac 0.22s cubic-bezier(0.16,1,0.3,1) both' }}>
           <div className="dp-cal__nav">
             <button type="button" className="dp-cal__arrow" onClick={prevYear} title="Año anterior">«</button>
             <button type="button" className="dp-cal__arrow" onClick={prevMo}   title="Mes anterior">‹</button>

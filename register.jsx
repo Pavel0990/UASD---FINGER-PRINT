@@ -314,10 +314,13 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
 
     // Duplicados — solo por identificadores únicos reales (cédula/correo), no por nombre
     // (dos empleados distintos pueden ser homónimos legítimamente).
-    const cedulaClean = form.cedula.replace(/\D/g, '');
+    // .replace(/[\s-]/g,'') en vez de /\D/g: la cédula puede llevar guiones
+    // de formato, pero un pasaporte real trae letras que no hay que descartar
+    // (descartarlas causaba falsos duplicados entre pasaportes distintos).
+    const cedulaClean = form.cedula.trim().toUpperCase().replace(/[\s-]/g, '');
     const emailLower  = form.email.trim().toLowerCase();
     const isDup = [...EMPLOYEES, ...(typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [])].some(emp =>
-      emp.cedula?.replace(/\D/g, '') === cedulaClean ||
+      emp.cedula?.trim().toUpperCase().replace(/[\s-]/g, '') === cedulaClean ||
       emp.email?.trim().toLowerCase() === emailLower
     );
     if (isDup) {
@@ -465,7 +468,10 @@ function Step1({ t, form, update, setForm, allDepts, allRoles, errors, clearErro
                      placeholder="000-0000000-0"
                      onChange={e => {
                        clearError('cedula');
-                       update('cedula', e.target.value.replace(/\D/g, '').slice(0, 11));
+                       // Acepta dígitos (cédula, formatCedula la formatea sola a 000-0000000-0
+                       // si quedan exactamente 11) O letras+dígitos (pasaporte) — antes solo
+                       // aceptaba dígitos, así que un pasaporte real era imposible de escribir.
+                       update('cedula', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11));
                      }}/>
             </div>
 
@@ -630,12 +636,18 @@ function PhotoCard({ t, form, update }) {
         onClick={() => { if (!form.photo) fileRef.current.click(); }}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}>
+        onDrop={onDrop}
+        role={form.photo ? undefined : 'button'}
+        tabIndex={form.photo ? undefined : 0}
+        aria-label={form.photo ? undefined : 'Subir foto de perfil'}
+        onKeyDown={form.photo ? undefined : (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current.click(); } })}>
         <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}}
           onChange={e => loadFile(e.target.files[0])}/>
         {form.photo ? (
           <img src={form.photo} alt="Foto de perfil" className="photo-drop__preview"
-            onClick={e => { e.stopPropagation(); setLightbox(true); }}/>
+            role="button" tabIndex={0} aria-label="Ampliar foto de perfil"
+            onClick={e => { e.stopPropagation(); setLightbox(true); }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLightbox(true); } }}/>
         ) : (
           <div className={`photo-drop__avatar${form.gender ? ' photo-drop__avatar--active' : ''}`}>
             <Icon name={form.gender === 'M' ? 'photoMale' : form.gender === 'F' ? 'photoFemale' : 'user'}
@@ -989,7 +1001,7 @@ function Step2({ t, FL, captureState, activeFinger, setActiveFinger, captured, q
                   color: captureState === 'success' ? 'var(--success)'
                        : captureState === 'scanning' ? 'rgba(201,169,97,0.9)'
                        : captured[activeFinger] ? 'var(--success)' : 'var(--ink-400)',
-                  letterSpacing:'0.14em', textTransform:'uppercase',
+                  letterSpacing:'0.02em',
                 }}>
                   {captureState === 'scanning' && '⟳ Escaneando…'}
                   {captureState === 'success'  && '✓ Capturado'}

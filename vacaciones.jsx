@@ -45,6 +45,7 @@ function VacacionesView({ t, lang, setRoute }) {
 
   const [yearCalOpen,  setYearCalOpen]  = React.useState(false);
   const [yearCalReady, setYearCalReady] = React.useState(false);
+  const [yearCalClosing, setYearCalClosing] = React.useState(false);
   const [yearCalMonth, setYearCalMonth] = React.useState(11);
   const [yearCalYear,  setYearCalYear]  = React.useState(new Date().getFullYear());
   const [yearCalPos,   setYearCalPos]   = React.useState({top:0,left:0});
@@ -100,8 +101,11 @@ function VacacionesView({ t, lang, setRoute }) {
         setYearCalPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
       }
       setYearCalReady(true);
-    } else {
-      setYearCalReady(false);
+      setYearCalClosing(false);
+    } else if (yearCalReady) {
+      setYearCalClosing(true);
+      var id = setTimeout(function() { setYearCalClosing(false); setYearCalReady(false); }, 220);
+      return function() { clearTimeout(id); };
     }
   }, [yearCalOpen]);
 
@@ -299,11 +303,11 @@ function VacacionesView({ t, lang, setRoute }) {
             <div onMouseDown={function(e) { if(yearCalOpen) e.preventDefault(); }}
               style={{position:'fixed',top:yearCalPos.top,left:yearCalPos.left,
                 transform:'translateX(-50%)',zIndex:9999,
-                pointerEvents:(yearCalOpen && yearCalReady)?'auto':'none',
-                visibility:(yearCalOpen && yearCalReady)?'visible':'hidden'}}>
+                pointerEvents:(yearCalOpen || yearCalClosing) && yearCalReady ? 'auto' : 'none',
+                visibility:(yearCalOpen || yearCalClosing) && yearCalReady ? 'visible' : 'hidden'}}>
               <div ref={yearCalRef} className="dp-cal" style={{
                 boxShadow:'0 16px 48px rgba(0,0,0,.18)',
-                animation:(yearCalOpen && yearCalReady)?'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both':'none'}}>
+                animation: yearCalClosing ? 'dp-close-vac 0.22s cubic-bezier(0.4,0,1,1) both' : (yearCalOpen && yearCalReady) ? 'dp-open-vac 0.22s cubic-bezier(0.16,1,0.3,1) both' : 'none'}}>
                 {(function() {
                   var firstDow = new Date(yearCalYear, yearCalMonth, 1).getDay();
                   var daysInMo = new Date(yearCalYear, yearCalMonth+1, 0).getDate();

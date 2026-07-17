@@ -178,15 +178,74 @@ function ReportsView({ t, lang, setRoute }) {
   const isCurrentMonth = filterMonth === todayKey();
 
   const prevMonth = React.useCallback(() => {
-    const d = new Date(+fy, +fm - 2, 1);
-    setFilterMonth(d.toLocaleDateString('en-CA').slice(0, 7));
-  }, [fy, fm]);
+    let d = new Date(+fy, +fm - 2, 1);
+    let key = d.toLocaleDateString('en-CA').slice(0, 7);
+    while (key >= '2020-01' && !monthsWithData.has(key)) {
+      d = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      key = d.toLocaleDateString('en-CA').slice(0, 7);
+    }
+    if (monthsWithData.has(key)) setFilterMonth(key);
+  }, [fy, fm, monthsWithData]);
 
   const nextMonth = React.useCallback(() => {
-    const d   = new Date(+fy, +fm, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    if (key <= todayKey()) setFilterMonth(key);
-  }, [fy, fm]);
+    let d   = new Date(+fy, +fm, 1);
+    let key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const limit = todayKey();
+    while (key <= limit && !monthsWithData.has(key)) {
+      d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    }
+    if (key <= limit && monthsWithData.has(key)) setFilterMonth(key);
+  }, [fy, fm, monthsWithData]);
+
+  const goToday = React.useCallback(() => setFilterMonth(todayKey()), []);
+
+  /* ── Selector rápido de mes/año — clic en "Julio 2026" abre un picker
+     (mismo look que .dp-cal de Finca/Vacaciones) con una grilla de 12 meses
+     para saltar directo, sin tener que darle a la flecha N veces. ── */
+  const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
+  const [pickerMounted, setPickerMounted] = React.useState(false);
+  const [pickerClosing, setPickerClosing] = React.useState(false);
+  const [pickerYear, setPickerYear] = React.useState(() => +fy);
+  const pickerRef = React.useRef(null);
+
+  const toggleMonthPicker = () => {
+    setMonthPickerOpen(open => {
+      if (!open) setPickerYear(+fy);
+      return !open;
+    });
+  };
+
+  // Desmonte con delay: al cerrar, primero se reproduce la animación de
+  // salida (repPickerClose) y solo después se quita del DOM — si se
+  // desmontara al instante no se alcanzaría a ver el cierre.
+  React.useEffect(() => {
+    if (monthPickerOpen) {
+      setPickerMounted(true);
+      setPickerClosing(false);
+      return;
+    }
+    if (!pickerMounted) return;
+    setPickerClosing(true);
+    const id = setTimeout(() => { setPickerMounted(false); setPickerClosing(false); }, 220);
+    return () => clearTimeout(id);
+  }, [monthPickerOpen]);
+
+  React.useEffect(() => {
+    if (!monthPickerOpen) return;
+    const onDown = (e) => { if (pickerRef.current && !pickerRef.current.contains(e.target)) setMonthPickerOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setMonthPickerOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [monthPickerOpen]);
+
+  const pickMonth = (monthIdx1) => {
+    const key = `${pickerYear}-${String(monthIdx1).padStart(2,'0')}`;
+    if (key > todayKey()) return;
+    setFilterMonth(key);
+    setMonthPickerOpen(false);
+  };
 
   /* ── Datos reales — se sincronizan entre pestañas y con el kiosco ── */
   const [allAtt, setAllAtt] = React.useState(loadAttendance);
@@ -201,6 +260,18 @@ function ReportsView({ t, lang, setRoute }) {
   const emps       = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
   const activeEmps = React.useMemo(() => emps.filter(e => e.status !== 'inactive'), [emps]);
   const attRecords = React.useMemo(() => Object.values(allAtt), [allAtt]);
+
+  const monthsWithData = React.useMemo(() => {
+    const s = new Set();
+    attRecords.forEach(a => { if (a.date) s.add(a.date.slice(0, 7)); });
+    return s;
+  }, [attRecords]);
+
+  React.useEffect(() => {
+    if (monthsWithData.has(todayKey()) && filterMonth !== todayKey()) {
+      setFilterMonth(todayKey());
+    }
+  }, [monthsWithData]);
 
   /* Los KPIs de Resumen ahora siguen el mismo mes seleccionado en la píldora
      central del header (filterMonth) — antes estaban fijos al mes de hoy sin
@@ -254,7 +325,7 @@ function ReportsView({ t, lang, setRoute }) {
     // repetía "Julio 2026" en cada una de las 4 tarjetas) — sin datos del mes
     // anterior no hay nada que comparar, así que se avisa en vez de
     // simplemente repetir el mes otra vez.
-    if (!hasPrev) return <span style={{ fontSize: 12, color: 'var(--ink-300)' }}>{isES ? 'Sin datos previos' : 'No prior data'}</span>;
+    if (!hasPrev) return null;
     const d = +(curr - prev).toFixed(1);
     const isGood = goodWhenLower ? d <= 0 : d >= 0;
     const arrow  = d === 0 ? '•' : (d > 0 ? '▲' : '▼');
@@ -631,19 +702,69 @@ function ReportsView({ t, lang, setRoute }) {
            azul oscuro que el reloj (DashClock) de Empleados, con flechas para
            navegar el mes — controla filterMonth para toda la página (Resumen,
            Detalle y Calendario comparten el mismo mes). */}
-        <div className="dash-clock" style={{ flex: '0 0 auto', flexDirection: 'row', alignItems: 'center', gap: 18, padding: '11px 22px' }}>
+        <div ref={pickerRef} style={{ position: 'relative', flex: '0 0 auto' }}>
+        <div className="dash-clock" style={{ flexDirection: 'row', alignItems: 'center', gap: 18, padding: '11px 22px' }}>
           <button className="rep-month-arrow" onClick={prevMonth} aria-label={isES ? 'Mes anterior' : 'Previous month'}>
             ‹
           </button>
-          <div className="month-pill-in" key={filterMonth} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 92 }}>
+          <div className="month-pill-in" key={filterMonth}
+            role="button" tabIndex={0} onClick={toggleMonthPicker}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMonthPicker(); } }}
+            aria-label={isES ? 'Elegir mes' : 'Pick month'}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 120, cursor: 'pointer' }}>
             <div className="dash-clock__time">
-              <span className="dash-clock__hm" style={{ fontSize: '1.8rem' }}>{MONTHS_ES[+cm - 1]}</span>
+              <span className="dash-clock__hm">{MONTHS_ES[+cm - 1]}</span>
             </div>
-            <div className="dash-clock__date" style={{ fontSize: 12.5 }}>{cy}</div>
+            <div className="dash-clock__date">{cy}</div>
           </div>
           <button className="rep-month-arrow" onClick={nextMonth} disabled={isCurrentMonth} aria-label={isES ? 'Mes siguiente' : 'Next month'}>
             ›
           </button>
+        </div>
+
+        {pickerMounted && (
+          <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', zIndex: 60 }}>
+          <div className="dp-cal rep-month-picker" style={{ minWidth: 220,
+            animation: pickerClosing
+              ? 'repPickerClose 0.22s cubic-bezier(0.4,0,1,1) both'
+              : 'repPickerOpen 0.22s cubic-bezier(0.16,1,0.3,1) both' }}>
+            <div className="dp-cal__nav">
+              <button type="button" className="dp-cal__arrow" onClick={() => setPickerYear(y => y - 1)} aria-label={isES ? 'Año anterior' : 'Previous year'}>‹</button>
+              <span className="dp-cal__month">{pickerYear}</span>
+              <button type="button" className="dp-cal__arrow" onClick={() => setPickerYear(y => y + 1)} disabled={pickerYear >= +todayKey().slice(0,4)} aria-label={isES ? 'Año siguiente' : 'Next year'}>›</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {MONTHS_ES.map((mLabel, i) => {
+                const key = `${pickerYear}-${String(i+1).padStart(2,'0')}`;
+                const disabled = key > todayKey() || !monthsWithData.has(key);
+                const active = key === filterMonth;
+                return (
+                  <button key={mLabel} type="button" disabled={disabled} onClick={() => pickMonth(i+1)}
+                    style={{
+                      padding: '8px 4px', borderRadius: 8, cursor: disabled ? 'default' : 'pointer',
+                      fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
+                      border: active ? '1px solid var(--ink-800)' : '1px solid var(--ink-100)',
+                      background: active ? 'var(--ink-800)' : 'none',
+                      color: disabled ? 'var(--ink-200)' : active ? '#fff' : 'var(--ink-700)',
+                      transition: 'background .12s, border-color .12s, color .12s',
+                    }}>
+                    {mLabel.slice(0,3)}
+                  </button>
+                );
+              })}
+            </div>
+            {!isCurrentMonth && (
+              <button type="button" className="rep-goto-today" onClick={() => { goToday(); setMonthPickerOpen(false); }}
+                style={{
+                  marginTop: 12, width: '100%', padding: '7px 0', borderRadius: 8, cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
+                }}>
+                {isES ? 'Mes actual' : 'Current month'}
+              </button>
+            )}
+          </div>
+          </div>
+        )}
         </div>
 
         <div className="page__actions" style={{ gap: 16, flex: '1 1 0', justifyContent: 'flex-end', minWidth: 0 }}>

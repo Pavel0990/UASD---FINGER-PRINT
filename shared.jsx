@@ -1277,26 +1277,6 @@ function csvSafe(v) {
 const T = ({ html }) => <span dangerouslySetInnerHTML={{ __html: html }} />;
 
 /* ── Toggle switch ───────────────────────────────────────────── */
-function ToggleSwitch({ value, onChange, disabled, style }) {
-  return (
-    <button type="button" onClick={() => !disabled && onChange(!value)}
-      style={{
-        width:40, height:22, borderRadius:11, border:'none', cursor: disabled ? 'default' : 'pointer',
-        background: value ? 'var(--ink-700)' : 'var(--ink-200)',
-        position:'relative', transition:'background .2s', flexShrink:0,
-        opacity: disabled ? 0.4 : 1,
-        ...style,
-      }}>
-      <span style={{
-        position:'absolute', top:3, left: value ? 21 : 3,
-        width:16, height:16, borderRadius:'50%',
-        background:'var(--paper)', transition:'left .2s',
-        boxShadow:'0 1px 3px rgba(0,0,0,0.2)',
-      }}/>
-    </button>
-  );
-}
-
 /* ── Jornada laboral ──────────────────────────────────────────── */
 // 0=Dom 1=Lun 2=Mar 3=Mié 4=Jue 5=Vie 6=Sáb
 const WEEK_DAYS = [
@@ -1947,7 +1927,7 @@ Object.assign(window, {
   I18N, EMPLOYEES, RECENT_LOG, DEPT_DIST,
   Icon, Crest, TopBar, LangSwitch, AdminPanel,
   initials, StatusBadge, formatTime, formatDate, formatCedula, T, getLateMinutes,
-  WEEK_DAYS, WorkDaysPicker, workDaysLabel, ToggleSwitch,
+  WEEK_DAYS, WorkDaysPicker, workDaysLabel,
   PRESET_COLORS, PRESET_COLOR_NAMES, nearestColorName,
   MONTHS_ES, DAYS_ES,
   getEmployeeEmails, saveEmployeeEmail,

@@ -950,6 +950,7 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
   const [open,     setOpen]     = React.useState(false);
   const [picked,   setPicked]   = React.useState(false);
   const [calReady, setCalReady] = React.useState(false);
+  const [closing,  setClosing]  = React.useState(false);
   const [calPos,   setCalPos]   = React.useState({ top: 0, centerX: 0 });
   const navRef  = React.useRef(null);
   const trigRef = React.useRef(null);
@@ -975,8 +976,11 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
     if (open) {
       computePos();
       setCalReady(true);
-    } else {
-      setCalReady(false);
+      setClosing(false);
+    } else if (calReady) {
+      setClosing(true);
+      var id = setTimeout(function() { setClosing(false); setCalReady(false); }, 220);
+      return function() { clearTimeout(id); };
     }
   }, [open]);
 
@@ -1088,11 +1092,11 @@ function LiceoDateNav({ viewDate, setViewDate, navDate, fmtDate, isES, daily, ro
         <div onMouseDown={function(e){ if (open) e.preventDefault(); }}
           style={{position:'fixed',top:calPos.top,left:calPos.centerX,
                   transform:'translateX(-50%)',zIndex:9999,
-                  pointerEvents:(open && calReady) ? 'auto' : 'none',
-                  visibility:(open && calReady) ? 'visible' : 'hidden'}}>
+                  pointerEvents:(open || closing) && calReady ? 'auto' : 'none',
+                  visibility:(open || closing) && calReady ? 'visible' : 'hidden'}}>
           <div ref={calRef} className="dp-cal"
             style={{boxShadow:'0 16px 48px rgba(0,0,0,.18)',
-              animation:(open && calReady)?'dp-open-vac 0.25s cubic-bezier(0.16,1,0.3,1) both':'none'}}>
+              animation: closing ? 'dp-close-vac 0.22s cubic-bezier(0.4,0,1,1) both' : (open && calReady) ? 'dp-open-vac 0.22s cubic-bezier(0.16,1,0.3,1) both' : 'none'}}>
             <div className="dp-cal__nav">
               <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevYear}>«</button>
               <button tabIndex={-1} type="button" className="dp-cal__arrow" onClick={prevMo}>‹</button>
