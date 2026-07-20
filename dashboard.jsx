@@ -2592,6 +2592,23 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [exportOpen]);
 
+  // Desmonte con delay: misma animación de entrada/salida (repPickerOpen/
+  // repPickerClose) que el picker de mes de Reportes — al cerrar, primero
+  // se reproduce el cierre y solo después se quita del DOM.
+  const [exportMounted, setExportMounted] = React.useState(false);
+  const [exportClosing, setExportClosing] = React.useState(false);
+  React.useEffect(() => {
+    if (exportOpen) {
+      setExportMounted(true);
+      setExportClosing(false);
+      return;
+    }
+    if (!exportMounted) return;
+    setExportClosing(true);
+    const id = setTimeout(() => { setExportMounted(false); setExportClosing(false); }, 150);
+    return () => clearTimeout(id);
+  }, [exportOpen]);
+
   React.useEffect(() => {
     if (!statusOpen) return;
     const onDoc = (e) => { if (statusRef.current && !statusRef.current.contains(e.target)) setStatusOpen(false); };
@@ -2929,8 +2946,10 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
             <button className="btn btn--ghost" onClick={() => setExportOpen(o => !o)}>
               <Icon name="download" size={14}/> {t.dash_export} <Icon name="chevDown" size={12}/>
             </button>
-            {exportOpen && (
-              <div className="export-menu">
+            {exportMounted && (
+              <div className="export-menu" style={{ animation: exportClosing
+                ? 'repPickerClose 0.15s cubic-bezier(0.4,0,1,1) both'
+                : 'repPickerOpen 0.15s cubic-bezier(0.16,1,0.3,1) both' }}>
                 <button className="export-menu__item" onClick={exportPDF}>
                   <span className="export-menu__tag export-menu__tag--pdf">PDF</span> {t.dash_export_pdf}
                 </button>

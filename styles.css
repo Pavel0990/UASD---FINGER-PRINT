@@ -1556,6 +1556,22 @@ input, select, textarea {
 .kpi--fill .kpi__pill { color: var(--cream-100); border-color: rgba(245,242,234,0.28); }
 .kpi--warn .kpi__pill { color: var(--gold-600); border-color: rgba(201,169,97,0.4); }
 .kpi--ok .kpi__pill { color: #2f7a5a; border-color: rgba(79,157,122,0.4); }
+
+/* Pill de tendencia de Reportes — aparece con fade+scale cuando hay mes
+   anterior con qué comparar; cuando no hay datos, trendPill() devuelve
+   null y desaparece de una vez (ya sin animación, no hay nada que hacer
+   desvanecer). */
+@keyframes repTrendPillIn {
+  from { opacity: 0; transform: scale(0.85) translateY(-3px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.rep-trend-pill-in {
+  animation: repTrendPillIn 0.28s cubic-bezier(0.16,1,0.3,1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rep-trend-pill-in { animation: none !important; }
+}
+
 .kpi__pill-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--success);
@@ -3165,11 +3181,6 @@ tr.table__row--selected .table__actions {
   padding: 22px 24px;
 }
 
-/* Doble clic para expandir a pantalla completa — el cursor zoom-in insinúa
-   que el card responde a algo; .rep-area-chart__svg--live pisa este cursor
-   con crosshair (más específico) mientras el mouse está sobre la curva. */
-.chart-card--expandable { cursor: zoom-in; }
-
 .chart-card__expand-btn {
   flex-shrink: 0;
   width: 28px; height: 28px;
@@ -3329,7 +3340,7 @@ tr.table__row--selected .table__actions {
    scrollee la página en vez de mover el tooltip. */
 .rep-area-chart { position: relative; margin-top: 4px; }
 .rep-area-chart svg { width: 100%; height: auto; display: block; overflow: visible; touch-action: none; }
-.rep-area-chart__svg--live { cursor: crosshair; }
+.rep-area-chart__svg--live { cursor: pointer; }
 
 /* La línea se "dibuja" sola al montar/cambiar de dato — pathLength="1" en el
    <path> normaliza su longitud real a 1, así la animación no depende de la
@@ -3342,6 +3353,22 @@ tr.table__row--selected .table__actions {
 @keyframes repDrawLine { to { stroke-dashoffset: 0; } }
 .rep-area-fill-draw { animation: repFadeIn 0.6s ease 0.25s both; }
 @keyframes repFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* "Sobrecarga" — pulso blanco corto que recorre la línea real en loop
+   continuo, por encima del color base (como una corriente viajando por el
+   cable). pathLength=1 + dash corto/largo hueco = un solo segmento visible
+   que dobla la curva completa una y otra vez. */
+.rep-area-overload {
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 3px rgba(255,255,255,0.85));
+  opacity: 0.9;
+  pointer-events: none;
+  animation: repOverloadSweep 1.1s linear infinite;
+}
+@keyframes repOverloadSweep { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .rep-area-overload { animation: none; opacity: 0; }
+}
 
 /* Punto "en vivo" del panel de Aspectos destacados */
 .rep-live-dot { animation: pulse 1.6s ease-in-out infinite; }
@@ -4106,7 +4133,12 @@ tr.table__row--selected .table__actions {
   box-shadow: var(--shadow-lg);
   padding: 6px;
   z-index: 50;
-  animation: usermenuIn .16s cubic-bezier(.22,1,.36,1);
+  transform-origin: top right;
+  /* animación inline (repPickerOpen/repPickerClose) — mismo par que el
+     picker de mes de Reportes, ver .rep-month-picker */
+}
+@media (prefers-reduced-motion: reduce) {
+  .export-menu { animation: none !important; }
 }
 .export-menu__item {
   display: flex;

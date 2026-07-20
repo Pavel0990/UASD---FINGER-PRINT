@@ -101,20 +101,28 @@ function buildAreaPath(values, w, h, padX, padTop, padBottom) {
    móvil — un tooltip desbordado empuja TODA la página a scroll horizontal). */
 const clampPct = (pct) => Math.min(90, Math.max(10, pct));
 
-function AreaChart({ values, labels, color, gradId, peakIndex, tooltipCaption, formatValue, emptyLabel }) {
+function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue, emptyLabel }) {
   const W = 400, H = 170, PAD_X = 26, PAD_TOP = 18, PAD_BOTTOM = 20;
   const hasData = values.some(v => v > 0);
   const { line, area, pts } = buildAreaPath(values, W, H, PAD_X, PAD_TOP, PAD_BOTTOM);
   const gridYs = [PAD_TOP, PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) / 2, H - PAD_BOTTOM];
 
+  // `last7` (de donde salen `values`/`labels`) siempre son los últimos 7 días
+  // terminando HOY — el último índice es siempre hoy y nunca hay un día
+  // futuro en el arreglo, así que "no dejar seleccionar días que aún no
+  // llegan" ya queda garantizado por los datos mismos, no hace falta clamp.
+  const todayIdx = values.length - 1;
+
   const svgRef = React.useRef(null);
-  const [hoverIdx, setHoverIdx] = React.useState(null);
-  const activeIdx = hoverIdx !== null ? hoverIdx : peakIndex;
+  const draggingRef = React.useRef(false);
+  // Seleccionado por el usuario (clic/tap), arranca en HOY — ya no sigue el
+  // mouse solo por pasar por encima; hay que hacer clic o arrastrar para
+  // moverlo, así el usuario elige el día en vez de que "se mueva solo".
+  const [selectedIdx, setSelectedIdx] = React.useState(todayIdx);
+  const activeIdx = hasData ? Math.min(selectedIdx, todayIdx) : -1;
   const active = hasData && activeIdx >= 0 ? pts[activeIdx] : null;
 
-  // Sigue el mouse o el dedo por toda la gráfica — engancha al día real más
-  // cercano, así se puede "tocar y mover" sobre cualquier punto, no solo el pico.
-  const trackPointer = (clientX) => {
+  const selectFromClientX = (clientX) => {
     const svg = svgRef.current;
     if (!svg || !hasData) return;
     const rect = svg.getBoundingClientRect();
@@ -122,19 +130,28 @@ function AreaChart({ values, labels, color, gradId, peakIndex, tooltipCaption, f
     const relX = ((clientX - rect.left) / rect.width) * W;
     let nearest = 0, nearestDist = Infinity;
     pts.forEach((p, i) => { const d = Math.abs(p.x - relX); if (d < nearestDist) { nearestDist = d; nearest = i; } });
-    setHoverIdx(nearest);
+    setSelectedIdx(nearest);
   };
+
+  // Pointer events unifican mouse y touch: clic simple selecciona, y si se
+  // mantiene presionado y se arrastra, va "escaneando" día por día (drag).
+  const onPointerDown = (e) => {
+    draggingRef.current = true;
+    svgRef.current?.setPointerCapture?.(e.pointerId);
+    selectFromClientX(e.clientX);
+  };
+  const onPointerMove = (e) => { if (draggingRef.current) selectFromClientX(e.clientX); };
+  const onPointerUp = () => { draggingRef.current = false; };
 
   return (
     <>
       <div className="rep-area-chart">
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
           className={hasData ? 'rep-area-chart__svg--live' : ''}
-          onMouseMove={(e) => trackPointer(e.clientX)}
-          onMouseLeave={() => setHoverIdx(null)}
-          onTouchStart={(e) => trackPointer(e.touches[0].clientX)}
-          onTouchMove={(e) => trackPointer(e.touches[0].clientX)}
-          onTouchEnd={() => setHoverIdx(null)}>
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}>
           {gridYs.map((y, i) => <line key={i} x1="0" y1={y} x2={W} y2={y} stroke="var(--ink-100)" strokeWidth="1"/>)}
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -144,9 +161,16 @@ function AreaChart({ values, labels, color, gradId, peakIndex, tooltipCaption, f
           </defs>
           {hasData && <path key={`fill-${values.join(',')}`} className="rep-area-fill-draw" d={area} fill={`url(#${gradId})`}/>}
           {hasData && <path key={`line-${values.join(',')}`} className="rep-area-draw" pathLength="1" d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>}
+          {/* "Sobrecarga" — un trazo blanco corto que recorre la línea en loop
+              por encima del color base, como un pulso de energía viajando por
+              el cable. Mismo `d` que la línea real, pathLength=1 normaliza el
+              largo real para que el dash-offset funcione igual sin importar
+              la forma de la curva. */}
+          {hasData && <path d={line} fill="none" pathLength="1" className="rep-area-overload"
+            stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="0.09 0.91"/>}
           {active && <>
             <line x1={active.x} y1={active.y} x2={active.x} y2={H - PAD_BOTTOM} stroke="var(--ink-300)" strokeWidth="1" strokeDasharray="3,4"/>
-            <circle cx={active.x} cy={active.y} r={hoverIdx !== null ? 6 : 5} fill="var(--paper)" stroke={color} strokeWidth="2.5"/>
+            <circle cx={active.x} cy={active.y} r="5" fill="var(--paper)" stroke={color} strokeWidth="2.5"/>
           </>}
         </svg>
         {!hasData && <div className="rep-area-empty">{emptyLabel}</div>}
@@ -162,6 +186,30 @@ function AreaChart({ values, labels, color, gradId, peakIndex, tooltipCaption, f
         ))}
       </div>
     </>
+  );
+}
+
+/* ── Icono de reloj en vivo — agujas apuntando a la hora real, para el KPI
+   de Tardanzas (mismo lenguaje visual que el DashClock de Empleados, pero
+   como reloj analógico en vez de dígitos). ── */
+function LiveClockIcon({ size = 26 }) {
+  const [now, setNow] = React.useState(new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const h = now.getHours() % 12;
+  const m = now.getMinutes();
+  const s = now.getSeconds();
+  const hourDeg = (h + m / 60) * 30;
+  const minDeg  = (m + s / 60) * 6;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="12" x2="12" y2="7.5" style={{ transformOrigin: '12px 12px', transform: `rotate(${hourDeg}deg)`, transition: 'transform .3s cubic-bezier(.4,0,.2,1)' }}/>
+      <line x1="12" y1="12" x2="12" y2="6" style={{ transformOrigin: '12px 12px', transform: `rotate(${minDeg}deg)`, transition: 'transform .3s cubic-bezier(.4,0,.2,1)' }}/>
+    </svg>
   );
 }
 
@@ -340,7 +388,7 @@ function ReportsView({ t, lang, setRoute }) {
     const isGood = goodWhenLower ? d <= 0 : d >= 0;
     const arrow  = d === 0 ? '•' : (d > 0 ? '▲' : '▼');
     return (
-      <span className={`kpi__pill ${isGood ? 'kpi__pill--up' : 'kpi__pill--danger'}`}>
+      <span className={`kpi__pill rep-trend-pill-in ${isGood ? 'kpi__pill--up' : 'kpi__pill--danger'}`}>
         {arrow} {Math.abs(d).toFixed(1)}{unit || '%'} <span style={{opacity:0.6, fontWeight:500}}>vs. {prevMonthLabelShort}</span>
       </span>
     );
@@ -361,16 +409,10 @@ function ReportsView({ t, lang, setRoute }) {
     return out;
   }, [attRecords]);
 
-  const last7Totals = last7.map(d => d.total);
-  const hasLast7Data = last7Totals.some(v => v > 0);
-  const last7Peak    = hasLast7Data ? last7Totals.indexOf(Math.max(...last7Totals)) : -1;
-
   const fullDayName = (i) => (isES ? FULL_DAYS_ES : FULL_DAYS_EN)[new Date(last7[i].iso + 'T00:00:00').getDay()];
 
   /* ── Tendencia de tardanzas — últimos 7 días (misma base de last7) ── */
   const lateTotals  = last7.map(d => d.late);
-  const lateMax     = Math.max(...lateTotals);
-  const latePeakIdx = lateMax > 0 ? lateTotals.indexOf(lateMax) : -1;
 
   /* ── Llegadas por hora — mes actual (para el insight de hora pico) ── */
   const hourHours  = React.useMemo(() => Array.from({length:13}, (_,i) => i + 6), []);
@@ -622,6 +664,23 @@ function ReportsView({ t, lang, setRoute }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [exportOpen]);
 
+  // Desmonte con delay: misma animación de entrada/salida (repPickerOpen/
+  // repPickerClose) que el picker de mes — al cerrar, primero se reproduce
+  // el cierre y solo después se quita del DOM.
+  const [exportMounted, setExportMounted] = React.useState(false);
+  const [exportClosing, setExportClosing] = React.useState(false);
+  React.useEffect(() => {
+    if (exportOpen) {
+      setExportMounted(true);
+      setExportClosing(false);
+      return;
+    }
+    if (!exportMounted) return;
+    setExportClosing(true);
+    const id = setTimeout(() => { setExportMounted(false); setExportClosing(false); }, 150);
+    return () => clearTimeout(id);
+  }, [exportOpen]);
+
   const exportExcel = () => {
     setExportOpen(false);
     const esc = (v) => `"${csvSafe(v).replace(/"/g, '""')}"`;
@@ -667,7 +726,7 @@ function ReportsView({ t, lang, setRoute }) {
      changelog.jsx (filtro de tipo) — pill animado que se desliza al ítem activo. */
   const [view, setView] = React.useState('resumen');
   const viewOptions = [
-    { id: 'resumen', label: t.rep_view_summary, icon: 'activity' },
+    { id: 'resumen', label: t.rep_view_summary, icon: 'chartPie' },
     { id: 'detalle', label: t.rep_view_detail, icon: 'barChart' },
     { id: 'calendario', label: t.rep_view_calendar, icon: 'calendar' },
   ];
@@ -828,8 +887,10 @@ function ReportsView({ t, lang, setRoute }) {
             <button className="btn btn--ghost" onClick={() => setExportOpen(o => !o)}>
               <Icon name="download" size={14}/> {t.dash_export} <Icon name="chevDown" size={12}/>
             </button>
-            {exportOpen && (
-              <div className="export-menu">
+            {exportMounted && (
+              <div className="export-menu" style={{ animation: exportClosing
+                ? 'repPickerClose 0.15s cubic-bezier(0.4,0,1,1) both'
+                : 'repPickerOpen 0.15s cubic-bezier(0.16,1,0.3,1) both' }}>
                 <button className="export-menu__item" onClick={exportPDF}>
                   <span className="export-menu__tag export-menu__tag--pdf">PDF</span> {t.dash_export_pdf}
                 </button>
@@ -846,36 +907,56 @@ function ReportsView({ t, lang, setRoute }) {
       {view === 'resumen' && <div key="resumen" className="rep-panel-in">
 
       {/* ── KPIs — mes actual, datos reales, comparados con el mes anterior ──
-           label → valor → tendencia (reutiliza .kpi/.kpi__label/.kpi__value/
-           .kpi__pill del sistema, solo se reordena el contenido interno). ── */}
+           icono + tendencia arriba, label + valor abajo (mismo patrón
+           .kpi__top/.kpi__icon/.kpi__foot que Empleados). ── */}
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
         <div className="kpi kpi--clickable" role="button" tabIndex={0}
           onClick={() => goToDetalle('todos')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
-          <div className="kpi__label">{t.rep_punctual_on}</div>
-          <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
-          <div style={{ marginTop: 12 }}>{trendPill(onTimePct, prevOnTimePct, hasPrevAtt, false)}</div>
+          <div className="kpi__top">
+            <div className="kpi__icon"><Icon name="userCheck" size={26}/></div>
+            {trendPill(onTimePct, prevOnTimePct, hasPrevAtt, false)}
+          </div>
+          <div className="kpi__foot">
+            <div className="kpi__label">{t.rep_punctual_on}</div>
+            <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
+          </div>
         </div>
         <div className="kpi kpi--clickable" role="button" tabIndex={0}
           onClick={() => goToDetalle('tardanza')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('tardanza'); } }}>
-          <div className="kpi__label">{t.rep_punctual_late}</div>
-          <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
-          <div style={{ marginTop: 12 }}>{trendPill(latePct, prevLatePct, hasPrevAtt, true)}</div>
+          <div className="kpi__top">
+            <div className="kpi__icon"><LiveClockIcon size={26}/></div>
+            {trendPill(latePct, prevLatePct, hasPrevAtt, true)}
+          </div>
+          <div className="kpi__foot">
+            <div className="kpi__label">{t.rep_punctual_late}</div>
+            <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
+          </div>
         </div>
         <div className="kpi kpi--clickable" role="button" tabIndex={0}
           onClick={() => goToDetalle('ausencia')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('ausencia'); } }}>
-          <div className="kpi__label">{t.rep_punctual_absent}</div>
-          <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
-          <div style={{ marginTop: 12 }}>{trendPill(absentPct, prevAbsentPct, true, true)}</div>
+          <div className="kpi__top">
+            <div className="kpi__icon"><Icon name="userX" size={26}/></div>
+            {trendPill(absentPct, prevAbsentPct, true, true)}
+          </div>
+          <div className="kpi__foot">
+            <div className="kpi__label">{t.rep_punctual_absent}</div>
+            <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
+          </div>
         </div>
         <div className="kpi kpi--clickable" role="button" tabIndex={0}
           onClick={() => goToDetalle('todos')}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
-          <div className="kpi__label">{isES ? 'Marcajes del mes' : 'Check-ins this month'}</div>
-          <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>{isES ? 'Total' : 'Total'}</span></div>
-          <div style={{ marginTop: 12 }}>{trendPill(curMonthRecords.length, prevMonthRecords.length, prevMonthRecords.length > 0, false, '')}</div>
+          <div className="kpi__top">
+            <div className="kpi__icon"><Icon name="fingerprint" size={26}/></div>
+            {trendPill(curMonthRecords.length, prevMonthRecords.length, prevMonthRecords.length > 0, false, '')}
+          </div>
+          <div className="kpi__foot">
+            <div className="kpi__label">{isES ? 'Marcajes del mes' : 'Check-ins this month'}</div>
+            <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>{isES ? 'Total' : 'Total'}</span></div>
+          </div>
         </div>
       </div>
 
@@ -915,7 +996,6 @@ function ReportsView({ t, lang, setRoute }) {
                 labels={last7.map(d => d.day)}
                 color="var(--ink-700)"
                 gradId="repGradAsistenciaXL"
-                peakIndex={last7Peak}
                 tooltipCaption={isES ? 'Marcajes' : 'Check-ins'}
                 formatValue={(i) => `${last7[i].total} · ${fullDayName(i)}`}
                 emptyLabel={isES ? 'Sin marcajes esta semana' : 'No check-ins this week'}
@@ -927,7 +1007,7 @@ function ReportsView({ t, lang, setRoute }) {
       )}
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20, marginBottom:20 }}>
-        <div className="chart-card chart-card--expandable" onDoubleClick={() => setAttExpanded(true)}>
+        <div className="chart-card" onDoubleClick={() => setAttExpanded(true)}>
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{t.rep_attend}</div>
@@ -944,7 +1024,6 @@ function ReportsView({ t, lang, setRoute }) {
             labels={last7.map(d => d.day)}
             color="var(--ink-700)"
             gradId="repGradAsistencia"
-            peakIndex={last7Peak}
             tooltipCaption={isES ? 'Marcajes' : 'Check-ins'}
             formatValue={(i) => `${last7[i].total} · ${fullDayName(i)}`}
             emptyLabel={isES ? 'Sin marcajes esta semana' : 'No check-ins this week'}
@@ -963,7 +1042,6 @@ function ReportsView({ t, lang, setRoute }) {
             labels={last7.map(d => d.day)}
             color="var(--gold-600)"
             gradId="repGradTardanzas"
-            peakIndex={latePeakIdx}
             tooltipCaption={isES ? 'Tardanzas' : 'Late arrivals'}
             formatValue={(i) => `${lateTotals[i]} · ${fullDayName(i)}`}
             emptyLabel={isES ? 'Sin tardanzas esta semana' : 'No late arrivals this week'}
