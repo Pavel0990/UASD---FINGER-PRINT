@@ -1259,6 +1259,17 @@ function FarmView({ t, lang, setRoute }) {
   const [isDirty, setIsDirty] = React.useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = React.useState(false);
 
+  // Con backend activo, farmEmps/daily arrancan del localStorage (arriba) y se
+  // reemplazan acá por los datos reales de Postgres apenas cargan — el useEffect
+  // de sincronización de `draft` (más abajo) ya reacciona a cambios en `daily`,
+  // así que no hace falta duplicar esa lógica.
+  React.useEffect(() => {
+    if (!(typeof isBackendActive === 'function' && isBackendActive())) return;
+    Promise.all([apiGetRoster('finca'), apiGetRosterDaily('finca')])
+      .then(([roster, dailyData]) => { setFarmEmps(roster); setDaily(dailyData); })
+      .catch(err => console.error('cargar roster finca', err));
+  }, []);
+
   const flashTimerRef = React.useRef(null);
 
   /* Cuando cambia la fecha sincroniza el draft; también cuando daily cambia
@@ -1298,10 +1309,10 @@ function FarmView({ t, lang, setRoute }) {
   const isToday      = viewDate === today;
   const isAlreadySaved = !!(daily[viewDate] && Object.keys(daily[viewDate]).length);
 
-  const showFlash = function(msg) {
+  const showFlash = function(msg, isError) {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    setFlash(msg);
-    flashTimerRef.current = setTimeout(function() { setFlash(null); }, 2000);
+    setFlash({ msg: msg, isError: !!isError });
+    flashTimerRef.current = setTimeout(function() { setFlash(null); }, isError ? 3200 : 2000);
   };
 
   const togglePresent = (empId) => {
@@ -1331,6 +1342,29 @@ function FarmView({ t, lang, setRoute }) {
     var records = Object.assign({}, daily);
     if (!Object.keys(filteredDraft).length) delete records[viewDate];
     else records[viewDate] = filteredDraft;
+
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      // El backend hace el mismo puente hacia attendance_events/absences en una
+      // sola transacción server-side (roster.service.js saveDay) — reemplaza el
+      // read-mutate-write manual sobre dos localStorage de abajo. Optimista pero
+      // con rollback: si el fetch falla, se revierte a `daily` y se avisa (antes
+      // el flash de éxito se mostraba incondicionalmente, sin importar el resultado real).
+      var previousDaily = daily;
+      setDaily(records);
+      apiSaveRosterDay('finca', viewDate, Object.keys(filteredDraft))
+        .then(fresh => {
+          setDaily(fresh);
+          setIsDirty(false);
+          setConfirmOverwrite(false);
+          showFlash(isES ? 'Asistencia guardada' : 'Attendance saved');
+        })
+        .catch(err => {
+          console.error('saveAttendance finca', err);
+          setDaily(previousDaily);
+          showFlash(isES ? 'No se pudo guardar — intenta de nuevo' : 'Could not save — try again', true);
+        });
+      return;
+    }
     setDaily(records);
     saveFarmDaily(records);
 
@@ -1396,24 +1430,47 @@ function FarmView({ t, lang, setRoute }) {
     if (farmEmps.includes(empId)) return;
     const list = [...farmEmps, empId];
     setFarmEmps(list);
-    saveFarmEmployees(list);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiAddToRoster(empId, 'finca').catch(err => {
+        console.error('addToFarm', err);
+        setFarmEmps(farmEmps);
+        showFlash(isES ? 'No se pudo agregar — intenta de nuevo' : 'Could not add — try again', true);
+      });
+    } else {
+      saveFarmEmployees(list);
+    }
     setSearchVal('');
   };
 
   const removeFromFarm = function(empId) {
     var list = farmEmps.filter(function(id) { return id !== empId; });
     setFarmEmps(list);
-    saveFarmEmployees(list);
-    var records = Object.assign({}, daily);
-    Object.keys(records).forEach(function(date) {
-      if (records[date] && records[date][empId]) {
-        records[date] = Object.assign({}, records[date]);
-        delete records[date][empId];
-        if (!Object.keys(records[date]).length) delete records[date];
-      }
-    });
-    setDaily(records);
-    saveFarmDaily(records);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      // El backend también borra el historial de asistencia/ausencias de esa
+      // sede para este empleado (roster.service.js removeFromRoster) — mismo
+      // comportamiento que el bloque local de abajo, solo que server-side.
+      var previousList = farmEmps;
+      apiRemoveFromRoster(empId, 'finca')
+        .then(() => apiGetRosterDaily('finca'))
+        .then(fresh => setDaily(fresh))
+        .catch(err => {
+          console.error('removeFromFarm', err);
+          setFarmEmps(previousList);
+          showFlash(isES ? 'No se pudo eliminar — intenta de nuevo' : 'Could not remove — try again', true);
+        });
+    } else {
+      saveFarmEmployees(list);
+      var records = Object.assign({}, daily);
+      Object.keys(records).forEach(function(date) {
+        if (records[date] && records[date][empId]) {
+          records[date] = Object.assign({}, records[date]);
+          delete records[date][empId];
+          if (!Object.keys(records[date]).length) delete records[date];
+        }
+      });
+      setDaily(records);
+      saveFarmDaily(records);
+    }
     setDraft(function(prev) {
       var next = Object.assign({}, prev);
       delete next[empId];
@@ -1442,7 +1499,7 @@ function FarmView({ t, lang, setRoute }) {
   };
 
   const availableEmps = React.useMemo(function() {
-    return EMPLOYEES.filter(function(e) { return !farmEmps.includes(e.id) && e.status !== 'inactive'; });
+    return EMPLOYEES.filter(function(e) { return !farmEmps.includes(e.id) && e.status === 'ok'; });
   }, [farmEmps]);
 
   const filteredAvailable = React.useMemo(function() {
@@ -1650,12 +1707,12 @@ function FarmView({ t, lang, setRoute }) {
           {flash && (
             <div style={{alignSelf:'center',marginTop:'10px',display:'flex',alignItems:'center',gap:'7px',
               whiteSpace:'nowrap',pointerEvents:'none',
-              background:'var(--ink-800)',color:'var(--cream-100)',
+              background: flash.isError ? 'var(--danger)' : 'var(--ink-800)',color:'var(--cream-100)',
               padding:'10px 18px',borderRadius:'999px',
               fontFamily:'var(--font-sans)',fontSize:'12px',fontWeight:600,letterSpacing:'0.04em',
               animation:'flashFincaLife 2s ease both'}}>
-              <Icon name="check" size={13} stroke={3.2}/>
-              {flash}
+              <Icon name={flash.isError ? 'alertTriangle' : 'check'} size={13} stroke={3.2}/>
+              {flash.msg}
             </div>
           )}
 

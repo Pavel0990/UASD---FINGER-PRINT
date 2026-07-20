@@ -434,58 +434,6 @@ input, select, textarea {
   color: var(--ink-300);
   margin-top: 3px;
 }
-.usermenu__role {
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--ink-100);
-}
-.usermenu__role-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.usermenu__role-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--ink-400);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.usermenu__perms {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 12px;
-}
-.usermenu__perm {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ink-600);
-  background: var(--cream-50);
-  border: 1px solid var(--ink-100);
-  border-radius: 999px;
-  padding: 4px 9px 4px 7px;
-}
-.usermenu__perm svg { color: var(--success); }
-.usermenu__meta {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 14px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--ink-100);
-}
-.usermenu__meta-item:first-child { grid-column: span 2; }
-.usermenu__meta-item { display: flex; flex-direction: column; gap: 3px; }
-.usermenu__meta-label {
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--ink-400);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.usermenu__meta-val { font-size: 13px; color: var(--ink-800); font-weight: 500; }
 .usermenu__actions { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
 .usermenu__action {
   display: flex;
@@ -501,9 +449,6 @@ input, select, textarea {
 }
 .usermenu__action:hover { background: var(--cream-100); }
 .usermenu__action svg { color: var(--ink-400); }
-.usermenu__action--danger { color: var(--danger); }
-.usermenu__action--danger svg { color: var(--danger); }
-.usermenu__action--danger:hover { background: rgba(193,85,77,0.07); }
 
 .topbar__user-name {
   font-size: 14.5px;
@@ -587,10 +532,8 @@ input, select, textarea {
 }
 
 .field__label {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--ink-400);
   display: flex;
   align-items: center;
@@ -1294,25 +1237,6 @@ input, select, textarea {
   position: relative;
 }
 
-.recog-panel__title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--gold-500);
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  margin-bottom: 18px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.recog-panel__title::before {
-  content: '';
-  width: 18px;
-  height: 1px;
-  background: var(--gold-500);
-}
-
 .recog-panel__card {
   position: relative;
   background: linear-gradient(180deg, rgba(44,62,102,0.3), rgba(14,18,38,0.4));
@@ -1388,18 +1312,6 @@ input, select, textarea {
   font-size: 13px;
   color: var(--cream-100);
   font-weight: 500;
-}
-
-.recog-panel__action-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 4px;
-}
-
-.recog-panel__action-row .btn {
-  padding: 10px 12px;
-  font-size: 12px;
 }
 
 .recog-panel__divider {
@@ -3253,6 +3165,65 @@ tr.table__row--selected .table__actions {
   padding: 22px 24px;
 }
 
+/* Doble clic para expandir a pantalla completa — el cursor zoom-in insinúa
+   que el card responde a algo; .rep-area-chart__svg--live pisa este cursor
+   con crosshair (más específico) mientras el mouse está sobre la curva. */
+.chart-card--expandable { cursor: zoom-in; }
+
+.chart-card__expand-btn {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  display: grid; place-items: center;
+  color: var(--ink-300);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.chart-card__expand-btn:hover {
+  background: var(--cream-50);
+  border-color: var(--ink-100);
+  color: var(--ink-700);
+}
+
+/* ── Modal de expansión de gráfica (Asistencia diaria) — mismas proporciones
+   y misma banda de cabecera que .admin-panel (el panel de administración
+   donde vive Control de actividad): acc-overlay de fondo, acc-modal__head
+   oscuro con avatar/título/cierre, panel casi a pantalla completa. No se
+   reescribe .acc-modal__head — solo se acota overflow de texto acá. ── */
+.chart-expand-modal {
+  width: 94vw; max-width: 1100px;
+  height: 85vh; max-height: 760px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  animation: accPop .24s cubic-bezier(.16,1,.3,1);
+}
+.chart-expand-modal .acc-modal__head { flex-shrink: 0; }
+.chart-expand-modal .acc-modal__head-id { min-width: 0; }
+.chart-expand-modal .acc-modal__title,
+.chart-expand-modal .acc-modal__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-expand-modal__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 0;
+  padding: 24px 32px;
+}
+.chart-expand-modal__body > div { width: 100%; max-width: 960px; min-width: 0; }
+@media (max-width: 560px) {
+  .chart-expand-modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0; height: 92vh; width: 100%; }
+  .chart-expand-modal__body { padding: 18px 16px; }
+}
+
 .chart-card__head {
   display: flex;
   justify-content: space-between;
@@ -3707,12 +3678,6 @@ tr.table__row--selected .table__actions {
   background: var(--cream-50);
 }
 
-.filter-chip--active {
-  background: var(--ink-800);
-  color: var(--cream-100);
-  border-color: var(--ink-800);
-}
-
 /* Segmented filter (dashboard table) */
 .seg-filter {
   display: inline-flex;
@@ -3721,7 +3686,6 @@ tr.table__row--selected .table__actions {
   overflow-x: auto;
   gap: 3px;
   background: var(--cream-50);
-  border: 1px solid var(--ink-100);
   border-radius: 999px;
   padding: 3px;
   position: relative;
@@ -3761,13 +3725,9 @@ tr.table__row--selected .table__actions {
 /* Variante grande — solo Reportes (Resumen/Detalle/Calendario), para que
    haga juego con el header de página ya agrandado, sin tocar el seg-filter
    compartido que usan Empleados y Control de actividad. */
-.seg-filter--lg { padding: 4px; }
-.seg-filter--lg .seg-filter__item { padding: 7px 18px; font-size: 13.5px; }
+.seg-filter--lg { padding: 3px; }
+.seg-filter--lg .seg-filter__item { padding: 8px 16px; font-size: 12px; gap: 5px; }
 
-.seg-filter__item--active .seg-filter__count {
-  background: rgba(245,242,234,0.18);
-  color: var(--cream-100);
-}
 
 /* ============================================
    Lang switch
@@ -3843,6 +3803,7 @@ tr.table__row--selected .table__actions {
   animation: flashIn 0.3s ease;
 }
 .flash svg { opacity: .85; flex-shrink: 0; }
+.flash--error { background: var(--danger); }
 
 @keyframes flashIn {
   from { opacity: 0; transform: translate(-50%, 12px); }
@@ -3884,10 +3845,8 @@ tr.table__row--selected .table__actions {
 .kiosk--light .kiosk__time-main { color: var(--ink-800); }
 .kiosk--light .kiosk__time-sub  { color: var(--ink-500); }
 
-.kiosk--light .kiosk__prompt-pre { color: var(--gold-600); }
 .kiosk--light .kiosk__prompt-title { color: var(--ink-800); }
 .kiosk--light .kiosk__prompt-title strong { color: var(--gold-600); }
-.kiosk--light .kiosk__hint { color: var(--ink-500); }
 
 .kiosk--light .kiosk__chip {
   border-color: rgba(22,27,51,0.12);
@@ -3910,9 +3869,6 @@ tr.table__row--selected .table__actions {
   background: transparent;
   border-left: 1px solid rgba(22,27,51,0.07);
 }
-.kiosk--light .recog-panel__title { color: var(--gold-600); }
-.kiosk--light .recog-panel__title::before { background: var(--gold-600); }
-
 .kiosk--light .recog-panel__card {
   background: linear-gradient(180deg, #FFFFFF, #FAF7F0);
   border: 1px solid rgba(176,142,68,0.3);
@@ -4085,7 +4041,6 @@ tr.table__row--selected .table__actions {
   .acc-modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: 95vh; }
   .acc-modal__head { padding: 18px 18px; }
   .acc-modal__title { font-size: 18px; }
-  .acc-modal__body { padding: 8px 18px 24px; }
   .acc-form__row { grid-template-columns: 1fr; }
   .usermenu { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: 85vh; overflow-y: auto; }
 }
@@ -4259,8 +4214,8 @@ tr.table__row--selected .table__actions {
   background: var(--cream-50);
 }
 .admin-panel__sidebar-label {
-  font-family: var(--font-sans); font-size: 10px; font-weight: 700;
-  color: var(--ink-300); letter-spacing: 0.08em; text-transform: uppercase;
+  font-family: var(--font-sans); font-size: 11px; font-weight: 700;
+  color: var(--ink-300);
   padding: 8px 14px 6px;
 }
 .admin-panel__nav-item {
@@ -4344,10 +4299,8 @@ tr.table__row--selected .table__actions {
 }
 
 .activity-map__label {
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--ink-400);
   padding: 0 2px;
 }

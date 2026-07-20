@@ -90,7 +90,17 @@ async function assignRole(actorPerms, employeeId, roleId) {
   });
 }
 
-async function unassignRole(employeeId) {
+// Mismo techo de permisos que assignRole, aplicado en la dirección inversa: un actor no
+// puede despojar de su rol a alguien cuyo rol tiene permisos que el actor mismo no tiene
+// (ej. role_hr desasignando a un role_admin). Ver auditoría post-Fase 4: assignRole ya
+// estaba protegido pero unassignRole no, dejando una vía de sabotaje asimétrica.
+async function unassignRole(actorPerms, employeeId) {
+  const existing = await prisma.roleAssignment.findUnique({
+    where: { employeeId },
+    include: { role: { include: roleInclude } },
+  });
+  if (!existing) throw Object.assign(new Error('assignment_not_found'), { status: 404, publicMessage: 'assignment_not_found' });
+  assertPermCeiling(actorPerms, existing.role.permissions.map((p) => p.permissionId));
   return prisma.roleAssignment.delete({ where: { employeeId } });
 }
 

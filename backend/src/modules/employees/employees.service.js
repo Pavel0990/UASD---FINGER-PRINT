@@ -1,7 +1,16 @@
 const prisma = require('../../db/prisma');
 const { ddmmyyyyToDate } = require('../../utils/serializers');
+const { savePhotoIfDataUri } = require('../../utils/photoStorage');
 
 const employeeInclude = { department: true, status: true, roleAssignment: true };
+
+// Misma regex que register.jsx/roles.jsx (frontend) — el frontend solo la aplicaba en el
+// alta (register.jsx), no en la edición (dashboard.jsx) ni acá, así que un PATCH directo o
+// un edit-modal podían persistir un correo con formato inválido.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function assertValidEmail(email) {
+  if (!EMAIL_RE.test(email)) throw Object.assign(new Error('invalid_email'), { status: 400, publicMessage: 'invalid_email' });
+}
 
 async function listEmployees() {
   return prisma.employee.findMany({ include: employeeInclude, orderBy: { id: 'asc' } });
@@ -38,6 +47,7 @@ async function resolveDepartmentId(name) {
 }
 
 async function createEmployee(input) {
+  assertValidEmail(input.email);
   const id = input.id || (await nextEmployeeId());
   const statusId = await resolveStatusId(input.status || 'pending');
   const departmentId = await resolveDepartmentId(input.dept);
@@ -58,7 +68,7 @@ async function createEmployee(input) {
       inactiveComment: input.inactiveComment || null,
       dob: input.dob ? ddmmyyyyToDate(input.dob) : null,
       gender: input.gender || null,
-      photoUrl: input.photo || null,
+      photoUrl: savePhotoIfDataUri(input.photo, id) || null,
     },
     include: employeeInclude,
   });
@@ -70,7 +80,7 @@ async function updateEmployee(id, input) {
   if (input.cedula !== undefined) data.cedula = input.cedula;
   if (input.dept !== undefined) data.departmentId = await resolveDepartmentId(input.dept);
   if (input.role !== undefined) data.roleTitle = input.role;
-  if (input.email !== undefined) data.email = input.email.toLowerCase();
+  if (input.email !== undefined) { assertValidEmail(input.email); data.email = input.email.toLowerCase(); }
   if (input.phone !== undefined) data.phone = input.phone;
   if (input.schedule !== undefined) data.schedule = input.schedule;
   if (input.workDays !== undefined) data.workDays = input.workDays;
@@ -79,12 +89,13 @@ async function updateEmployee(id, input) {
   if (input.inactiveComment !== undefined) data.inactiveComment = input.inactiveComment;
   if (input.dob !== undefined) data.dob = input.dob ? ddmmyyyyToDate(input.dob) : null;
   if (input.gender !== undefined) data.gender = input.gender;
-  if (input.photo !== undefined) data.photoUrl = input.photo;
+  if (input.photo !== undefined) data.photoUrl = savePhotoIfDataUri(input.photo, id);
 
   return prisma.employee.update({ where: { id }, data, include: employeeInclude });
 }
 
 async function deleteEmployee(id) {
+  savePhotoIfDataUri(null, id); // borra el archivo físico si tenía foto
   return prisma.employee.delete({ where: { id } });
 }
 
@@ -101,6 +112,17 @@ async function listEmployeeStatuses() {
   return prisma.employeeStatus.findMany({ orderBy: { id: 'asc' } });
 }
 
+// Completa el hueco de Fase 1: StatusPicker.addStatus() (dashboard.jsx:876-884) hoy crea estados
+// personalizados solo en localStorage['uasd_custom_statuses'] — la tabla EmployeeStatus ya
+// soportaba code/label/color arbitrarios desde el schema original, solo faltaba el endpoint.
+async function createEmployeeStatus({ code, label, color }) {
+  return prisma.employeeStatus.upsert({
+    where: { code },
+    update: { label, color },
+    create: { code, label, color, isDefault: false },
+  });
+}
+
 module.exports = {
   listEmployees,
   getEmployee,
@@ -110,4 +132,5 @@ module.exports = {
   listDepartments,
   addDepartment,
   listEmployeeStatuses,
+  createEmployeeStatus,
 };

@@ -1,16 +1,13 @@
 /* kiosk.jsx — primary recognition view (employees clock in/out) */
 
-const CRED_MAP_KEY = 'uasd_cred_map_v1';
-const WA_TIMEOUT   = 8000;
-const kioskTodayStr = () => new Date().toLocaleDateString('en-CA');
-const getCredMap  = () => { try { return JSON.parse(localStorage.getItem(CRED_MAP_KEY) || '{}'); } catch { return {}; } };
-const saveCredMap = (map) => { try { localStorage.setItem(CRED_MAP_KEY, JSON.stringify(map)); } catch {} };
+const WA_TIMEOUT = 8000;
 
 // El `timeout` de WebAuthn es solo una sugerencia, no una garantía — si el
 // authenticator de la plataforma no completa la ceremonia, la promesa puede
 // quedar colgada indefinidamente sin resolver ni rechazar. Este wrapper
 // asegura que SIEMPRE se libera el kiosco, incluso si el navegador nunca
-// respeta su propio timeout.
+// respeta su propio timeout. También cubre las llamadas al backend (una red
+// caída no debe dejar el kiosco colgado en "scanning" para siempre).
 function withTimeout(promise, ms) {
   return Promise.race([
     promise,
@@ -33,77 +30,48 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     return () => clearInterval(id);
   }, []);
 
-  // Antes esto grababa UN solo marcaje por empleado/día y la tarjeta de
-  // "entrada"/"salida" se decidía con Math.random() — nunca se guardaba una
-  // salida real, así que "horas trabajadas" era imposible de calcular. Ahora
-  // el primer marcaje del día es entrada (timeIn), el segundo es salida
-  // (timeOut) — el kind que se muestra en pantalla ya no es cosmético.
-  const recordPresence = (empId, scheduleStr) => {
-    try {
-      const att = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}');
-      const key = `${empId}:${kioskTodayStr()}`;
-      const time = formatTime(new Date(), lang);
-
-      if (!att[key]) {
-        const late = scheduleStr ? getLateMinutes(scheduleStr, time) > 15 : false;
-        att[key] = { empId, date: kioskTodayStr(), timeIn: time, timeOut: null, late, justified: false };
-        localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
-        return { kind: 'in', time };
-      }
-      if (!att[key].timeOut) {
-        att[key].timeOut = time;
-        localStorage.setItem('uasd_daily_attendance', JSON.stringify(att));
-        return { kind: 'out', time };
-      }
-      return { kind: 'done', time: att[key].timeOut };
-    } catch { return { kind: 'in', time: formatTime(new Date(), lang) }; }
-  };
-
-  const onScanSuccess = (credId) => {
-    const map   = getCredMap();
-    const empId = credId ? map[credId] : null;
-    const linked = empId ? EMPLOYEES.find(e => e.id === empId) : null;
-
-    let emp, isDemo = false;
-    if (linked && linked.status === 'ok') {
-      // Camino real: credencial WebAuthn válida, vinculada a un empleado activo.
-      emp = linked;
-    } else if (!credId) {
-      // Solo llega aquí desde runSimulation(), que ya verificó que este
-      // dispositivo no tiene NINGUNA credencial real enrolada (modo demo/dev
-      // sin hardware) — nunca se activa en un kiosco con empleados reales.
-      const pool = EMPLOYEES.filter(e => e.status === 'ok');
-      emp = pool[Math.floor(Math.random() * pool.length)];
-      isDemo = true;
-    } else {
-      // Hubo una credencial real pero no corresponde a ningún empleado activo
-      // vigente — NO se fabrica una identidad al azar, se trata como error.
-      onScanError();
-      return;
-    }
-
-    // El modo demo no persiste asistencia real, así que no hay un "estado
-    // del día" que consultar — mantiene el sorteo cosmético de siempre. El
-    // camino real usa el resultado real de recordPresence (entrada → salida
-    // → ya completó el día), nunca al azar.
-    const result = isDemo
-      ? { kind: Math.random() > 0.4 ? 'in' : 'out', time: formatTime(new Date(), lang) }
-      : recordPresence(emp.id, emp.schedule);
+  // Camino real: el backend ya verificó la firma WebAuthn contra la public key
+  // guardada, confirmó que el empleado sigue status==='ok' en la fila real de
+  // Postgres (no en un array cacheado en el navegador), y grabó el marcaje de
+  // forma atómica (UNIQUE(employee_id,date) resuelve la condición de carrera).
+  // Acá solo queda pintar el resultado — nada de esto es una decisión de
+  // seguridad del cliente.
+  const onRealScanSuccess = (result) => {
+    const emp = EMPLOYEES.find(e => e.id === result.employee.id) || result.employee;
     const { kind, time } = result;
 
     if (kind === 'done') {
-      setRecognized({ ...emp, kind: 'done', time, isDemo });
+      setRecognized({ ...emp, kind: 'done', time, isDemo: false });
       setState('success');
       timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 3200);
       return;
     }
 
-    const bank  = kind === 'in' ? t.kiosk_welcome_bank : t.kiosk_farewell_bank;
+    const bank = kind === 'in' ? t.kiosk_welcome_bank : t.kiosk_farewell_bank;
     const greeting = bank[Math.floor(Math.random() * bank.length)];
     const late = kind === 'in' && emp.schedule ? getLateMinutes(emp.schedule, time) > 15 : false;
-    setRecognized({ ...emp, kind, greeting, time, late, isDemo });
+    setRecognized({ ...emp, kind, greeting, time, late, isDemo: false });
     setState('success');
     timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 4500);
+  };
+
+  // Modo demo: SOLO se permite cuando el backend confirma que este sistema no
+  // tiene ninguna credencial real registrada todavía (allowCredentials vacío)
+  // — nunca en un kiosco que ya está en uso con empleados reales. No persiste
+  // asistencia real, así que mantiene el sorteo cosmético de siempre.
+  const runDemoScan = () => {
+    timerRef.current = setTimeout(() => {
+      if (Math.random() <= 0.15) { onScanError(); return; }
+      const pool = EMPLOYEES.filter(e => e.status === 'ok');
+      const emp = pool[Math.floor(Math.random() * pool.length)];
+      const kind = Math.random() > 0.4 ? 'in' : 'out';
+      const time = formatTime(new Date(), lang);
+      const bank = kind === 'in' ? t.kiosk_welcome_bank : t.kiosk_farewell_bank;
+      const greeting = bank[Math.floor(Math.random() * bank.length)];
+      setRecognized({ ...emp, kind, greeting, time, late: false, isDemo: true });
+      setState('success');
+      timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 4500);
+    }, 2200);
   };
 
   const onScanError = () => {
@@ -111,110 +79,37 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 2400);
   };
 
-  // ── Simulation fallback ───────────────────────────────────────────────
-  const runSimulation = () => {
-    timerRef.current = setTimeout(() => {
-      Math.random() > 0.15 ? onScanSuccess(null) : onScanError();
-    }, 2200);
-  };
-
-  // ── WebAuthn / Touch ID ───────────────────────────────────────────────
   const canUseWebAuthn = () =>
     location.protocol !== 'file:' &&
     !!window.PublicKeyCredential &&
-    (['localhost', '127.0.0.1'].includes(location.hostname) || location.protocol === 'https:');
-
-  // Registra una credencial y la vincula a un empleado
-  const waRegister = (rpId, empId) =>
-    withTimeout(navigator.credentials.create({ publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rp: { name: 'UASD Sistema de Asistencia', id: rpId },
-      user: {
-        id: new TextEncoder().encode(empId),
-        name: empId + '@uasd.edu.do',
-        displayName: (EMPLOYEES.find(e => e.id === empId) || {}).name || empId,
-      },
-      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
-      timeout: WA_TIMEOUT,
-    }}), WA_TIMEOUT + 2000).then(cred => {
-      const credId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
-      const map = getCredMap();
-      map[credId] = empId;
-      saveCredMap(map);
-      return { rawId: new Uint8Array(cred.rawId), credId };
-    });
-
-  const waAuth = (rpId, allowList) =>
-    withTimeout(navigator.credentials.get({ publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rpId,
-      allowCredentials: allowList,
-      userVerification: 'required',
-      timeout: WA_TIMEOUT,
-    }}), WA_TIMEOUT + 2000);
+    (['localhost', '127.0.0.1'].includes(location.hostname) || location.protocol === 'https:') &&
+    typeof SimpleWebAuthnBrowser !== 'undefined';
 
   // ── Entry point ───────────────────────────────────────────────────────
-  const startScan = (empIdToRegister) => {
+  const startScan = () => {
     if (state === 'scanning') return;
     clearTimeout(timerRef.current);
     setState('scanning');
     setRecognized(null);
 
-    const map = getCredMap();
-    const allowList = Object.keys(map).map(credId => ({
-      type: 'public-key',
-      id: Uint8Array.from(atob(credId), c => c.charCodeAt(0)),
-      transports: ['internal'],
-    }));
-
-    // El modo demo (empleado al azar, sin persistir asistencia) SOLO se
-    // permite cuando este dispositivo no tiene ninguna credencial real
-    // enrolada todavía — nunca en un kiosco que ya está en uso con empleados
-    // reales, para no fabricar un "reconocimiento exitoso" con la persona
-    // equivocada cuando el hardware real falla.
-    const allowDemoFallback = allowList.length === 0;
-
-    if (!canUseWebAuthn()) {
-      if (allowDemoFallback) runSimulation(); else onScanError();
+    if (typeof waAuthOptions !== 'function' || !canUseWebAuthn()) {
+      runDemoScan();
       return;
     }
 
-    const rpId = location.hostname;
+    withTimeout(waAuthOptions(), WA_TIMEOUT)
+      .then((options) => {
+        const allowDemoFallback = !options.allowCredentials || options.allowCredentials.length === 0;
+        if (allowDemoFallback) { runDemoScan(); return Promise.reject('handled'); }
 
-    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-      .then(available => {
-        if (!available) {
-          if (allowDemoFallback) { runSimulation(); return Promise.reject('handled'); }
-          return Promise.reject('hw-unavailable');
-        }
-
-        if (allowList.length > 0) {
-          // Hay credenciales registradas — autenticar directamente. Cualquier
-          // fallo que no sea "el usuario canceló" se trata como error real,
-          // nunca como reingreso silencioso a un empleado default.
-          return waAuth(rpId, allowList).then(cred => {
-            const credId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
-            return credId;
-          }).catch(err => Promise.reject(err.name === 'NotAllowedError' ? 'auth-denied' : 'auth-failed'));
-        }
-
-        // Sin credenciales — registrar vinculada al empleado indicado (primer
-        // registro real, disparado desde register.jsx). waRegister() ya exige
-        // userVerification:'required' para crear la credencial, así que la
-        // huella ya quedó confirmada ahí mismo — encadenar un waAuth() extra
-        // aquí (sin un click nuevo de por medio) violaba el requisito de
-        // "user activation" de WebAuthn y fallaba justo después de registrar.
-        const empId = empIdToRegister || 'EMP-00702';
-        return waRegister(rpId, empId)
-          .then(({ credId }) => credId)
-          .catch(() => Promise.reject('setup-fail'));
+        return withTimeout(SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: options }), WA_TIMEOUT + 2000)
+          .catch((err) => Promise.reject(err.name === 'NotAllowedError' ? 'auth-denied' : 'auth-failed'))
+          .then((assertionResponse) => withTimeout(waAuthVerify(assertionResponse), WA_TIMEOUT));
       })
-      .then(credId => onScanSuccess(credId))
-      .catch(err => {
+      .then((result) => onRealScanSuccess(result))
+      .catch((err) => {
         if (err === 'handled') return;
-        if (err === 'auth-denied' || err === 'auth-failed' || err === 'hw-unavailable' || err === 'setup-fail') { onScanError(); return; }
-        if (allowDemoFallback) runSimulation(); else onScanError();
+        onScanError();
       });
   };
 
@@ -224,16 +119,16 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     setRecognized(null);
   };
 
-  // ── Auto-arm: cuando vuelve a idle y hay credencial registrada, escucha el lector solo
+  // ── Auto-arm: cuando vuelve a idle, escucha el lector solo. startScan ya
+  // decide internamente (vía waAuthOptions) si hay hardware real o si cae a
+  // demo, así que no hace falta duplicar esa lógica acá.
   const startScanRef = React.useRef(startScan);
   React.useEffect(() => { startScanRef.current = startScan; });
 
   React.useEffect(() => {
     if (state !== 'idle') return;
-    if (!canUseWebAuthn()) return;
-    if (!localStorage.getItem(CRED_MAP_KEY)) return; // sin credencial → requiere primer registro manual
-    const t = setTimeout(() => startScanRef.current(), 900);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => startScanRef.current(), 900);
+    return () => clearTimeout(timer);
   }, [state]);
 
   React.useEffect(() => () => clearTimeout(timerRef.current), []);

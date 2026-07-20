@@ -43,6 +43,17 @@ function VacacionesView({ t, lang, setRoute }) {
   const [vacDias,    setVacDias]    = React.useState(getVacDias);
   const [selYear,    setSelYear]    = React.useState(String(new Date().getFullYear()));
 
+  // Con backend activo, se hidrata el año seleccionado desde /api/collective-vacations
+  // apenas carga o cambia selYear — arranca de localStorage (arriba) para no dejar la
+  // pantalla en blanco mientras responde.
+  React.useEffect(() => {
+    if (!(typeof isBackendActive === 'function' && isBackendActive())) return;
+    apiGetCollectiveVacations(selYear).then((period) => {
+      setVacDias(prev => ({ ...prev, [selYear]: period.days }));
+      setVacEmpsAll(prev => ({ ...prev, [selYear]: period.employeeIds }));
+    }).catch(err => console.error('cargar vacaciones colectivas', err));
+  }, [selYear]);
+
   const [yearCalOpen,  setYearCalOpen]  = React.useState(false);
   const [yearCalReady, setYearCalReady] = React.useState(false);
   const [yearCalClosing, setYearCalClosing] = React.useState(false);
@@ -188,7 +199,11 @@ function VacacionesView({ t, lang, setRoute }) {
     var updated  = Object.assign({}, vacDias);
     if (next.length) updated[yr] = next; else delete updated[yr];
     setVacDias(updated);
-    saveVacDias(updated);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiSetCollectiveVacationDays(yr, next).catch(err => console.error('guardar dias vacaciones', err));
+    } else {
+      saveVacDias(updated);
+    }
     setRangeStart(null);
     setRangeHover(null);
     setYearCalOpen(false);
@@ -204,7 +219,11 @@ function VacacionesView({ t, lang, setRoute }) {
     var updated = Object.assign({}, vacEmpsAll);
     updated[selYear] = list;
     setVacEmpsAll(updated);
-    saveVacEmps(updated);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiAddCollectiveVacationEmployees(selYear, [empId]).catch(err => console.error('agregar a vacaciones', err));
+    } else {
+      saveVacEmps(updated);
+    }
     setSearchVal('');
   };
 
@@ -215,7 +234,11 @@ function VacacionesView({ t, lang, setRoute }) {
     var updated = Object.assign({}, vacEmpsAll);
     updated[selYear] = list;
     setVacEmpsAll(updated);
-    saveVacEmps(updated);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiAddCollectiveVacationEmployees(selYear, newIds).catch(err => console.error('agregar todos a vacaciones', err));
+    } else {
+      saveVacEmps(updated);
+    }
     setSearchVal('');
   };
 
@@ -225,7 +248,11 @@ function VacacionesView({ t, lang, setRoute }) {
     if (list.length) updated[selYear] = list;
     else delete updated[selYear];
     setVacEmpsAll(updated);
-    saveVacEmps(updated);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiRemoveCollectiveVacationEmployee(selYear, empId).catch(err => console.error('quitar de vacaciones', err));
+    } else {
+      saveVacEmps(updated);
+    }
   };
 
   const removeAllFromVac = function() {
@@ -233,12 +260,16 @@ function VacacionesView({ t, lang, setRoute }) {
     var updated = Object.assign({}, vacEmpsAll);
     delete updated[selYear];
     setVacEmpsAll(updated);
-    saveVacEmps(updated);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiRemoveAllCollectiveVacationEmployees(selYear).catch(err => console.error('quitar todos de vacaciones', err));
+    } else {
+      saveVacEmps(updated);
+    }
   };
 
   /* ── Employee search ── */
   const availableEmps = React.useMemo(function() {
-    return EMPLOYEES.filter(function(e) { return !yearEmps.includes(e.id) && e.status !== 'inactive'; });
+    return EMPLOYEES.filter(function(e) { return !yearEmps.includes(e.id) && e.status === 'ok'; });
   }, [yearEmps]);
 
   const filteredAvailable = React.useMemo(function() {

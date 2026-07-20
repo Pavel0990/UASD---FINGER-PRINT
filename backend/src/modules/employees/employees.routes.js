@@ -15,5 +15,6 @@ router.get('/departments', requireAuth, ctrl.getDepartments);
 router.post('/departments', requireAuth, requirePerm('manage'), ctrl.postDepartment);
 
 router.get('/employee-statuses', requireAuth, ctrl.getEmployeeStatuses);
+router.post('/employee-statuses', requireAuth, requirePerm('manage'), ctrl.postEmployeeStatus);
 
 module.exports = router;

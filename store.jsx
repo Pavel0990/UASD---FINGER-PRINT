@@ -103,17 +103,25 @@ async function restoreSession() {
 // register.jsx, que ya hacen EMPLOYEES.find/.filter/.map directamente, vean
 // los datos reales sin que se les toque una sola línea.
 async function bootstrapStore() {
-  const [employees, departments, statuses, roles, assignments, auditData] = await Promise.all([
+  const [employees, departments, statuses, roles, assignments, auditData, holidays] = await Promise.all([
     apiFetch('/employees'),
     apiFetch('/departments'),
     apiFetch('/employee-statuses'),
     apiFetch('/roles'),
     apiFetch('/role-assignments'),
     apiFetch('/audit-log?limit=200').catch(() => ({ entries: [] })),
+    apiFetch('/holidays').catch(() => []),
   ]);
 
   EMPLOYEES.length = 0;
   EMPLOYEES.push(...employees);
+
+  // Mismo patrón que EMPLOYEES: HOLIDAYS_CACHE (shared.jsx) se muta en sitio para que
+  // isHoliday()/getHolidays() sigan siendo síncronas en todos sus call sites actuales.
+  if (typeof HOLIDAYS_CACHE !== 'undefined') {
+    HOLIDAYS_CACHE.length = 0;
+    HOLIDAYS_CACHE.push(...holidays);
+  }
 
   DataStore.employees = EMPLOYEES;
   DataStore.departments = departments;
@@ -130,6 +138,112 @@ function isBackendActive() {
   return !!DataStore.session;
 }
 
+/* ── Asistencia / WebAuthn / Feriados (Fase 2) ──────────────────────────
+   El kiosco (auth-options/auth-verify) no tiene sesión admin — apiFetch ya
+   omite el header Authorization cuando DataStore.session es null, así que
+   estas dos llamadas funcionan igual sin login. */
+
+function waRegisterOptions(opts = {}) {
+  return apiFetch('/attendance/webauthn/register-options', { method: 'POST', body: JSON.stringify(opts) });
+}
+function waRegisterVerify(attestationResponse, deviceLabel) {
+  return apiFetch('/attendance/webauthn/register-verify', { method: 'POST', body: JSON.stringify({ attestationResponse, deviceLabel }) });
+}
+function waLinkCredential(employeeId, credential, deviceLabel) {
+  return apiFetch('/attendance/webauthn/link-credential', { method: 'POST', body: JSON.stringify({ employeeId, credential, deviceLabel }) });
+}
+function waAuthOptions() {
+  return apiFetch('/attendance/webauthn/auth-options', { method: 'POST', body: JSON.stringify({}) });
+}
+function waAuthVerify(assertionResponse) {
+  return apiFetch('/attendance/webauthn/auth-verify', { method: 'POST', body: JSON.stringify({ assertionResponse }) });
+}
+
+function apiGetAttendance(params = {}) {
+  const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null)).toString();
+  return apiFetch('/attendance' + (qs ? '?' + qs : ''));
+}
+function apiPostManualAttendance(data) {
+  return apiFetch('/attendance/manual', { method: 'POST', body: JSON.stringify(data) });
+}
+function apiPatchAttendance(id, patch) {
+  return apiFetch('/attendance/' + id, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+function apiGetAbsences(params = {}) {
+  const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null)).toString();
+  return apiFetch('/absences' + (qs ? '?' + qs : ''));
+}
+function apiPostAbsence(data) {
+  return apiFetch('/absences', { method: 'POST', body: JSON.stringify(data) });
+}
+function apiPatchAbsence(id, patch) {
+  return apiFetch('/absences/' + id, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+function apiDeleteAbsence(id) {
+  return apiFetch('/absences/' + id, { method: 'DELETE' });
+}
+function apiGetHolidays(year) {
+  return apiFetch('/holidays' + (year ? '?year=' + year : ''));
+}
+function apiPostHoliday(data) {
+  return apiFetch('/holidays', { method: 'POST', body: JSON.stringify(data) });
+}
+function apiDeleteHoliday(id) {
+  return apiFetch('/holidays/' + id, { method: 'DELETE' });
+}
+function apiPostEmployeeStatus(data) {
+  return apiFetch('/employee-statuses', { method: 'POST', body: JSON.stringify(data) });
+}
+
+/* ── Finca / Liceo (Fase 3) ── */
+function apiGetRoster(location) {
+  return apiFetch('/roster?location=' + location);
+}
+function apiAddToRoster(employeeId, location) {
+  return apiFetch('/roster', { method: 'POST', body: JSON.stringify({ employeeId, location }) });
+}
+function apiRemoveFromRoster(employeeId, location) {
+  return apiFetch('/roster/' + encodeURIComponent(employeeId) + '?location=' + location, { method: 'DELETE' });
+}
+function apiGetRosterDaily(location) {
+  return apiFetch('/roster/' + location + '/daily');
+}
+function apiSaveRosterDay(location, date, presentEmpIds) {
+  return apiFetch('/roster/' + location + '/save-day', { method: 'POST', body: JSON.stringify({ date, presentEmpIds }) });
+}
+
+/* ── Eventualidades / Vacaciones (Fase 4) ── */
+function apiGetEventualities(employeeId) {
+  return apiFetch('/eventualities' + (employeeId ? '?employeeId=' + encodeURIComponent(employeeId) : ''));
+}
+function apiPostEventuality(data) {
+  return apiFetch('/eventualities', { method: 'POST', body: JSON.stringify(data) });
+}
+function apiPatchEventuality(id, data) {
+  return apiFetch('/eventualities/' + id, { method: 'PATCH', body: JSON.stringify(data) });
+}
+function apiDeleteEventuality(id) {
+  return apiFetch('/eventualities/' + id, { method: 'DELETE' });
+}
+function apiPatchEventualityEstado(id, estado) {
+  return apiFetch('/eventualities/' + id + '/estado', { method: 'PATCH', body: JSON.stringify({ estado }) });
+}
+function apiGetCollectiveVacations(year) {
+  return apiFetch('/collective-vacations?year=' + year);
+}
+function apiSetCollectiveVacationDays(year, dates) {
+  return apiFetch('/collective-vacations/' + year + '/days', { method: 'POST', body: JSON.stringify({ dates }) });
+}
+function apiAddCollectiveVacationEmployees(year, employeeIds) {
+  return apiFetch('/collective-vacations/' + year + '/employees', { method: 'POST', body: JSON.stringify({ employeeIds }) });
+}
+function apiRemoveCollectiveVacationEmployee(year, employeeId) {
+  return apiFetch('/collective-vacations/' + year + '/employees/' + encodeURIComponent(employeeId), { method: 'DELETE' });
+}
+function apiRemoveAllCollectiveVacationEmployees(year) {
+  return apiFetch('/collective-vacations/' + year + '/employees', { method: 'DELETE' });
+}
+
 window.DataStore = DataStore;
 window.apiFetch = apiFetch;
 window.loginRequest = loginRequest;
@@ -137,3 +251,34 @@ window.logoutRequest = logoutRequest;
 window.restoreSession = restoreSession;
 window.bootstrapStore = bootstrapStore;
 window.isBackendActive = isBackendActive;
+window.waRegisterOptions = waRegisterOptions;
+window.waRegisterVerify = waRegisterVerify;
+window.waLinkCredential = waLinkCredential;
+window.waAuthOptions = waAuthOptions;
+window.waAuthVerify = waAuthVerify;
+window.apiGetAttendance = apiGetAttendance;
+window.apiPostManualAttendance = apiPostManualAttendance;
+window.apiPatchAttendance = apiPatchAttendance;
+window.apiGetAbsences = apiGetAbsences;
+window.apiPostAbsence = apiPostAbsence;
+window.apiPatchAbsence = apiPatchAbsence;
+window.apiDeleteAbsence = apiDeleteAbsence;
+window.apiGetHolidays = apiGetHolidays;
+window.apiPostHoliday = apiPostHoliday;
+window.apiDeleteHoliday = apiDeleteHoliday;
+window.apiPostEmployeeStatus = apiPostEmployeeStatus;
+window.apiGetRoster = apiGetRoster;
+window.apiAddToRoster = apiAddToRoster;
+window.apiRemoveFromRoster = apiRemoveFromRoster;
+window.apiGetRosterDaily = apiGetRosterDaily;
+window.apiSaveRosterDay = apiSaveRosterDay;
+window.apiGetEventualities = apiGetEventualities;
+window.apiPostEventuality = apiPostEventuality;
+window.apiPatchEventuality = apiPatchEventuality;
+window.apiDeleteEventuality = apiDeleteEventuality;
+window.apiPatchEventualityEstado = apiPatchEventualityEstado;
+window.apiGetCollectiveVacations = apiGetCollectiveVacations;
+window.apiSetCollectiveVacationDays = apiSetCollectiveVacationDays;
+window.apiAddCollectiveVacationEmployees = apiAddCollectiveVacationEmployees;
+window.apiRemoveCollectiveVacationEmployee = apiRemoveCollectiveVacationEmployee;
+window.apiRemoveAllCollectiveVacationEmployees = apiRemoveAllCollectiveVacationEmployees;

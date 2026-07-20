@@ -54,7 +54,8 @@ async function postAssignment(req, res, next) {
 
 async function deleteAssignment(req, res, next) {
   try {
-    await svc.unassignRole(req.params.employeeId);
+    await svc.unassignRole(req.user.perms, req.params.employeeId);
+    await logAudit({ actorEmployeeId: req.user.employeeId, actionType: 'edit', subjectEmployeeId: req.params.employeeId, detail: { kind: 'role_unassign' } });
     res.status(204).send();
   } catch (err) { next(err); }
 }

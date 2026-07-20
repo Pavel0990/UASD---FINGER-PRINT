@@ -166,6 +166,16 @@ function parsePhoneValue(full) {
   return { country: PHONE_COUNTRIES[0], digits: s.replace(/\D/g,'') };
 }
 
+// register.jsx y el editor de empleado solo validaban "no vacío" — un teléfono de 1
+// dígito pasaba. PhoneField ya sabe el largo esperado por país (fmt); se reusa acá
+// para exigir el número completo, no solo algo.
+function isPhoneComplete(value) {
+  if (!value) return false;
+  const { country, digits } = parsePhoneValue(value);
+  const maxDigits = country.fmt.reduce((a, b) => a + b, 0);
+  return digits.length === maxDigits;
+}
+
 function PhoneField({ value, onChange }) {
   const init = React.useMemo(() => parsePhoneValue(value), []);
   const [country, setCountry] = React.useState(init.country);
@@ -629,7 +639,9 @@ function TimePickerField({ value, onChange }) {
                 const ny = CY + R * Math.sin(a);
                 const isSel = (cur.h % 12 || 12) === n;
                 return (
-                  <g key={n} onClick={() => setH(n)} style={{cursor:'pointer'}}>
+                  <g key={n} onClick={() => setH(n)} style={{cursor:'pointer'}}
+                    role="button" tabIndex={0} aria-label={`${n}`} aria-pressed={isSel}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setH(n); } }}>
                     <circle cx={nx} cy={ny} r={14} fill={isSel ? 'var(--ink-800)' : 'transparent'} style={{transition:'fill .15s'}}/>
                     <text x={nx} y={ny} textAnchor="middle" dominantBaseline="central"
                       fill={isSel ? '#fff' : 'var(--ink-600)'}
@@ -800,7 +812,9 @@ function SimpleTimePicker({ value, onChange }) {
                 const ny = CY + R * Math.sin(a);
                 const isSel = (parts.h % 12 || 12) === n;
                 return (
-                  <g key={n} onClick={() => setH(n)} style={{cursor:'pointer'}}>
+                  <g key={n} onClick={() => setH(n)} style={{cursor:'pointer'}}
+                    role="button" tabIndex={0} aria-label={`${n}`} aria-pressed={isSel}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setH(n); } }}>
                     <circle cx={nx} cy={ny} r={14} fill={isSel ? 'var(--ink-800)' : 'transparent'} style={{transition:'fill .15s'}}/>
                     <text x={nx} y={ny} textAnchor="middle" dominantBaseline="central"
                       fill={isSel ? '#fff' : 'var(--ink-600)'}
@@ -1743,6 +1757,26 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
     if (!motivo.trim()) e.motivo = true;
     if (Object.keys(e).length) { setErr(e); return; }
 
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      // El backend hace el mismo manejo de ausencias (borrar en el rango nuevo, regenerar
+      // en el rango viejo que se deja de cubrir) en una transacción server-side
+      // (eventualities.service.js) — reemplaza el recorrido manual de fechas de abajo.
+      const payload = { employeeId: empId, date: sd, motivo: motivo.trim(), type };
+      if (se && se !== sd) payload.dateEnd = se;
+      const req = editingEvId ? apiPatchEventuality(editingEvId, payload) : apiPostEventuality(payload);
+      // No cerrar/limpiar el formulario hasta confirmar con el servidor — si falla, el
+      // usuario se queda con lo que escribió en vez de perderlo silenciosamente.
+      req.then((row) => {
+        const list = (evMap[empId] || []).filter(x => x.id !== editingEvId);
+        saveEvMap({ ...evMap, [empId]: [...list, row] });
+        reset(); setOpen(false);
+      }).catch(err => {
+        console.error('guardar eventualidad', err);
+        setErr(p => ({ ...p, submit: true }));
+      });
+      return;
+    }
+
     // ── remover ausencias en el nuevo rango ──
     if (onRemoveAbsenceById) {
       var nd = new Date(sd + 'T00:00:00');
@@ -1801,6 +1835,18 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
   const remove = (id) => {
     const ev = items.find(x => x.id === id);
     const next = { ...evMap, [empId]: (evMap[empId] || []).filter(x => x.id !== id) };
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      // El backend regenera las ausencias del rango que esta eventualidad cubría, igual
+      // que el recorrido manual de abajo, pero contra la tabla real. Optimista con
+      // rollback: si falla, el ítem vuelve a aparecer en vez de desaparecer para siempre.
+      saveEvMap(next);
+      apiDeleteEventuality(id).catch(err => {
+        console.error('borrar eventualidad', err);
+        saveEvMap(evMap);
+        setErr(p => ({ ...p, submit: true }));
+      });
+      return;
+    }
     saveEvMap(next);
     if (ev && onBatchAddAbsences) {
       var absentDates = [];
@@ -1874,6 +1920,9 @@ function EventualidadSection({ empId, lang, evMap, saveEvMap, absences, allAtt, 
                 : (lang === 'es' ? 'Descripción del motivo…' : 'Reason description…')
               } />
           </div>
+          {err.submit && (
+            <span className="field__err">{lang === 'es' ? 'No se pudo guardar — intenta de nuevo.' : 'Could not save — try again.'}</span>
+          )}
           <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
             <button className="btn btn--ghost" onClick={() => { setOpen(false); reset(); }}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
             <button className="btn btn--primary" onClick={submit}>{lang === 'es' ? 'Guardar' : 'Save'}</button>
@@ -2109,6 +2158,23 @@ function VacacionesSection({ empId, lang, vacMap, saveVacMap, absences, allAtt, 
     }
     if (Object.keys(e).length) { setErr(e); return; }
 
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      // "Vacaciones normales" se unifica con Eventualidades en el backend con
+      // type:'vacaciones' fijo — mismo manejo transaccional de ausencias, server-side.
+      const payload = { employeeId: empId, date: sd, motivo: motivo.trim(), type: 'vacaciones' };
+      if (se && se !== sd) payload.dateEnd = se;
+      const req = editingVacId ? apiPatchEventuality(editingVacId, payload) : apiPostEventuality(payload);
+      req.then((row) => {
+        const list = (vacMap[empId] || []).filter(x => x.id !== editingVacId);
+        saveVacMap({ ...vacMap, [empId]: [...list, row] });
+        reset(); setOpen(false);
+      }).catch(err => {
+        console.error('guardar vacaciones', err);
+        setErr(p => ({ ...p, submit: true }));
+      });
+      return;
+    }
+
     // ── remover ausencias en el nuevo rango ──
     if (onRemoveAbsenceById) {
       var nd = new Date(sd + 'T00:00:00');
@@ -2164,6 +2230,15 @@ function VacacionesSection({ empId, lang, vacMap, saveVacMap, absences, allAtt, 
   const remove = (id) => {
     const v = items.find(x => x.id === id);
     const next = { ...vacMap, [empId]: (vacMap[empId] || []).filter(x => x.id !== id) };
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      saveVacMap(next);
+      apiDeleteEventuality(id).catch(err => {
+        console.error('borrar vacaciones', err);
+        saveVacMap(vacMap);
+        setErr(p => ({ ...p, submit: true }));
+      });
+      return;
+    }
     saveVacMap(next);
     if (v && onBatchAddAbsences) {
       var absentDates = [];
@@ -2221,6 +2296,9 @@ function VacacionesSection({ empId, lang, vacMap, saveVacMap, absences, allAtt, 
               onChange={e => setMotivo(e.target.value)}
               placeholder={lang === 'es' ? 'Nota opcional, ej. Vacaciones anuales…' : 'Optional note, e.g. Annual vacation…'} />
           </div>
+          {err.submit && (
+            <span className="field__err">{lang === 'es' ? 'No se pudo guardar — intenta de nuevo.' : 'Could not save — try again.'}</span>
+          )}
           <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
             <button className="btn btn--ghost" onClick={() => { setOpen(false); reset(); }}>{lang === 'es' ? 'Cancelar' : 'Cancel'}</button>
             <button className="btn btn--primary" onClick={submit}>{lang === 'es' ? 'Guardar' : 'Save'}</button>
@@ -2431,9 +2509,33 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const [holidayEditor, setHolidayEditor] = React.useState(null); // { date, name_es, name_en } | null
 
   const [evMap, setEvMap] = React.useState(getEventualidades);
-  const saveEvMap = (next) => { setEvMap(next); saveEventualidades(next); };
+  const saveEvMap = (next) => {
+    setEvMap(next);
+    if (!(typeof isBackendActive === 'function' && isBackendActive())) saveEventualidades(next);
+  };
   const [vacMap, setVacMap] = React.useState(getVacacionesNormales);
-  const saveVacMap = (next) => { setVacMap(next); saveVacacionesNormales(next); };
+  const saveVacMap = (next) => {
+    setVacMap(next);
+    if (!(typeof isBackendActive === 'function' && isBackendActive())) saveVacacionesNormales(next);
+  };
+
+  // Con backend activo, evMap/vacMap arrancan de localStorage (arriba) y se reemplazan por
+  // los datos reales de eventualities (Fase 4) apenas cargan — 'vacaciones' se separa de
+  // vuelta a vacMap para que VacacionesSection siga viendo el shape que ya esperaba
+  // ({empId: [{id,date,dateEnd?,motivo}]}, sin type/estado).
+  React.useEffect(() => {
+    if (!(typeof isBackendActive === 'function' && isBackendActive())) return;
+    apiGetEventualities().then((rows) => {
+      const ev = {}, vac = {};
+      rows.forEach((r) => {
+        const bucket = r.type === 'vacaciones' ? vac : ev;
+        if (!bucket[r.empId]) bucket[r.empId] = [];
+        bucket[r.empId].push(r.type === 'vacaciones' ? { id: r.id, date: r.date, dateEnd: r.dateEnd, motivo: r.motivo } : r);
+      });
+      setEvMap(ev);
+      setVacMap(vac);
+    }).catch(err => console.error('cargar eventualidades', err));
+  }, []);
   const batchAddAbsences = (empId, dates) => {
     if (!dates || !dates.length) return;
     const prev = absencesMap[empId] || [];
@@ -2544,7 +2646,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     if (!editTarget.dept?.trim()) errs.dept = true;
     if (!editTarget.role?.trim()) errs.role = true;
     if (!editTarget.email?.trim()) errs.email = true;
-    if (!editTarget.phone || editTarget.phone.replace(/\D/g,'').length === 0) errs.phone = true;
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editTarget.email.trim())) errs.email = 'invalid';
+    if (!isPhoneComplete(editTarget.phone)) errs.phone = true;
     if (!editTarget.dob?.trim()) errs.dob = true;
     if (!editTarget.schedule?.trim()) errs.schedule = true;
     if (!editTarget.workDays || editTarget.workDays.length === 0) errs.workDays = true;
@@ -2576,8 +2679,8 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
         return e.name.toLowerCase().includes(q) ||
                e.cedula.includes(q) ||
                e.id.toLowerCase().includes(q) ||
-               e.dept.toLowerCase().includes(q) ||
-               e.role.toLowerCase().includes(q) ||
+               (e.dept && e.dept.toLowerCase().includes(q)) ||
+               (e.role && e.role.toLowerCase().includes(q)) ||
                (e.email && e.email.toLowerCase().includes(q)) ||
                (e.phone && e.phone.includes(q)) ||
                statusLabel(e).toLowerCase().includes(q) ||
@@ -2669,9 +2772,19 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
   const [allAtt, setAllAtt] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}'); } catch { return {}; }
   });
+  // Con backend activo, allAtt se llena desde /api/attendance en vez de localStorage
+  // (ver el poll de abajo) — el shape en memoria ({"empId:date": record}) es el mismo
+  // en ambos casos, así que getTardanzas/getLiveLastIn/todayAtt/lateToday no cambian.
+  const attByKey = (rows) => {
+    const map = {};
+    rows.forEach(r => { map[`${r.empId}:${r.date}`] = r; });
+    return map;
+  };
   const saveAllAtt = (map) => {
     setAllAtt(map);
-    localStorage.setItem('uasd_daily_attendance', JSON.stringify(map));
+    if (!(typeof isBackendActive === 'function' && isBackendActive())) {
+      localStorage.setItem('uasd_daily_attendance', JSON.stringify(map));
+    }
   };
   const getTardanzas = (empId) => {
     if (!empId || !allAtt) return [];
@@ -2682,6 +2795,9 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     const rec = allAtt[key];
     if (!rec) return;
     saveAllAtt({ ...allAtt, [key]: { ...rec, justified: true, justifyNote: note || '' } });
+    if (typeof isBackendActive === 'function' && isBackendActive() && rec.id) {
+      apiPatchAttendance(rec.id, { justified: true, justifyNote: note || '' }).catch(err => console.error('justifyTardanza', err));
+    }
   };
   const unjustifyTardanza = (empId, date) => {
     const key = `${empId}:${date}`;
@@ -2689,28 +2805,41 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     if (!rec) return;
     const { justifyNote, ...rest } = rec;
     saveAllAtt({ ...allAtt, [key]: { ...rest, justified: false } });
+    if (typeof isBackendActive === 'function' && isBackendActive() && rec.id) {
+      apiPatchAttendance(rec.id, { justified: false, justifyNote: '' }).catch(err => console.error('unjustifyTardanza', err));
+    }
   };
   const removeTardanza = (empId, date) => {
     const key = `${empId}:${date}`;
     const next = { ...allAtt };
     delete next[key];
     saveAllAtt(next);
+    // Sin endpoint de borrado real (un marcaje de asistencia no debería desaparecer,
+    // solo des-marcarse como tardanza) — modo local puro conserva el comportamiento previo.
   };
 
   const addTardanza = (empId, date, time, justified, note) => {
     const key = `${empId}:${date}`;
     const existing = allAtt[key];
-    saveAllAtt({ ...allAtt, [key]: { ...existing, empId, date, timeIn: time, timeOut: existing?.timeOut ?? null, late: true, justified: !!justified, justifyNote: justified ? (note || '') : (existing?.justifyNote || '') } });
+    const next = { ...existing, empId, date, timeIn: time, timeOut: existing?.timeOut ?? null, late: true, justified: !!justified, justifyNote: justified ? (note || '') : (existing?.justifyNote || '') };
+    saveAllAtt({ ...allAtt, [key]: next });
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiPostManualAttendance({ employeeId: empId, date, timeIn: time, justified: !!justified }).catch(err => console.error('addTardanza', err));
+    }
   };
 
-  // Poll for real-time attendance updates
+  // Poll for real-time attendance updates — con backend activo lee /api/attendance
+  // (donde ahora escribe el kiosco de verdad), sin sesión sigue sobre localStorage.
   React.useEffect(() => {
-    const id = setInterval(() => {
-      try {
-        const fresh = JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}');
-        setAllAtt(fresh);
-      } catch {}
-    }, 3000);
+    const poll = () => {
+      if (typeof isBackendActive === 'function' && isBackendActive() && typeof apiGetAttendance === 'function') {
+        apiGetAttendance({}).then(rows => setAllAtt(attByKey(rows))).catch(() => {});
+      } else {
+        try { setAllAtt(JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}')); } catch {}
+      }
+    };
+    poll();
+    const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, []);
 
@@ -2966,9 +3095,9 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
             <tr>
               <th style={{width:'4%'}}></th>
               <th style={{width:'18%'}}>{t.dash_col_employee}</th>
-              <th style={{width:'10%'}}>{t.dash_col_dept}</th>
-              <th style={{width:'12%'}}>{t.dash_col_role}</th>
-              <th style={{width:'10%'}}>{t.dash_col_schedule}</th>
+              <th className="table__col--hide-tablet" style={{width:'10%'}}>{t.dash_col_dept}</th>
+              <th className="table__col--hide-tablet" style={{width:'12%'}}>{t.dash_col_role}</th>
+              <th className="table__col--hide-mobile" style={{width:'10%'}}>{t.dash_col_schedule}</th>
               <th style={{width:'13%'}}>
                 <div className="table__status-wrap" ref={statusRef}>
                   <button className={`table__status-filter ${statusMenuEnabled ? 'table__status-filter--active' : ''}`}
@@ -2999,10 +3128,10 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                   )}
                 </div>
               </th>
-              <th style={{width:'16%'}}>{t.dash_col_comment}</th>
-              <th style={{width:'6%', textAlign:'center'}}>Ausencias</th>
+              <th className="table__col--hide-tablet" style={{width:'16%'}}>{t.dash_col_comment}</th>
+              <th className="table__col--hide-mobile" style={{width:'6%', textAlign:'center'}}>Ausencias</th>
               <th style={{width:'7%'}}></th>
-              <th style={{width:'11%',textAlign:'right'}}>{t.dash_col_last}</th>
+              <th className="table__col--hide-mobile" style={{width:'11%',textAlign:'right'}}>{t.dash_col_last}</th>
             </tr>
           </thead>
           <tbody className={phase !== 'idle' ? 'tbody--' + phase : ''}>
@@ -3027,18 +3156,18 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                     </div>
                   </div>
                 </td>
-                <td><span className="table__text-value">{d.dept}</span></td>
-                <td><span className="table__text-value">{d.role}</span></td>
-                <td><span className="table__text-value mono">{d.schedule}</span></td>
+                <td className="table__col--hide-tablet"><span className="table__text-value">{d.dept}</span></td>
+                <td className="table__col--hide-tablet"><span className="table__text-value">{d.role}</span></td>
+                <td className="table__col--hide-mobile"><span className="table__text-value mono">{d.schedule}</span></td>
                 <td>
                   <StatusBadge status={e.status} t={t} employee={e} />
                 </td>
-                <td>
+                <td className="table__col--hide-tablet">
                   <div className={`table__comment ${d.inactiveComment ? '' : 'table__comment--empty'}`}>
                     {d.inactiveComment || t.dash_no_comment}
                   </div>
                 </td>
-                <td style={{textAlign:'center'}}>
+                <td className="table__col--hide-mobile" style={{textAlign:'center'}}>
                   <StrikeBadge count={unjustifiedThisMonth(e.id)}/>
                 </td>
                 <td className="table__actions-cell">
@@ -3053,7 +3182,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                     </div>
                   )}
                 </td>
-                <td className="mono table__cell-last"><FlipCounter value={getLiveLastIn(e.id) || e.lastIn} /></td>
+                <td className="mono table__cell-last table__col--hide-mobile"><FlipCounter value={getLiveLastIn(e.id) || e.lastIn} /></td>
               </tr>
             ); })}
             {displayList.length === 0 && (
@@ -3211,6 +3340,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
                   <span className="field__label">{t.reg_fld_email || 'Correo institucional'} <span className="field__req">*</span></span>
                   <EmailField value={editTarget.email || ''}
                     onChange={(v) => { clearError('email'); updateEditField({ email: v }); }} />
+                  {editErrors.email === 'invalid' && <span className="field__err">Formato de correo inválido.</span>}
                 </div>
                 <div className={`field${editErrors.phone ? ' field--error' : ''}`}>
                   <span className="field__label">{t.reg_fld_phone || 'Teléfono'} <span className="field__req">*</span></span>

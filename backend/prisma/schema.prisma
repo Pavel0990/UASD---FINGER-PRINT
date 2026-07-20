@@ -61,11 +61,17 @@ model Employee {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  credential       Credential?
-  refreshTokens    RefreshToken[]
-  roleAssignment   RoleAssignment?
-  auditActions     AuditLog[]      @relation("AuditActor")
-  auditSubjects    AuditLog[]      @relation("AuditSubject")
+  credential          Credential?
+  refreshTokens       RefreshToken[]
+  roleAssignment      RoleAssignment?
+  auditActions        AuditLog[]           @relation("AuditActor")
+  auditSubjects       AuditLog[]           @relation("AuditSubject")
+  attendanceEvents    AttendanceEvent[]
+  absences            Absence[]
+  webauthnCredentials WebauthnCredential[]
+  rosterAssignments   RosterAssignment[]
+  eventualities       Eventuality[]
+  collectiveVacationAssignments CollectiveVacationAssignment[]
 
   @@map("employees")
 }
@@ -129,6 +135,144 @@ model RoleAssignment {
   assignedAt DateTime @default(now()) @map("assigned_at")
 
   @@map("role_assignments")
+}
+
+// ---------- Asistencia / WebAuthn / Feriados (Fase 2) ----------
+
+model AttendanceEvent {
+  id          BigInt    @id @default(autoincrement())
+  employeeId  String    @map("employee_id")
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  date        DateTime  @db.Date
+  timeIn      DateTime? @map("time_in")
+  timeOut     DateTime? @map("time_out")
+  late        Boolean   @default(false)
+  source      String    @default("kiosk") // 'kiosk' | 'finca' | 'liceo'
+  justified   Boolean   @default(false)
+  justifyNote String?   @map("justify_note")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([employeeId, date])
+  @@map("attendance_events")
+}
+
+model Absence {
+  id          BigInt    @id @default(autoincrement())
+  employeeId  String    @map("employee_id")
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  date        DateTime  @db.Date
+  justified   Boolean   @default(false)
+  justifyNote String?   @map("justify_note")
+  source      String?   // 'finca' | 'liceo' | 'eventualidad' | null (manual admin)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([employeeId, date])
+  @@map("absences")
+}
+
+model WebauthnCredential {
+  id          String    @id // credentialId, base64url
+  employeeId  String    @map("employee_id")
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  publicKey   Bytes     @map("public_key")
+  signCount   Int       @default(0) @map("sign_count")
+  transports  String[]
+  deviceLabel String?   @map("device_label")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+
+  @@map("webauthn_credentials")
+}
+
+model WebauthnChallenge {
+  id         String   @id @default(uuid())
+  challenge  String   @unique
+  employeeId String?  @map("employee_id") // null en auth-options: aún no se sabe quién marca
+  purpose    String   // 'register' | 'auth'
+  expiresAt  DateTime @map("expires_at")
+
+  @@map("webauthn_challenges")
+}
+
+model Holiday {
+  id      Int      @id @default(autoincrement())
+  date    DateTime @unique @db.Date
+  nameEs  String   @map("name_es")
+  nameEn  String   @map("name_en")
+  type    String   // 'fixed' | 'uasd' | 'custom'
+  removed Boolean  @default(false)
+
+  @@map("holidays")
+}
+
+// ---------- Finca / Liceo (Fase 3) ----------
+
+// finca.jsx y liceo.jsx son el mismo dominio de datos con distinto nombre de key en
+// localStorage — se modelan como una sola tabla con `location` en vez de duplicar el modelo.
+model RosterAssignment {
+  id         Int      @id @default(autoincrement())
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  location   String   // 'finca' | 'liceo'
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([employeeId, location])
+  @@map("roster_assignments")
+}
+
+// ---------- Eventualidades / Vacaciones (Fase 4) ----------
+
+// Unifica "Eventualidad" y "Vacaciones normales" de dashboard.jsx — eran el mismo efecto
+// secundario sobre ausencias, código casi idéntico; la única diferencia real era que
+// vacaciones normales no tenía type/estado. Acá 'vacaciones' es un valor más de `type`.
+model Eventuality {
+  id           Int       @id @default(autoincrement())
+  employeeId   String    @map("employee_id")
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  dateStart    DateTime  @map("date_start") @db.Date
+  dateEnd      DateTime  @map("date_end") @db.Date
+  type         String    // 'eventualidad'|'dia_libre'|'permiso'|'servicio_feriado'|'vacaciones'|custom
+  motivo       String
+  estado       String    @default("pendiente") // 'pendiente'|'aceptado'|'rechazado'
+  approvedById String?   @map("approved_by_id")
+  approvedAt   DateTime? @map("approved_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("eventualities")
+}
+
+// Vacaciones Colectivas — período anual global + roster de empleados asignados, sin efecto
+// sobre ausencias (dominio aparte, confirmado en la investigación: vacaciones.jsx nunca
+// toca uasd_absences).
+model CollectiveVacationPeriod {
+  id          Int      @id @default(autoincrement())
+  year        Int      @unique
+  createdAt   DateTime @default(now()) @map("created_at")
+  days        CollectiveVacationDay[]
+  assignments CollectiveVacationAssignment[]
+
+  @@map("collective_vacation_periods")
+}
+
+model CollectiveVacationDay {
+  id       Int      @id @default(autoincrement())
+  periodId Int      @map("period_id")
+  period   CollectiveVacationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  date     DateTime @db.Date
+
+  @@unique([periodId, date])
+  @@map("collective_vacation_days")
+}
+
+model CollectiveVacationAssignment {
+  id         Int      @id @default(autoincrement())
+  periodId   Int      @map("period_id")
+  period     CollectiveVacationPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, employeeId])
+  @@map("collective_vacation_assignments")
 }
 
 // ---------- Auditoría ----------

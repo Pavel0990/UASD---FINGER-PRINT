@@ -4,15 +4,15 @@ const ROLES_KEY = 'uasd_roles_v1';
 const ASSIGN_KEY = 'uasd_role_assignments_v1';
 const CRED_KEY = 'uasd_credentials_v1';
 const CURR_USER_KEY = 'uasd_current_user';
-const ROLE_SEED_VER = 'uasd_role_seed_v11'; // v11: quita 'roles' de Solo lectura (escalamiento de privilegios)
+const ROLE_SEED_VER = 'uasd_role_seed_v12'; // v12: agrega approve_eventualidades a admin/RRHH (Fase 4)
 const CRED_PATCH_V1 = 'uasd_cred_patch_v1';
 const CRED_PATCH_V2 = 'uasd_cred_patch_v2';
 const DEFAULT_PASS   = '123456789';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // misma regex que register.jsx:308
 
 const SEED_ROLES = [
-  { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','liceo','vacaciones','feriados','kiosk_admin'] },
-  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll','reports','manage','farm','liceo','vacaciones','feriados','roles'] },
+  { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll','reports','manage','roles','audit','farm','liceo','vacaciones','feriados','kiosk_admin','approve_eventualidades'] },
+  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll','reports','manage','farm','liceo','vacaciones','feriados','roles','approve_eventualidades'] },
   { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports','audit'] },
 ];
 
@@ -36,6 +36,7 @@ const ALL_PERMS = [
   { id: 'liceo',   label_es: 'Control de liceo',      label_en: 'School control' },
   { id: 'vacaciones', label_es: 'Vacaciones colectivas', label_en: 'Collective vacations' },
   { id: 'feriados', label_es: 'Gestionar feriados', label_en: 'Manage holidays' },
+  { id: 'approve_eventualidades', label_es: 'Aprobar eventualidades', label_en: 'Approve eventualities' },
 ];
 
 (function seedRoles() {
@@ -57,6 +58,9 @@ const ALL_PERMS = [
     }
     if (r.id === 'role_hr' && !perms.includes('roles')) {
       return { ...r, perms: [...perms, 'roles'] };
+    }
+    if ((r.id === 'role_admin' || r.id === 'role_hr') && !perms.includes('approve_eventualidades')) {
+      return { ...r, perms: [...perms, 'approve_eventualidades'] };
     }
     // 'Solo lectura' NUNCA debe tener 'roles' (gestionar roles/permisos) —
     // su descripción es "acceso solo a reportes y control de actividad".
@@ -189,30 +193,39 @@ function getRoles() {
 // roles.jsx siempre llama a esto con el arreglo COMPLETO ya modificado — se
 // difiere contra el snapshot anterior para saber qué crear/editar/borrar en
 // la API, sin tener que tocar RolesView (que arma el arreglo completo).
+// Devuelve una Promise que se rechaza si ALGUNA de las operaciones falla (p. ej. el techo
+// de permisos del backend rechaza un rol) — el llamador puede revertir su estado optimista.
 function saveRoles(newRoles) {
   if (typeof isBackendActive === 'function' && isBackendActive()) {
     const prev = DataStore.roles;
     const prevIds = new Set(prev.map(r => r.id));
     const newIds = new Set(newRoles.map(r => r.id));
+    const reqs = [];
 
     newRoles.forEach(r => {
       if (!prevIds.has(r.id)) {
-        apiFetch('/roles', { method: 'POST', body: JSON.stringify(r) }).catch(err => console.error('saveRoles create', err));
+        reqs.push(apiFetch('/roles', { method: 'POST', body: JSON.stringify(r) }));
         return;
       }
       const before = prev.find(p => p.id === r.id);
       const samePerms = before && JSON.stringify([...before.perms].sort()) === JSON.stringify([...r.perms].sort());
       const changed = !before || before.name !== r.name || before.description !== r.description || before.color !== r.color || !samePerms;
-      if (changed) apiFetch(`/roles/${encodeURIComponent(r.id)}`, { method: 'PATCH', body: JSON.stringify(r) }).catch(err => console.error('saveRoles update', err));
+      if (changed) reqs.push(apiFetch(`/roles/${encodeURIComponent(r.id)}`, { method: 'PATCH', body: JSON.stringify(r) }));
     });
     prev.forEach(r => {
-      if (!newIds.has(r.id)) apiFetch(`/roles/${encodeURIComponent(r.id)}`, { method: 'DELETE' }).catch(err => console.error('saveRoles delete', err));
+      if (!newIds.has(r.id)) reqs.push(apiFetch(`/roles/${encodeURIComponent(r.id)}`, { method: 'DELETE' }));
     });
 
     DataStore.roles = newRoles;
-    return;
+    return Promise.all(reqs).catch(err => {
+      console.error('saveRoles', err);
+      // Resincroniza DataStore con la verdad del servidor — evita que quede
+      // divergente de Postgres si alguna operación del lote falló a medias.
+      return apiFetch('/roles').then(fresh => { DataStore.roles = fresh; }).finally(() => { throw err; });
+    });
   }
   localStorage.setItem(ROLES_KEY, JSON.stringify(newRoles));
+  return Promise.resolve();
 }
 
 function getAssignments() {
@@ -225,22 +238,27 @@ function saveAssignments(newAsgn) {
     const prev = DataStore.assignments;
     const prevByEmp = new Map(prev.map(a => [a.empId, a.roleId]));
     const newByEmp = new Map(newAsgn.map(a => [a.empId, a.roleId]));
+    const reqs = [];
 
     newAsgn.forEach(a => {
       if (prevByEmp.get(a.empId) !== a.roleId) {
-        apiFetch('/role-assignments', { method: 'POST', body: JSON.stringify(a) }).catch(err => console.error('saveAssignments upsert', err));
+        reqs.push(apiFetch('/role-assignments', { method: 'POST', body: JSON.stringify(a) }));
       }
     });
     prevByEmp.forEach((roleId, empId) => {
       if (!newByEmp.has(empId)) {
-        apiFetch(`/role-assignments/${encodeURIComponent(empId)}`, { method: 'DELETE' }).catch(err => console.error('saveAssignments delete', err));
+        reqs.push(apiFetch(`/role-assignments/${encodeURIComponent(empId)}`, { method: 'DELETE' }));
       }
     });
 
     DataStore.assignments = newAsgn;
-    return;
+    return Promise.all(reqs).catch(err => {
+      console.error('saveAssignments', err);
+      return apiFetch('/role-assignments').then(fresh => { DataStore.assignments = fresh; }).finally(() => { throw err; });
+    });
   }
   localStorage.setItem(ASSIGN_KEY, JSON.stringify(newAsgn));
+  return Promise.resolve();
 }
 
 function getCurrentUserProfile() {
@@ -331,6 +349,7 @@ function RolesView({ t, setRoute }) {
   const [editCredFieldErr, setEditCredFieldErr] = React.useState({ email: false, pass: false });
   const [flash, setFlash]       = React.useState(null);
   const isES = t.appName === 'Sistema de Registro Biométrico';
+  const showFlash = (msg, isError) => { setFlash({ msg: msg, isError: !!isError }); setTimeout(() => setFlash(null), isError ? 3200 : 2000); };
 
 
   const curRole = selRole && roles.find(r => r.id === selRole);
@@ -412,9 +431,13 @@ function RolesView({ t, setRoute }) {
     }
     const msg = editing.id ? 'Rol actualizado' : 'Rol creado';
     const nextSel = editing.id || list[list.length - 1]?.id;
-    saveRoles(list);
+    const previousRoles = roles;
     setRoles(list);
-    closeForm(() => { setFlash(msg); setTimeout(() => setFlash(null), 2000); });
+    Promise.resolve(saveRoles(list)).catch(() => {
+      setRoles(previousRoles);
+      showFlash(isES ? 'No se pudo guardar el rol — intenta de nuevo' : 'Could not save role — try again', true);
+    });
+    closeForm(() => { showFlash(msg); });
     setSelRole(nextSel);
   };
 
@@ -422,13 +445,18 @@ function RolesView({ t, setRoute }) {
     if (!confirm('¿Eliminar este rol? Las asignaciones vinculadas se perderán.')) return;
     let list = roles.filter(r => r.id !== rid);
     let asgn = assign.filter(a => a.roleId !== rid);
-    saveRoles(list);
-    saveAssignments(asgn);
+    const previousRoles = roles;
+    const previousAssign = assign;
     setRoles(list);
     setAssign(asgn);
     if (selRole === rid) setSelRole(null);
-    setFlash('Rol eliminado');
-    setTimeout(() => setFlash(null), 2000);
+    Promise.all([saveRoles(list), saveAssignments(asgn)]).then(() => {
+      showFlash('Rol eliminado');
+    }).catch(() => {
+      setRoles(previousRoles);
+      setAssign(previousAssign);
+      showFlash(isES ? 'No se pudo eliminar el rol — intenta de nuevo' : 'Could not delete role — try again', true);
+    });
   };
 
   const startAssign = (emp) => {
@@ -469,8 +497,14 @@ function RolesView({ t, setRoute }) {
     setAssignFieldErr({ email: false, pass: false });
     saveCredential(assignEmp.id, assignEmail.trim(), assignPass);
     const asgn = [...assign, { empId: assignEmp.id, roleId: selRole }];
-    saveAssignments(asgn);
+    const previousAssign = assign;
     setAssign(asgn);
+    Promise.resolve(saveAssignments(asgn)).catch(() => {
+      setAssign(previousAssign);
+      deleteCredential(assignEmp.id);
+      setCreds(getCredentials());
+      showFlash(isES ? 'No se pudo asignar el rol — intenta de nuevo' : 'Could not assign role — try again', true);
+    });
     setAssignEmp(null);
     setAssignEmail('');
     setAssignPass('');
@@ -479,10 +513,14 @@ function RolesView({ t, setRoute }) {
 
   const removeAssign = (empId, roleId) => {
     const asgn = assign.filter(a => !(a.empId === empId && a.roleId === roleId));
-    saveAssignments(asgn);
+    const previousAssign = assign;
     setAssign(asgn);
     deleteCredential(empId);
     setCreds(getCredentials());
+    Promise.resolve(saveAssignments(asgn)).catch(() => {
+      setAssign(previousAssign);
+      showFlash(isES ? 'No se pudo quitar la asignación — intenta de nuevo' : 'Could not remove assignment — try again', true);
+    });
   };
 
   const closeCred = (cb) => {
@@ -507,7 +545,7 @@ function RolesView({ t, setRoute }) {
     saveCredential(editCred, editCredEmail.trim(), editCredPass);
     saveEmployeeEmail(editCred, editCredEmail.trim());
     setCreds(getCredentials());
-    closeCred(() => { setFlash(isES?'Credenciales actualizadas':'Credentials updated'); setTimeout(() => setFlash(null), 2000); });
+    closeCred(() => { showFlash(isES?'Credenciales actualizadas':'Credentials updated'); });
   };
 
   const togglePerm = (pid) => {
@@ -1000,7 +1038,7 @@ function RolesView({ t, setRoute }) {
         </div>
       </div>
 
-      {flash && <div className="flash" style={{position:'fixed',bottom:'24px',left:'50%',transform:'translateX(-50%)',zIndex:1000}}>{flash}</div>}
+      {flash && <div className={`flash${flash.isError ? ' flash--error' : ''}`} style={{position:'fixed',bottom:'24px',left:'50%',transform:'translateX(-50%)',zIndex:1000}}>{flash.msg}</div>}
     </div>
   );
 }

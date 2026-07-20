@@ -18,6 +18,16 @@ function withTimeout(promise, ms) {
   ]);
 }
 
+// El backend (@simplewebauthn/server) devuelve credentialId en base64URL (-_ , sin padding);
+// el resto de este archivo ya decodifica credIdRef.current con atob(), que exige base64
+// estándar (+/ con padding) — sin esto, atob() truena o decodifica basura para el flujo
+// con backend activo.
+function b64urlToB64(str) {
+  let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  return b64;
+}
+
 function generateNextCode() {
   const all = typeof getRegisteredEmployees === 'function' ? getRegisteredEmployees() : [];
   const max = [...EMPLOYEES, ...all].reduce((m, e) => {
@@ -85,8 +95,11 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
   const captureTimerRef  = React.useRef(null);
   const hidDeviceRef     = React.useRef(null);
   const [hidConnected, setHidConnected] = React.useState(false);
-  // Guarda el rawId de la credencial creada para reusar con get() en capturas siguientes
+  // Guarda el rawId de la credencial creada para reusar con get() en capturas siguientes.
+  // Con backend activo, además guarda el material verificado (credential) sin persistir
+  // todavía — el empleado no existe como fila real hasta save(), recién ahí se vincula.
   const credIdRef = React.useRef(sessionStorage.getItem('uasd-cred-id') || null);
+  const pendingCredentialRef = React.useRef(null);
 
   // Mantiene capturedRef sincronizado — evita closures stale en async startCapture
   React.useEffect(() => { capturedRef.current = captured; }, [captured]);
@@ -189,7 +202,10 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
         let verified = false;
 
         if (credIdRef.current) {
-          // Credencial ya creada → solo verifica con Touch ID (sin diálogo "Guardar contraseña")
+          // Credencial ya creada → solo verifica con Touch ID (sin diálogo "Guardar contraseña").
+          // Es puramente una confirmación de UX para encadenar los 10 "dedos" simulados — no
+          // hace falta ida y vuelta al backend, WebAuthn no tiene concepto de "dedos" distintos,
+          // es la misma credencial de plataforma repetida.
           const rawId = Uint8Array.from(atob(credIdRef.current), c => c.charCodeAt(0));
           const assertion = await withTimeout(navigator.credentials.get({ publicKey: {
             challenge,
@@ -198,9 +214,22 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
             timeout: 30000,
           }}), 12000);
           verified = !!assertion;
+        } else if (typeof isBackendActive === 'function' && isBackendActive() && typeof waRegisterOptions === 'function') {
+          // Backend activo: la ceremonia se verifica criptográficamente en el servidor
+          // (firma + origin + rpID vía @simplewebauthn/server), no con una comparación de
+          // ID en el cliente. El empleado aún no existe como fila real (se confirma en
+          // save()) — verifyRegister() devuelve el material sin persistirlo todavía.
+          const options = await withTimeout(waRegisterOptions({ userName: form.email, userDisplayName: form.name }), 12000);
+          const attestationResponse = await withTimeout(SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options }), 12000);
+          const deviceLabel = typeof finger === 'string' ? ((FL && FL[finger]) || finger) : null;
+          const result = await withTimeout(waRegisterVerify(attestationResponse, deviceLabel), 12000);
+          if (result.verified) {
+            credIdRef.current = b64urlToB64(result.credentialId);
+            pendingCredentialRef.current = result.credential; // { id, publicKey, signCount, transports }
+            verified = true;
+          }
         } else {
-          // Primera vez: crear credencial (aparece "Add a passkey?" solo esta vez)
-          const label = (FL && FL[finger]) || finger;
+          // Sin backend (modo local puro) — mismo flujo crudo de siempre.
           const cred = await withTimeout(navigator.credentials.create({ publicKey: {
             challenge,
             rp: { name: 'UASD Fingerprint System' },
@@ -306,7 +335,7 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
     if (!form.role?.trim()) errs.role = true;
     if (!form.email?.trim()) errs.email = true;
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs.email = 'invalid';
-    if (!form.phone || form.phone.replace(/\D/g, '').length === 0) errs.phone = true;
+    if (!isPhoneComplete(form.phone)) errs.phone = true;
     if (!form.dob?.trim()) errs.dob = true;
     if (!form.schedule?.trim()) errs.schedule = true;
     if (!form.workDays || form.workDays.length === 0) errs.workDays = true;
@@ -332,17 +361,24 @@ function RegisterView({ t, setRoute, setFlash, onRegister }) {
     goNext();
   };
 
-  const save = () => {
+  const save = async () => {
     const emp = { ...form, id: form.code, lastIn: '—' };
-    saveRegisteredEmployee(emp);
+    const req = saveRegisteredEmployee(emp);
 
-    // Vincula la credencial WebAuthn capturada en el paso 2 (guardada solo en
-    // sessionStorage, aislada de todo) al mapa que SÍ lee el kiosco
-    // (localStorage['uasd_cred_map_v1']). Antes de esto, registrar la huella
-    // aquí nunca habilitaba el reconocimiento en el kiosco — eran dos
-    // almacenamientos completamente desconectados, por eso daba "huella no
-    // reconocida" siempre, sin importar que la captura hubiera funcionado.
-    if (credIdRef.current) {
+    if (typeof isBackendActive === 'function' && isBackendActive() && pendingCredentialRef.current) {
+      // Recién ahora existe una fila real de Employee — se espera la creación
+      // antes de vincular la credencial, porque webauthn_credentials exige un
+      // employee_id real (FK NOT NULL), no uno todavía en vuelo.
+      try {
+        await req;
+        await waLinkCredential(emp.id, pendingCredentialRef.current, null);
+      } catch (err) {
+        console.error('link-credential', err);
+        const isES = t.appName === 'Sistema de Registro Biométrico';
+        setFlash(isES ? 'Empleado guardado, pero la huella no se pudo vincular — regístrala de nuevo desde su ficha.' : 'Employee saved, but the fingerprint could not be linked — re-register it from their profile.');
+      }
+    } else if (credIdRef.current && !(typeof isBackendActive === 'function' && isBackendActive())) {
+      // Sin backend (modo local puro): mismo mapa de siempre.
       try {
         const map = JSON.parse(localStorage.getItem('uasd_cred_map_v1') || '{}');
         map[credIdRef.current] = emp.id;
@@ -1074,13 +1110,13 @@ function Step2({ t, FL, captureState, activeFinger, setActiveFinger, captured, q
           {/* Botón de captura protagónico */}
           <div style={{display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginTop:24, marginBottom:16}}>
             {captureState === 'idle' && !captured[activeFinger] && (
-              <button className="btn btn--primary" onClick={startCapture}
+              <button className="btn btn--primary" onClick={() => startCapture()}
                 style={{padding:'13px 44px', fontSize:14, gap:9}}>
                 <Icon name="fingerprint" size={17}/> {t.reg_capture_start}
               </button>
             )}
             {captureState === 'idle' && captured[activeFinger] && (
-              <button className="btn btn--ghost" onClick={startCapture}
+              <button className="btn btn--ghost" onClick={() => startCapture()}
                 style={{padding:'11px 32px', fontSize:13}}>
                 <Icon name="refresh" size={14}/> {t.reg_capture_recap}
               </button>

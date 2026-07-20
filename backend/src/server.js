@@ -9,6 +9,11 @@ const employeesRoutes = require('./modules/employees/employees.routes');
 const rolesRoutes = require('./modules/roles/roles.routes');
 const auditRoutes = require('./modules/audit/audit.routes');
 const credentialsRoutes = require('./modules/credentials/credentials.routes');
+const attendanceRoutes = require('./modules/attendance/attendance.routes');
+const holidaysRoutes = require('./modules/holidays/holidays.routes');
+const rosterRoutes = require('./modules/roster/roster.routes');
+const eventualitiesRoutes = require('./modules/eventualities/eventualities.routes');
+const collectiveVacationsRoutes = require('./modules/collective-vacations/collective-vacations.routes');
 
 const app = express();
 
@@ -18,11 +23,20 @@ const REPO_ROOT = path.join(__dirname, '..', '..');
 app.use(express.json({ limit: '10mb' })); // fotos de empleado llegan como dataURL en el body
 app.use(cookieParser());
 
+// Fotos de empleado: se decodifican una sola vez a disco (photoStorage.js) y se sirven
+// desde acá — Postgres solo guarda la URL corta, no el base64 completo.
+app.use('/employee-photos', express.static(path.join(__dirname, '..', 'uploads', 'employee-photos')));
+
 app.use('/api/auth', authRoutes);
 app.use('/api', employeesRoutes);
 app.use('/api', rolesRoutes);
 app.use('/api/audit-log', auditRoutes);
 app.use('/api/credentials', credentialsRoutes);
+app.use('/api', attendanceRoutes);
+app.use('/api', holidaysRoutes);
+app.use('/api', rosterRoutes);
+app.use('/api', eventualitiesRoutes);
+app.use('/api', collectiveVacationsRoutes);
 
 // Nunca sirvas la carpeta backend/ (contiene .env, credenciales de DB) ni .git como estático
 app.use((req, res, next) => {

@@ -75,7 +75,17 @@ async function getEmployeeStatuses(req, res, next) {
   try { res.json(await svc.listEmployeeStatuses()); } catch (err) { next(err); }
 }
 
+async function postEmployeeStatus(req, res, next) {
+  try {
+    const { code, label, color } = req.body;
+    if (!code || !label) return res.status(400).json({ error: 'code_and_label_required' });
+    const row = await svc.createEmployeeStatus({ code, label, color });
+    await logAudit({ actorEmployeeId: req.user.employeeId, actionType: 'add', subjectLabel: label, detail: { kind: 'employee_status', code } });
+    res.status(201).json(row);
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getEmployees, getEmployeeById, postEmployee, patchEmployee, deleteEmployee,
-  getDepartments, postDepartment, getEmployeeStatuses,
+  getDepartments, postDepartment, getEmployeeStatuses, postEmployeeStatus,
 };

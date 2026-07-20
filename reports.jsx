@@ -172,6 +172,16 @@ function ReportsView({ t, lang, setRoute }) {
 
   const isES = lang === 'es';
 
+  // Expansión a pantalla completa de "Asistencia diaria" (doble clic o botón
+  // de esquina) — Escape cierra igual que el resto de overlays del sistema.
+  const [attExpanded, setAttExpanded] = React.useState(false);
+  React.useEffect(() => {
+    if (!attExpanded) return;
+    const onKey = (e) => { if (e.key === 'Escape') setAttExpanded(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [attExpanded]);
+
   const [filterMonth, setFilterMonth] = React.useState(todayKey);
   const [fy, fm]    = filterMonth.split('-');
   const monthLabel  = `${MONTHS_ES[+fm - 1]} ${fy}`;
@@ -258,7 +268,7 @@ function ReportsView({ t, lang, setRoute }) {
   }, []);
 
   const emps       = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
-  const activeEmps = React.useMemo(() => emps.filter(e => e.status !== 'inactive'), [emps]);
+  const activeEmps = React.useMemo(() => emps.filter(e => e.status === 'ok'), [emps]);
   const attRecords = React.useMemo(() => Object.values(allAtt), [allAtt]);
 
   const monthsWithData = React.useMemo(() => {
@@ -373,7 +383,26 @@ function ReportsView({ t, lang, setRoute }) {
   /* ── Eventualidades — mismo patrón de sync que asistencia/ausencias ── */
   const loadEventualidades = () => { try { return JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch { return {}; } };
   const [evMap, setEvMap] = React.useState(loadEventualidades);
+  // Con backend activo, evMap se llena desde /api/eventualities (Fase 4) — 'vacaciones' se
+  // excluye acá porque ese tipo nunca tuvo flujo de aprobación (siempre queda 'aceptado').
+  const loadEventualidadesRemote = () => {
+    if (typeof apiGetEventualities !== 'function') return Promise.resolve(null);
+    return apiGetEventualities().then((rows) => {
+      const map = {};
+      rows.filter(r => r.type !== 'vacaciones').forEach((r) => {
+        if (!map[r.empId]) map[r.empId] = [];
+        map[r.empId].push(r);
+      });
+      return map;
+    });
+  };
   React.useEffect(() => {
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      const sync = () => loadEventualidadesRemote().then(map => { if (map) setEvMap(map); }).catch(() => {});
+      sync();
+      const id = setInterval(sync, 2500);
+      return () => clearInterval(id);
+    }
     const sync = () => setEvMap(loadEventualidades());
     window.addEventListener('storage', sync);
     const id = setInterval(sync, 2500);
@@ -384,7 +413,22 @@ function ReportsView({ t, lang, setRoute }) {
   const EVENT_STATUS_LABEL = { pendiente: isES ? 'Pendiente' : 'Pending', aceptado: isES ? 'Aceptado' : 'Accepted', rechazado: isES ? 'Rechazado' : 'Rejected' };
   const EVENT_STATUS_CYCLE = ['pendiente', 'aceptado', 'rechazado'];
 
+  // Antes: cualquiera con acceso de solo-lectura a reportes podía aprobar/rechazar con un
+  // clic, sin permiso dedicado ni atribución. Ahora exige 'approve_eventualidades' —
+  // el backend lo hace cumplir de verdad (403 si no lo tiene); acá solo se refleja en la UI.
+  const canApproveEventualidades = typeof userHasPermission !== 'function' || userHasPermission('approve_eventualidades');
+
   const cycleEventStatus = (empId, evId) => {
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      if (!canApproveEventualidades) return;
+      const list = evMap[empId] || [];
+      const current = (list.find(x => x.id === evId) || {}).estado || 'pendiente';
+      const next = EVENT_STATUS_CYCLE[(EVENT_STATUS_CYCLE.indexOf(current) + 1) % EVENT_STATUS_CYCLE.length];
+      apiPatchEventualityEstado(evId, next).then((row) => {
+        setEvMap(prev => ({ ...prev, [empId]: (prev[empId] || []).map(x => x.id === evId ? row : x) }));
+      }).catch(err => console.error('cambiar estado eventualidad', err));
+      return;
+    }
     let map = {};
     try { map = JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch {}
     const list = map[empId] || [];
@@ -623,9 +667,9 @@ function ReportsView({ t, lang, setRoute }) {
      changelog.jsx (filtro de tipo) — pill animado que se desliza al ítem activo. */
   const [view, setView] = React.useState('resumen');
   const viewOptions = [
-    { id: 'resumen', label: t.rep_view_summary },
-    { id: 'detalle', label: t.rep_view_detail },
-    { id: 'calendario', label: t.rep_view_calendar },
+    { id: 'resumen', label: t.rep_view_summary, icon: 'activity' },
+    { id: 'detalle', label: t.rep_view_detail, icon: 'barChart' },
+    { id: 'calendario', label: t.rep_view_calendar, icon: 'calendar' },
   ];
 
   // KPIs cliqueables: los KPI de Resumen reflejan siempre el mes actual, así
@@ -659,7 +703,7 @@ function ReportsView({ t, lang, setRoute }) {
   const birthdaysThisMonth = React.useMemo(() => {
     const targetMonth = +filterMonth.split('-')[1];
     return emps
-      .filter(e => e.status !== 'inactive' && e.dob)
+      .filter(e => e.status === 'ok' && e.dob)
       .map(e => {
         const [d, m] = (e.dob || '').split('/').map(n => parseInt(n, 10));
         return { emp: e, day: d, month: m };
@@ -775,6 +819,7 @@ function ReportsView({ t, lang, setRoute }) {
                 ref={el => (viewItemRefs.current[o.id] = el)}
                 className={`seg-filter__item ${view === o.id ? 'seg-filter__item--active' : ''}`}
                 onClick={() => setView(o.id)}>
+                <Icon name={o.icon} size={12}/>
                 {o.label}
               </button>
             ))}
@@ -834,14 +879,65 @@ function ReportsView({ t, lang, setRoute }) {
         </div>
       </div>
 
-      {/* ── Asistencia diaria + Tendencia de tardanzas — últimos 7 días ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20 }}>
-        <div className="chart-card">
+      {/* ── Asistencia diaria + Tendencia de tardanzas — últimos 7 días ──
+         Doble clic (o el botón de esquina, para quien no sepa del doble
+         clic) expande "Asistencia diaria" a pantalla completa — MISMO
+         lenguaje visual que el panel de administración (acc-overlay +
+         acc-modal__head: banda oscura, avatar circular, título serif,
+         cierre en acc-modal__close--x), no un modal claro genérico.
+
+         Portal a document.body: si se monta acá mismo, queda como
+         descendiente de <div className="rep-panel-in"> (la vista Resumen),
+         que tiene animation:sectionIn con "transform: translateY(0)" fijado
+         por fill-mode "both" — un transform (aunque sea 0) siempre crea
+         containing block nuevo para position:fixed, así que el modal quedaba
+         recortado al tamaño de esa sección en vez de cubrir la pantalla
+         completa. Con portal se monta fuera de esa cadena, igual que hace
+         DateStatFilter en changelog.jsx con su menú flotante. ── */}
+      {attExpanded && ReactDOM.createPortal(
+        <div className="acc-overlay" onMouseDown={() => setAttExpanded(false)}>
+          <div className="chart-expand-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="acc-modal__head">
+              <div className="acc-modal__head-id">
+                <div className="acc-modal__avatar"><Icon name="activity" size={20}/></div>
+                <div>
+                  <div className="acc-modal__title">{t.rep_attend}</div>
+                  <div className="acc-modal__sub">{t.rep_attend_sub} · {isES ? 'últimos 7 días' : 'last 7 days'}</div>
+                </div>
+              </div>
+              <button className="acc-modal__close acc-modal__close--x" onClick={() => setAttExpanded(false)} aria-label="Cerrar">
+                <Icon name="x" size={18}/>
+              </button>
+            </div>
+            <div className="chart-expand-modal__body">
+              <AreaChart
+                values={last7.map(d => d.total)}
+                labels={last7.map(d => d.day)}
+                color="var(--ink-700)"
+                gradId="repGradAsistenciaXL"
+                peakIndex={last7Peak}
+                tooltipCaption={isES ? 'Marcajes' : 'Check-ins'}
+                formatValue={(i) => `${last7[i].total} · ${fullDayName(i)}`}
+                emptyLabel={isES ? 'Sin marcajes esta semana' : 'No check-ins this week'}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20, marginBottom:20 }}>
+        <div className="chart-card chart-card--expandable" onDoubleClick={() => setAttExpanded(true)}>
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{t.rep_attend}</div>
               <div className="chart-card__sub">{t.rep_attend_sub} · {isES ? 'últimos 7 días' : 'last 7 days'}</div>
             </div>
+            <button type="button" className="chart-card__expand-btn"
+              title={isES ? 'Expandir (doble clic)' : 'Expand (double-click)'}
+              onClick={() => setAttExpanded(true)}>
+              <Icon name="expand" size={14}/>
+            </button>
           </div>
           <AreaChart
             values={last7.map(d => d.total)}
@@ -963,8 +1059,8 @@ function ReportsView({ t, lang, setRoute }) {
               {r.type === 'eventualidad' ? (
                 <button
                   className={`badge ${r.estado === 'aceptado' ? 'badge--ok' : r.estado === 'rechazado' ? 'badge--err' : 'badge--warn'}`}
-                  style={{ fontSize:10.5, padding:'3px 9px', width:'fit-content', border:'none', cursor:'pointer' }}
-                  title={isES ? 'Tocar para cambiar el estado' : 'Tap to change status'}
+                  style={{ fontSize:10.5, padding:'3px 9px', width:'fit-content', border:'none', cursor: canApproveEventualidades ? 'pointer' : 'default', opacity: canApproveEventualidades ? 1 : 0.7 }}
+                  title={canApproveEventualidades ? (isES ? 'Tocar para cambiar el estado' : 'Tap to change status') : (isES ? 'No tienes permiso para aprobar eventualidades' : 'You don\'t have permission to approve eventualities')}
                   onClick={() => cycleEventStatus(r.emp.id, r.evId)}>
                   {EVENT_STATUS_LABEL[r.estado] || EVENT_STATUS_LABEL.pendiente}
                 </button>
@@ -1207,7 +1303,7 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
   }, [filterMonth]);
 
   var emps = typeof EMPLOYEES !== 'undefined'
-    ? EMPLOYEES.filter(function(e) { return e.status !== 'inactive'; })
+    ? EMPLOYEES.filter(function(e) { return e.status === 'ok'; })
     : [];
 
   var DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];

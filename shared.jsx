@@ -809,6 +809,7 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     doorOpen: <><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h20"/><path d="M13 20V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v16"/></>,
     alertTriangle: <><path d="M10.3 3.5 2 19h20L13.7 3.5a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><circle cx="12" cy="16.5" r=".5" fill="currentColor"/></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5"/><path d="M10.9 12.1 20 3"/><path d="M19 4l1 1"/><path d="M17 6l1 1"/></>,
+    expand: <><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></>,
   };
   return <svg {...props}>{paths[name]}</svg>;
 };
@@ -1454,8 +1455,13 @@ function saveRegisteredEmployee(emp) {
     const req = isNew
       ? apiFetch('/employees', { method: 'POST', body })
       : apiFetch(`/employees/${encodeURIComponent(emp.id)}`, { method: 'PATCH', body });
+    // Devuelve la promesa (antes era fire-and-forget) para que quien necesite
+    // saber cuándo el empleado quedó realmente creado en Postgres —p. ej.
+    // register.jsx, para recién ahí vincular la credencial WebAuthn a un
+    // employeeId real— pueda esperarla. Los llamadores existentes que no la
+    // usan (dashboard.jsx) siguen funcionando igual, solo ignoran el retorno.
     req.catch(err => console.error('saveRegisteredEmployee', err));
-    return;
+    return req;
   }
   try {
     const list = getRegisteredEmployees();
@@ -1498,7 +1504,17 @@ const DEFAULT_HOLIDAYS = [
   { date: '2026-11-06', name_es: 'Día de la Constitución', name_en: 'Constitution Day', type: 'fixed' },
   { date: '2026-12-25', name_es: 'Navidad', name_en: 'Christmas Day', type: 'fixed' },
 ];
+// Caché en memoria (mismo patrón que EMPLOYEES): isHoliday()/getHolidays() se llaman de
+// forma síncrona en decenas de sitios (filter/map/reduce en dashboard.jsx, reports.jsx,
+// finca.jsx, liceo.jsx) — convertirlas a async habría exigido tocar cada call site.
+// bootstrapStore() (store.jsx) puebla este arreglo UNA vez tras login, igual que hace con
+// EMPLOYEES; sin sesión, sigue leyendo localStorage exactamente como antes.
+const HOLIDAYS_CACHE = [];
+
 function getHolidays() {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    return [...HOLIDAYS_CACHE].sort((a, b) => a.date.localeCompare(b.date));
+  }
   try {
     const custom = JSON.parse(localStorage.getItem(HOLIDAYS_KEY) || '[]');
     const removed = new Set(JSON.parse(localStorage.getItem(HOLIDAYS_REMOVED_KEY) || '[]'));
@@ -1507,7 +1523,23 @@ function getHolidays() {
     return [...defaults, ...custom].sort((a, b) => a.date.localeCompare(b.date));
   } catch { return [...DEFAULT_HOLIDAYS]; }
 }
+// list = el resultado completo que ya arma FeriadosView (defaults vigentes + custom).
+// Contra el backend: diffea contra el snapshot actual del caché y solo manda las
+// altas/bajas reales (POST upsert por fecha, DELETE por id de lo que ya no está).
 function saveHolidays(list) {
+  if (typeof isBackendActive === 'function' && isBackendActive()) {
+    const prevDates = new Set(HOLIDAYS_CACHE.map(h => h.date));
+    const nextDates = new Set(list.map(h => h.date));
+    const toRemove = HOLIDAYS_CACHE.filter(h => !nextDates.has(h.date));
+    const toUpsert = list.filter(h => !prevDates.has(h.date) || DEFAULT_HOLIDAYS.every(d => d.date !== h.date));
+    HOLIDAYS_CACHE.length = 0;
+    HOLIDAYS_CACHE.push(...list);
+    Promise.all([
+      ...toRemove.map(h => apiDeleteHoliday(h.id).catch(err => console.error('saveHolidays remove', err))),
+      ...toUpsert.map(h => apiPostHoliday(h).catch(err => console.error('saveHolidays upsert', err))),
+    ]).then(() => apiGetHolidays().then(rows => { HOLIDAYS_CACHE.length = 0; HOLIDAYS_CACHE.push(...rows); }).catch(() => {}));
+    return;
+  }
   try {
     const defaultDates = new Set(DEFAULT_HOLIDAYS.map(h => h.date));
     const activeDates = new Set(list.map(h => h.date));

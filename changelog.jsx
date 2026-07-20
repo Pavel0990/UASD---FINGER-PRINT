@@ -485,14 +485,17 @@ function DateStatFilter({ log, dateFilter, onChange }) {
                   onChange(next.length === 0 ? (browsedYear || activeYear) : next.length === 1 ? next[0] : next);
                 };
                 return (
-                  <div key={ym} style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                  <div key={ym} role="checkbox" aria-checked={isSel} tabIndex={0}
+                    style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
                     padding:'8px 14px', cursor:'pointer',
                     background: isSel ? 'rgba(22,27,51,0.05)' : 'transparent',
                     borderBottom:'1px solid var(--ink-100)', transition:'background .12s' }}
+                    onClick={toggleMonth}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMonth(); } }}
                     onMouseEnter={e => { if (!isSel) e.currentTarget.style.background='var(--cream-50)'; }}
                     onMouseLeave={e => { if (!isSel) e.currentTarget.style.background='transparent'; }}>
                     {/* Checkbox azul oscuro del sistema */}
-                    <span onClick={toggleMonth} style={{ width:15, height:15, borderRadius:3, marginRight:10, flexShrink:0, display:'grid', placeItems:'center', cursor:'pointer',
+                    <span style={{ width:15, height:15, borderRadius:3, marginRight:10, flexShrink:0, display:'grid', placeItems:'center', cursor:'pointer',
                       border: isSel ? '2px solid var(--ink-800)' : '1.5px solid var(--ink-200)',
                       background: isSel ? 'var(--ink-800)' : 'transparent', transition:'all .12s' }}>
                       {isSel && (
@@ -501,7 +504,7 @@ function DateStatFilter({ log, dateFilter, onChange }) {
                         </svg>
                       )}
                     </span>
-                    <span onClick={toggleMonth}
+                    <span
                       style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight: isSel ? 600 : 400,
                         color: isSel ? 'var(--ink-800)' : 'var(--ink-600)', flex:1 }}>
                       {MONTH_NAMES_ES_FULL[parseInt(ym.slice(5),10)-1]}

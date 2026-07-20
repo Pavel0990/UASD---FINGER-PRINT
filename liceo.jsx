@@ -1204,6 +1204,15 @@ function LiceoView({ t, lang, setRoute }) {
   const [isDirty,          setIsDirty]          = React.useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = React.useState(false);
 
+  // Mismo patrón de hidratación que finca.jsx: arranca de localStorage y, con
+  // backend activo, se reemplaza por los datos reales de Postgres apenas cargan.
+  React.useEffect(() => {
+    if (!(typeof isBackendActive === 'function' && isBackendActive())) return;
+    Promise.all([apiGetRoster('liceo'), apiGetRosterDaily('liceo')])
+      .then(([roster, dailyData]) => { setLiceoEmps(roster); setDaily(dailyData); })
+      .catch(err => console.error('cargar roster liceo', err));
+  }, []);
+
   const flashTimerRef = React.useRef(null);
 
   React.useEffect(function() {
@@ -1239,10 +1248,10 @@ function LiceoView({ t, lang, setRoute }) {
   const isToday        = viewDate === today;
   const isAlreadySaved = !!(daily[viewDate] && Object.keys(daily[viewDate]).length);
 
-  const showFlash = function(msg) {
+  const showFlash = function(msg, isError) {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    setFlash(msg);
-    flashTimerRef.current = setTimeout(function() { setFlash(null); }, 2000);
+    setFlash({ msg: msg, isError: !!isError });
+    flashTimerRef.current = setTimeout(function() { setFlash(null); }, isError ? 3200 : 2000);
   };
 
   const togglePresent = function(empId) {
@@ -1271,6 +1280,24 @@ function LiceoView({ t, lang, setRoute }) {
     var records = Object.assign({}, daily);
     if (!Object.keys(filteredDraft).length) delete records[viewDate];
     else records[viewDate] = filteredDraft;
+
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      var previousDaily = daily;
+      setDaily(records);
+      apiSaveRosterDay('liceo', viewDate, Object.keys(filteredDraft))
+        .then(fresh => {
+          setDaily(fresh);
+          setIsDirty(false);
+          setConfirmOverwrite(false);
+          showFlash(isES ? 'Asistencia guardada' : 'Attendance saved');
+        })
+        .catch(err => {
+          console.error('saveAttendance liceo', err);
+          setDaily(previousDaily);
+          showFlash(isES ? 'No se pudo guardar — intenta de nuevo' : 'Could not save — try again', true);
+        });
+      return;
+    }
     setDaily(records);
     saveLiceoDaily(records);
 
@@ -1331,24 +1358,44 @@ function LiceoView({ t, lang, setRoute }) {
     if (liceoEmps.includes(empId)) return;
     var list = liceoEmps.concat([empId]);
     setLiceoEmps(list);
-    saveLiceoEmployees(list);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      apiAddToRoster(empId, 'liceo').catch(err => {
+        console.error('addToLiceo', err);
+        setLiceoEmps(liceoEmps);
+        showFlash(isES ? 'No se pudo agregar — intenta de nuevo' : 'Could not add — try again', true);
+      });
+    } else {
+      saveLiceoEmployees(list);
+    }
     setSearchVal('');
   };
 
   const removeFromLiceo = function(empId) {
     var list = liceoEmps.filter(function(id) { return id !== empId; });
     setLiceoEmps(list);
-    saveLiceoEmployees(list);
-    var records = Object.assign({}, daily);
-    Object.keys(records).forEach(function(date) {
-      if (records[date] && records[date][empId]) {
-        records[date] = Object.assign({}, records[date]);
-        delete records[date][empId];
-        if (!Object.keys(records[date]).length) delete records[date];
-      }
-    });
-    setDaily(records);
-    saveLiceoDaily(records);
+    if (typeof isBackendActive === 'function' && isBackendActive()) {
+      var previousList = liceoEmps;
+      apiRemoveFromRoster(empId, 'liceo')
+        .then(() => apiGetRosterDaily('liceo'))
+        .then(fresh => setDaily(fresh))
+        .catch(err => {
+          console.error('removeFromLiceo', err);
+          setLiceoEmps(previousList);
+          showFlash(isES ? 'No se pudo eliminar — intenta de nuevo' : 'Could not remove — try again', true);
+        });
+    } else {
+      saveLiceoEmployees(list);
+      var records = Object.assign({}, daily);
+      Object.keys(records).forEach(function(date) {
+        if (records[date] && records[date][empId]) {
+          records[date] = Object.assign({}, records[date]);
+          delete records[date][empId];
+          if (!Object.keys(records[date]).length) delete records[date];
+        }
+      });
+      setDaily(records);
+      saveLiceoDaily(records);
+    }
     setDraft(function(prev) {
       var next = Object.assign({}, prev);
       delete next[empId];
@@ -1377,7 +1424,7 @@ function LiceoView({ t, lang, setRoute }) {
   };
 
   const availableEmps = React.useMemo(function() {
-    return EMPLOYEES.filter(function(e) { return !liceoEmps.includes(e.id) && e.status !== 'inactive'; });
+    return EMPLOYEES.filter(function(e) { return !liceoEmps.includes(e.id) && e.status === 'ok'; });
   }, [liceoEmps]);
 
   const filteredAvailable = React.useMemo(function() {
@@ -1589,12 +1636,12 @@ function LiceoView({ t, lang, setRoute }) {
           {flash && (
             <div style={{alignSelf:'center',marginTop:'10px',display:'flex',alignItems:'center',gap:'7px',
               whiteSpace:'nowrap',pointerEvents:'none',
-              background:'var(--ink-800)',color:'var(--cream-100)',
+              background: flash.isError ? 'var(--danger)' : 'var(--ink-800)',color:'var(--cream-100)',
               padding:'10px 18px',borderRadius:'999px',
               fontFamily:'var(--font-sans)',fontSize:'12px',fontWeight:600,letterSpacing:'0.04em',
               animation:'flashFincaLife 2s ease both'}}>
-              <Icon name="check" size={13} stroke={3.2}/>
-              {flash}
+              <Icon name={flash.isError ? 'alertTriangle' : 'check'} size={13} stroke={3.2}/>
+              {flash.msg}
             </div>
           )}
 

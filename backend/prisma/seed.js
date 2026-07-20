@@ -35,6 +35,10 @@ const ALL_PERMS = [
   { id: 'vacaciones', label_es: 'Vacaciones colectivas', label_en: 'Collective vacations' },
   { id: 'feriados', label_es: 'Gestionar feriados', label_en: 'Manage holidays' },
   { id: 'kiosk_admin', label_es: 'Administrar kiosco', label_en: 'Manage kiosk' },
+  // Fase 4: separado de 'reports' — antes cualquiera con acceso de solo-lectura a reportes
+  // podía aprobar/rechazar eventualidades con un clic (reports.jsx cycleEventStatus), sin
+  // atribución ni auditoría real.
+  { id: 'approve_eventualidades', label_es: 'Aprobar eventualidades', label_en: 'Approve eventualities' },
 ];
 
 // roles.jsx:690-705 (shared.jsx EMPLOYEES)
@@ -57,8 +61,8 @@ const EMPLOYEES = [
 
 // roles.jsx:12-16 / 18-23 / 10
 const SEED_ROLES = [
-  { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll', 'reports', 'manage', 'roles', 'audit', 'farm', 'liceo', 'vacaciones', 'feriados', 'kiosk_admin'], isProtected: true, maxMembers: 5 },
-  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll', 'reports', 'manage', 'farm', 'liceo', 'vacaciones', 'feriados', 'roles'], isProtected: true, maxMembers: 5 },
+  { id: 'role_admin', name: 'Administrador', description: 'Acceso completo a todas las funciones del sistema.', color: '#8b2942', perms: ['enroll', 'reports', 'manage', 'roles', 'audit', 'farm', 'liceo', 'vacaciones', 'feriados', 'kiosk_admin', 'approve_eventualidades'], isProtected: true, maxMembers: 5 },
+  { id: 'role_hr', name: 'Recursos Humanos', description: 'Registro de empleados, captura de huellas y reportes.', color: '#2C3E66', perms: ['enroll', 'reports', 'manage', 'farm', 'liceo', 'vacaciones', 'feriados', 'roles', 'approve_eventualidades'], isProtected: true, maxMembers: 5 },
   { id: 'role_viewer', name: 'Solo lectura', description: 'Acceso solo a reportes y control de actividad.', color: '#5a6a90', perms: ['reports', 'audit'], isProtected: false, maxMembers: 5 },
 ];
 
@@ -70,6 +74,23 @@ const SEED_ASSIGNMENTS = [
 ];
 
 const DEFAULT_PASS = '123456789';
+
+// shared.jsx:1486-1500 (DEFAULT_HOLIDAYS)
+const DEFAULT_HOLIDAYS = [
+  { date: '2026-01-01', name_es: 'Año Nuevo', name_en: "New Year's Day", type: 'fixed' },
+  { date: '2026-01-06', name_es: 'Día de los Santos Reyes', name_en: 'Epiphany', type: 'fixed' },
+  { date: '2026-01-21', name_es: 'Día de la Altagracia', name_en: 'Our Lady of Altagracia', type: 'fixed' },
+  { date: '2026-01-26', name_es: 'Día de Duarte', name_en: 'Duarte Day', type: 'fixed' },
+  { date: '2026-02-27', name_es: 'Día de la Independencia', name_en: 'Independence Day', type: 'fixed' },
+  { date: '2026-04-18', name_es: 'Viernes Santo', name_en: 'Good Friday', type: 'fixed' },
+  { date: '2026-05-01', name_es: 'Día del Trabajo', name_en: 'Labor Day', type: 'fixed' },
+  { date: '2026-06-19', name_es: 'Día de Corpus Christi', name_en: 'Corpus Christi', type: 'fixed' },
+  { date: '2026-08-16', name_es: 'Restauración de la República', name_en: 'Restoration Day', type: 'fixed' },
+  { date: '2026-09-24', name_es: 'Nuestra Señora de las Mercedes', name_en: 'Our Lady of Mercedes', type: 'fixed' },
+  { date: '2026-10-28', name_es: 'Día de la UASD', name_en: 'UASD Day', type: 'uasd' },
+  { date: '2026-11-06', name_es: 'Día de la Constitución', name_en: 'Constitution Day', type: 'fixed' },
+  { date: '2026-12-25', name_es: 'Navidad', name_en: 'Christmas Day', type: 'fixed' },
+];
 
 function parseDob(ddmmyyyy) {
   const [d, m, y] = ddmmyyyy.split('/').map(Number);
@@ -168,6 +189,15 @@ async function main() {
       where: { employeeId: a.empId },
       update: { roleId: a.roleId },
       create: { employeeId: a.empId, roleId: a.roleId },
+    });
+  }
+
+  console.log('Seeding holidays...');
+  for (const h of DEFAULT_HOLIDAYS) {
+    await prisma.holiday.upsert({
+      where: { date: new Date(h.date) },
+      update: {},
+      create: { date: new Date(h.date), nameEs: h.name_es, nameEn: h.name_en, type: h.type },
     });
   }
 
