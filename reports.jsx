@@ -101,8 +101,41 @@ function buildAreaPath(values, w, h, padX, padTop, padBottom) {
    móvil — un tooltip desbordado empuja TODA la página a scroll horizontal). */
 const clampPct = (pct) => Math.min(90, Math.max(10, pct));
 
-function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue, emptyLabel }) {
-  const W = 400, H = 170, PAD_X = 26, PAD_TOP = 18, PAD_BOTTOM = 20;
+/* Contador "escáner" — como el scouter de Vegeta cuando mide el ki de
+   alguien: al cambiar de valor, los dígitos escanean números al azar por un
+   instante y frenan en el número real. Muestra el marcaje del día
+   seleccionado en Asistencia diaria (arranca en null así el primer valor
+   real también dispara el escaneo). */
+function ScouterCounter({ value }) {
+  const [display, setDisplay] = React.useState(value);
+  const [scanning, setScanning] = React.useState(false);
+  const prevValue = React.useRef(null);
+
+  React.useEffect(() => {
+    if (value === prevValue.current) return;
+    prevValue.current = value;
+    setScanning(true);
+    const digits = String(Math.max(value, 9)).length;
+    const randMax = Math.pow(10, digits);
+    let ticks = 0;
+    const id = setInterval(() => {
+      ticks++;
+      if (ticks >= 9) {
+        clearInterval(id);
+        setDisplay(value);
+        setScanning(false);
+        return;
+      }
+      setDisplay(Math.floor(Math.random() * randMax));
+    }, 45);
+    return () => clearInterval(id);
+  }, [value]);
+
+  return <div className={`rep-scouter ${scanning ? 'rep-scouter--scanning' : ''}`}>{display}</div>;
+}
+
+function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue, emptyLabel, slowDraw, counter }) {
+  const W = 400, H = 170, PAD_X = 26, PAD_TOP = counter ? 32 : 18, PAD_BOTTOM = 20;
   const hasData = values.some(v => v > 0);
   const { line, area, pts } = buildAreaPath(values, W, H, PAD_X, PAD_TOP, PAD_BOTTOM);
   const gridYs = [PAD_TOP, PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) / 2, H - PAD_BOTTOM];
@@ -146,6 +179,7 @@ function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue,
   return (
     <>
       <div className="rep-area-chart">
+        {counter && <ScouterCounter value={hasData ? values[activeIdx] : 0}/>}
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
           className={hasData ? 'rep-area-chart__svg--live' : ''}
           onPointerDown={onPointerDown}
@@ -159,8 +193,8 @@ function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue,
               <stop offset="100%" stopColor={color} stopOpacity="0"/>
             </linearGradient>
           </defs>
-          {hasData && <path key={`fill-${values.join(',')}`} className="rep-area-fill-draw" d={area} fill={`url(#${gradId})`}/>}
-          {hasData && <path key={`line-${values.join(',')}`} className="rep-area-draw" pathLength="1" d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>}
+          {hasData && <path key={`fill-${values.join(',')}`} className={`rep-area-fill-draw ${slowDraw ? 'rep-area-fill-draw--slow' : ''}`} d={area} fill={`url(#${gradId})`}/>}
+          {hasData && <path key={`line-${values.join(',')}`} className={`rep-area-draw ${slowDraw ? 'rep-area-draw--slow' : ''}`} pathLength="1" d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>}
           {/* "Sobrecarga" — un trazo blanco corto que recorre la línea en loop
               por encima del color base, como un pulso de energía viajando por
               el cable. Mismo `d` que la línea real, pathLength=1 normaliza el
@@ -992,6 +1026,8 @@ function ReportsView({ t, lang, setRoute }) {
             </div>
             <div className="chart-expand-modal__body">
               <AreaChart
+                slowDraw
+                counter
                 values={last7.map(d => d.total)}
                 labels={last7.map(d => d.day)}
                 color="var(--ink-700)"
@@ -1020,6 +1056,8 @@ function ReportsView({ t, lang, setRoute }) {
             </button>
           </div>
           <AreaChart
+            slowDraw
+            counter
             values={last7.map(d => d.total)}
             labels={last7.map(d => d.day)}
             color="var(--ink-700)"

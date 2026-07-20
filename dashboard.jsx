@@ -2841,7 +2841,7 @@ function DashboardView({ t, lang, setLang, setRoute, extraEmployees = [] }) {
     const next = { ...existing, empId, date, timeIn: time, timeOut: existing?.timeOut ?? null, late: true, justified: !!justified, justifyNote: justified ? (note || '') : (existing?.justifyNote || '') };
     saveAllAtt({ ...allAtt, [key]: next });
     if (typeof isBackendActive === 'function' && isBackendActive()) {
-      apiPostManualAttendance({ employeeId: empId, date, timeIn: time, justified: !!justified }).catch(err => console.error('addTardanza', err));
+      apiPostManualAttendance({ employeeId: empId, date, timeIn: time, justified: !!justified, late: true }).catch(err => console.error('addTardanza', err));
     }
   };
 

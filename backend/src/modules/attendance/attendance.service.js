@@ -4,6 +4,26 @@ function dateOnlyUTC(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
+// El registro manual de tardanza (dashboard.jsx → SimpleTimePicker) manda la hora
+// suelta ("8:30 AM", sin fecha) — new Date("8:30 AM") es Invalid Date y Prisma
+// rechaza el insert completo. Si viene en ese formato, se combina con `dateStr`
+// usando el constructor local (mismo criterio que recordAttendance/isLate, que
+// leen con getHours() en hora LOCAL del servidor, no UTC — construir con
+// setUTCHours acá desalinearía la hora mostrada por formatTime12h). Si ya es
+// un datetime completo (ISO), se usa tal cual.
+function combineDateTime(dateStr, timeStr) {
+  if (!timeStr) return null;
+  const m = /(\d+):(\d+)\s*(AM|PM)/i.exec(timeStr);
+  if (!m) {
+    const d = new Date(timeStr);
+    return isNaN(d) ? null : d;
+  }
+  let h = parseInt(m[1], 10) % 12;
+  if (m[3].toUpperCase() === 'PM') h += 12;
+  const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(y, mo - 1, da, h, parseInt(m[2], 10), 0, 0);
+}
+
 // Replica shared.jsx:1320-1335 (getLateMinutes) del lado servidor — misma regex, mismo umbral de
 // 15 minutos. Es intencional que quede "congelado" al momento del marcaje (histórico/auditable).
 function isLate(schedule, when) {
@@ -54,16 +74,19 @@ async function listAttendance({ employeeId, from, to }) {
   });
 }
 
-async function createManualAttendance({ employeeId, date, timeIn, timeOut, justified }) {
+async function createManualAttendance({ employeeId, date, timeIn, timeOut, justified, late }) {
+  const parsedIn  = combineDateTime(date, timeIn);
+  const parsedOut = combineDateTime(date, timeOut);
   return prisma.attendanceEvent.upsert({
     where: { employeeId_date: { employeeId, date: dateOnlyUTC(new Date(date)) } },
-    update: { timeIn: timeIn ? new Date(timeIn) : undefined, timeOut: timeOut ? new Date(timeOut) : undefined, justified: !!justified },
+    update: { timeIn: timeIn ? parsedIn : undefined, timeOut: timeOut ? parsedOut : undefined, justified: !!justified, late: !!late },
     create: {
       employeeId,
       date: dateOnlyUTC(new Date(date)),
-      timeIn: timeIn ? new Date(timeIn) : null,
-      timeOut: timeOut ? new Date(timeOut) : null,
+      timeIn: parsedIn,
+      timeOut: parsedOut,
       justified: !!justified,
+      late: !!late,
       source: 'manual',
     },
   });

@@ -56,9 +56,9 @@ async function getAttendance(req, res, next) {
 
 async function postManualAttendance(req, res, next) {
   try {
-    const { employeeId, date, timeIn, timeOut, justified } = req.body;
+    const { employeeId, date, timeIn, timeOut, justified, late } = req.body;
     if (!employeeId || !date) return res.status(400).json({ error: 'employeeId_and_date_required' });
-    const row = await svc.createManualAttendance({ employeeId, date, timeIn, timeOut, justified });
+    const row = await svc.createManualAttendance({ employeeId, date, timeIn, timeOut, justified, late });
     await logAudit({ actorEmployeeId: req.user.employeeId, actionType: 'add', subjectEmployeeId: employeeId, detail: { kind: 'attendance_manual', date } });
     res.status(201).json(serializeAttendance(row));
   } catch (err) { next(err); }
