@@ -347,7 +347,7 @@ function FigMujerHablar({ s, c }) {
   );
 }
 
-function LiceoStudent({ emp, onToggle, slotIndex, totalCount }) {
+function LiceoStudent({ emp, onToggle, slotIndex, totalCount, present }) {
   var slot     = LICEO_SLOTS[slotIndex % LICEO_SLOTS.length];
   var isFemale = emp.gender === 'F';
   var act      = isFemale ? slot.actF : slot.act;
@@ -359,7 +359,7 @@ function LiceoStudent({ emp, onToggle, slotIndex, totalCount }) {
 
   return (
     <div onClick={function() { onToggle(emp.id); }} title={emp.name}
-      role="button" tabIndex={0} aria-label={emp.name}
+      role="switch" aria-checked={present} tabIndex={0} aria-label={emp.name}
       onKeyDown={function(e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onToggle(emp.id); } }}
       style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',
         cursor:'pointer',userSelect:'none'}}>
@@ -919,7 +919,7 @@ function LiceoScene({ workers, dayRecords, onToggle, presentCount, absentCount, 
                     <div key={e.emp.id} style={{pointerEvents:'auto',
                       animation:'fighter-in .35s cubic-bezier(0.17,0.67,0.35,1) both',
                       animationDelay:(e.i*0.07)+'s'}}>
-                      <LiceoStudent emp={e.emp} onToggle={onToggle} slotIndex={e.i} totalCount={totalCount}/>
+                      <LiceoStudent emp={e.emp} onToggle={onToggle} slotIndex={e.i} totalCount={totalCount} present={!!dayRecords[e.emp.id]}/>
                     </div>
                   );
                 })}
@@ -932,7 +932,7 @@ function LiceoScene({ workers, dayRecords, onToggle, presentCount, absentCount, 
                     <div key={e.emp.id} style={{pointerEvents:'auto',
                       animation:'fighter-in .35s cubic-bezier(0.17,0.67,0.35,1) both',
                       animationDelay:(e.i*0.07)+'s'}}>
-                      <LiceoStudent emp={e.emp} onToggle={onToggle} slotIndex={e.i} totalCount={totalCount}/>
+                      <LiceoStudent emp={e.emp} onToggle={onToggle} slotIndex={e.i} totalCount={totalCount} present={!!dayRecords[e.emp.id]}/>
                     </div>
                   );
                 })}

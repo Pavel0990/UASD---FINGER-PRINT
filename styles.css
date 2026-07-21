@@ -1464,6 +1464,12 @@ input, select, textarea {
 }
 .kpi-grid--3 { grid-template-columns: repeat(3, 1fr); }
 .kpi-grid--5 { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 900px) {
+  .kpi-grid, .kpi-grid--3, .kpi-grid--5 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .kpi-grid, .kpi-grid--3, .kpi-grid--5 { grid-template-columns: 1fr; }
+}
 
 .kpi {
   background: var(--paper);
@@ -1485,32 +1491,6 @@ input, select, textarea {
   transform: translateY(0) scale(0.98);
   transition: transform .08s ease;
 }
-.kpi--clickable {
-  cursor: pointer;
-}
-.kpi--clickable:focus-visible {
-  outline: 2px solid var(--gold-500);
-  outline-offset: 2px;
-}
-.kpi--clickable::after {
-  content: '';
-  position: absolute;
-  right: 18px;
-  bottom: 18px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--cream-100) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236a789c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E") center/12px no-repeat;
-  opacity: 0;
-  transform: translateX(-4px);
-  transition: opacity .15s ease, transform .15s ease;
-}
-.kpi--clickable:hover::after,
-.kpi--clickable:focus-visible::after {
-  opacity: 1;
-  transform: translateX(0);
-}
-
 /* Filled (hero) card */
 .kpi--fill {
   background: var(--ink-900);
@@ -3192,6 +3172,7 @@ tr.table__row--selected .table__actions {
   cursor: pointer;
   transition: all .15s ease;
 }
+.chart-card__expand-btn--lg { width: 30px; height: 30px; border-radius: 8px; }
 .chart-card__expand-btn:hover {
   background: var(--cream-50);
   border-color: var(--ink-100);
@@ -3204,8 +3185,8 @@ tr.table__row--selected .table__actions {
    oscuro con avatar/título/cierre, panel casi a pantalla completa. No se
    reescribe .acc-modal__head — solo se acota overflow de texto acá. ── */
 .chart-expand-modal {
-  width: 94vw; max-width: 1100px;
-  height: 85vh; max-height: 760px;
+  width: 94vw; max-width: 1300px;
+  height: 85vh;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -3220,6 +3201,7 @@ tr.table__row--selected .table__actions {
 .chart-expand-modal .acc-modal__title,
 .chart-expand-modal .acc-modal__sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chart-expand-modal__body {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -3228,6 +3210,33 @@ tr.table__row--selected .table__actions {
   align-items: center;
   min-height: 0;
   padding: 24px 32px;
+}
+/* Flechas prev/next — mismo formato que .rep-month-arrow (el pill de mes de
+   Reportes), flotando a los lados del gráfico en vez de en el header, para
+   pasar de "Asistencia diaria" a "Tendencia de tardanzas" sin cerrar el
+   overlay. .rep-month-arrow es blanco sobre el pill oscuro del header; acá
+   el fondo es claro (--paper), así que se recolorea a tono ink. */
+.chart-expand-modal__side {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 46px; height: 46px;
+  font-size: 26px;
+  border-color: var(--ink-700);
+  color: var(--ink-700);
+}
+.chart-expand-modal__side:hover:not(:disabled) {
+  background: var(--ink-700);
+  border-color: var(--ink-700);
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(34,42,77,0.15);
+}
+.chart-expand-modal__side--left { left: 16px; }
+.chart-expand-modal__side--right { right: 16px; }
+@media (max-width: 560px) {
+  .chart-expand-modal__side--left { left: 6px; }
+  .chart-expand-modal__side--right { right: 6px; }
 }
 .chart-expand-modal__body > div { width: 100%; max-width: 960px; min-width: 0; }
 @media (max-width: 560px) {
@@ -3256,20 +3265,42 @@ tr.table__row--selected .table__actions {
   margin-top: 3px;
 }
 
-/* Donut */
+/* Donut — el donut + su leyenda quedan como un bloque compacto centrado en
+   la tarjeta, en vez de que la leyenda se estire a lo ancho de toda la
+   tarjeta (eso dejaba mucho aire entre el nombre y el valor en tarjetas
+   anchas, se veía desarmado). */
 .donut-wrap {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 12px 0;
+  justify-content: center;
+  gap: 32px;
+  padding: 16px 0;
 }
 
 .donut {
-  width: 140px;
-  height: 140px;
+  width: 220px;
+  height: 220px;
   position: relative;
   flex-shrink: 0;
 }
+
+/* ── Variante grande — dentro del modal expandido (mismo patrón que
+   AreaChart `expanded`), donde hay espacio real para un donut más grande
+   y la leyenda completa sin el tope "+N más". ── */
+.donut-wrap--lg { gap: 64px; }
+.donut-wrap--lg .donut { width: 440px; height: 440px; }
+.donut-wrap--lg .donut__num { font-size: 68px; }
+.donut-wrap--lg .donut__lab { font-size: 15px; }
+.donut-wrap--lg .donut__legend { max-width: 480px; gap: 12px; }
+.donut-wrap--lg .donut__legend-row {
+  grid-template-columns: 18px 1fr auto auto;
+  font-size: 20px; padding: 11px; margin: 0 -11px;
+}
+.donut-wrap--lg .donut__legend-row--top .donut__legend-val { font-size: 21px; }
+.donut-wrap--lg .donut__legend-swatch { width: 18px; height: 18px; }
+.donut-wrap--lg .donut__legend-pct { font-size: 17px; min-width: 54px; }
+.donut-wrap--lg .donut__legend-val { margin-left: 20px; }
+.donut-wrap--lg .rep-scouter--inline { min-width: 54px; height: 30px; padding: 0 12px; font-size: 18px; }
 
 .donut__center {
   position: absolute;
@@ -3281,7 +3312,7 @@ tr.table__row--selected .table__actions {
 
 .donut__num {
   font-family: var(--font-serif);
-  font-size: 26px;
+  font-size: 38px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--ink-800);
@@ -3289,7 +3320,7 @@ tr.table__row--selected .table__actions {
 }
 
 .donut__lab {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ink-400);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -3299,32 +3330,96 @@ tr.table__row--selected .table__actions {
 .donut__legend {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  flex: 1;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 180px;
+  max-width: 340px;
 }
 
+/* Fila en grid (no flex) para que conteo y % queden en columnas fijas y
+   alineadas entre sí — antes era un solo string "5 · 20%" pegado al nombre,
+   sin ninguna alineación real entre filas. */
 .donut__legend-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 12px 1fr auto auto;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 14px;
+  padding: 7px;
+  margin: 0 -7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s ease;
 }
+.donut__legend-row--active {
+  background: var(--cream-50);
+}
+.donut__legend-row--active .donut__legend-name { font-weight: 700; color: var(--ink-800); }
+
+/* El departamento con más presentes (fila 0, dist ya viene ordenado
+   descendente) lleva más peso visual — la jerarquía se ve, no solo se
+   infiere por estar arriba de la lista. */
+.donut__legend-row--top .donut__legend-name { font-weight: 700; color: var(--ink-800); }
+.donut__legend-row--top .donut__legend-val { font-size: 15px; }
+.donut__legend-row:not(.donut__legend-row--top):not(.donut__legend-row--active) .donut__legend-name { color: var(--ink-500); }
 
 .donut__legend-swatch {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
 }
 
 .donut__legend-name {
-  flex: 1;
+  min-width: 0;
   color: var(--ink-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* Conteo — dato primario, mono + bold, alineado a la derecha en columna fija. */
 .donut__legend-val {
+  min-width: 36px;
+  display: flex;
+  justify-content: flex-end;
+  margin-left: 24px;
+}
+
+/* % — dato secundario/contexto, más chico y tenue que el conteo, misma
+   jerarquía que usa el resto de la app entre valor principal y detalle. */
+.donut__legend-pct {
+  min-width: 40px;
+  text-align: right;
   font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 600;
-  color: var(--ink-800);
+  color: var(--ink-400);
+  font-feature-settings: "tnum";
+}
+
+/* ── Donut plano — aro flat con sombra suave única (sin gloss/pared 3D).
+   La sombra va en cada segmento (no en el grupo .donut__ring): un filter en
+   el grupo padre calcula su "filter region" sobre el bounding box original,
+   y al explotar los segmentos hacia afuera (translate) ese recuadro fijo
+   queda visible como un borde cuadrado detrás del aro. Por-segmento, la
+   sombra viaja con su propio transform sin dejar ese artefacto. ── */
+.donut__seg {
+  animation: repFadeIn 0.5s ease both;
+  filter: drop-shadow(0 2px 3px rgba(26,31,58,.14));
+  transition: transform .35s cubic-bezier(.16,1,.3,1), stroke-width .2s ease, opacity .2s ease,
+    stroke-dasharray .35s cubic-bezier(.16,1,.3,1), stroke-dashoffset .35s cubic-bezier(.16,1,.3,1);
+  cursor: pointer;
+}
+.donut__spin { cursor: pointer; }
+
+/* Rotación continua y lenta del aro — el número/label del centro vive fuera
+   del <svg> (hermano en .donut), así que no gira, se queda legible. */
+.donut__spin { animation: donutSpin 16s linear infinite; }
+@keyframes donutSpin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .donut__seg  { animation: none; }
+  .donut__spin { animation: none; }
 }
 
 /* ── Report row hover (Tardanzas / Ausencias / Eventualidades) ── */
@@ -3394,7 +3489,24 @@ tr.table__row--selected .table__actions {
 .rep-scouter::before { left: 0; border-left: 1.5px solid var(--ink-300); }
 .rep-scouter::after  { right: 0; border-right: 1.5px solid var(--ink-300); }
 .rep-scouter--scanning { color: var(--gold-600); }
-.rep-scouter--scanning::before, .rep-scouter--scanning::after { border-color: var(--gold-500); }
+.rep-scouter--scanning::before, .rep-scouter--scanning::after { border-color: var(--scouter-accent, var(--gold-500)); }
+/* Variante grande — dentro del gráfico expandido (modal), donde hay más
+   espacio para que el HUD se lea bien de lejos. */
+.rep-scouter--lg {
+  min-width: 64px; height: 38px; padding: 0 14px;
+  font-size: 22px;
+  top: -6px;
+}
+.rep-scouter--lg::before, .rep-scouter--lg::after { width: 11px; }
+/* Variante inline — junto al botón de expandir en chart-card__head, en vez
+   de flotar sobre el gráfico. Sigue siendo positioned (para las esquinas
+   ::before/::after), solo deja de sacarse del flujo. */
+.rep-scouter--inline {
+  position: relative; top: auto; right: auto;
+  min-width: 36px; height: 22px; padding: 0 8px;
+  font-size: 13px;
+}
+.rep-scouter--inline::before, .rep-scouter--inline::after { width: 6px; }
 
 /* Punto "en vivo" del panel de Aspectos destacados */
 .rep-live-dot { animation: pulse 1.6s ease-in-out infinite; }
@@ -3422,15 +3534,22 @@ tr.table__row--selected .table__actions {
     animation: none;
   }
 }
+/* position:relative + spans posicionados por %left (en vez de grid de
+   columnas iguales) — los puntos del AreaChart no están repartidos borde a
+   borde (llevan PAD_X de margen), así que una columna de ancho fijo no
+   coincide con la posición real del punto; posicionar cada label en el mismo
+   %left que su punto (pts[i].x / W) los deja exactamente alineados. */
 .rep-area-xlabels {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  position: relative;
+  height: 14px;
   margin-top: 6px;
   transition: color .12s ease;
 }
 .rep-area-xlabels span { transition: color .12s ease, font-weight .12s ease; }
 .rep-area-xlabels span {
-  text-align: center;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
   font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 700;
@@ -3438,6 +3557,8 @@ tr.table__row--selected .table__actions {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+.rep-area-xlabels--lg { height: 20px; margin-top: 10px; }
+.rep-area-xlabels--lg span { font-size: 14px; }
 .rep-area-tooltip {
   position: absolute;
   background: var(--ink-900);
@@ -3451,15 +3572,17 @@ tr.table__row--selected .table__actions {
   pointer-events: none;
   white-space: nowrap;
   transform: translate(-50%, -100%);
-  transition: left .08s linear, top .08s linear;
+  transition: left .18s cubic-bezier(.16,1,.3,1), top .18s cubic-bezier(.16,1,.3,1);
 }
-.rep-area-chart circle, .rep-area-chart line { transition: cx .08s linear, cy .08s linear, x1 .08s linear, x2 .08s linear; }
+.rep-area-chart circle, .rep-area-chart line { transition: cx .18s cubic-bezier(.16,1,.3,1), cy .18s cubic-bezier(.16,1,.3,1), x1 .18s cubic-bezier(.16,1,.3,1), x2 .18s cubic-bezier(.16,1,.3,1); }
 .rep-area-tooltip b {
   display: block;
   font-family: var(--font-mono);
   font-size: 12.5px;
   margin-top: 1px;
 }
+.rep-area-tooltip--lg { padding: 10px 15px; font-size: 14px; border-radius: 11px; }
+.rep-area-tooltip--lg b { font-size: 17px; margin-top: 2px; }
 .rep-area-empty {
   display: flex; align-items: center; justify-content: center;
   height: 130px;
@@ -3477,6 +3600,12 @@ tr.table__row--selected .table__actions {
 }
 .rep-insight-row:last-child { border-bottom: none; padding-bottom: 0; }
 .rep-insight-row:first-child { padding-top: 0; }
+/* Filas con recomendación (texto en 2 líneas) — alinear arriba en vez de
+   centrar verticalmente, si no el ícono/badge quedan descentrados respecto
+   al bloque de 2 líneas. */
+.rep-insight-row--rec { align-items: flex-start; }
+.rep-insight-row--rec .rep-insight-status,
+.rep-insight-row--rec .rep-insight-cat { margin-top: 1px; }
 .rep-insight-status {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -3486,6 +3615,7 @@ tr.table__row--selected .table__actions {
 .rep-insight-status--ok { background: rgba(79,157,122,0.14); color: #2f7a5a; }
 .rep-insight-status--warn { background: var(--gold-100); color: var(--gold-600); }
 .rep-insight-text { flex: 1; font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--ink-800); line-height: 1.4; }
+.rep-insight-rec { margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--ink-500); }
 .rep-insight-cat {
   font-family: var(--font-sans);
   font-size: 10.5px;
@@ -4211,6 +4341,7 @@ tr.table__row--selected .table__actions {
   .acc-overlay { padding: 0; align-items: flex-end; }
 }
 @keyframes accFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes accFadeOut { from { opacity: 1; } to { opacity: 0; } }
 .acc-modal {
   width: 100%;
   max-width: 700px;
@@ -4222,6 +4353,20 @@ tr.table__row--selected .table__actions {
   animation: accPop .24s cubic-bezier(.16,1,.3,1);
 }
 @keyframes accPop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes accPopOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(12px) scale(.98); } }
+/* Swap de contenido dentro del modal expandido — al pasar de "Asistencia
+   diaria" a "Tendencia de tardanzas" (flechas prev/next) sin cerrar el
+   overlay, el cuerpo entra con un fade + slide lateral corto. */
+@keyframes chartSwapIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+.chart-swap-in { animation: chartSwapIn .3s cubic-bezier(.25,.1,.25,1) both; }
+@keyframes chartSwapOut { from { opacity: 1; } to { opacity: 0; } }
+.chart-swap-out { animation: chartSwapOut .14s ease both; }
+/* Variante para el título/ícono del modal — entra y sale por la izquierda
+   (no fade+scale como el gráfico), mismos tiempos/easing que chart-swap-*. */
+@keyframes chartSwapInLeft  { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+@keyframes chartSwapOutLeft { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-16px); } }
+.chart-swap-in-left  { animation: chartSwapInLeft .3s cubic-bezier(.25,.1,.25,1) both; }
+.chart-swap-out-left { animation: chartSwapOutLeft .14s ease both; }
 @keyframes menuOpen  { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes credFormIn    { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes credFormOut   { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(6px) scale(.985); } }
@@ -4257,6 +4402,7 @@ tr.table__row--selected .table__actions {
 }
 .acc-modal__close:hover { background: rgba(245,242,234,0.08); color: var(--cream-100); }
 .acc-modal__close--x:hover { background: rgba(193,85,77,0.18); border-color: rgba(193,85,77,0.5); color: #e07070; }
+
 /* ── Admin panel unificado ── */
 .admin-panel {
   width: 94vw; max-width: 1300px; height: 85vh;

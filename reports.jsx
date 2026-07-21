@@ -1,10 +1,80 @@
 /* reports.jsx — attendance analytics (datos reales del sistema, sin mocks) */
 
-const FULL_DAYS_ES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-const FULL_DAYS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+/* Color fijo por departamento real de la UASD — no depende de posición
+   alfabética ni de cuántos departamentos existan (eso fue lo que se rompió
+   con "Economato" sin empleados: agregar/quitar un departamento corría el
+   índice de todos los demás). El nombre completo mapea directo a un color
+   elegido a mano por lo que mejor representa a ese departamento (Tesorería
+   → dorado/dinero, Sistemas e Informática → violeta/tech, Rectoría → navy/
+   autoridad, etc.) — agregar un departamento nuevo nunca cambia el color de
+   los que ya existían. */
+const DEPT_COLORS = {
+  'Rectoría':                 '#C8CFDE', // gris casi blanco — pedido explícito
+  'Sistemas e Informática':   '#5C3D6B', // violeta — tecnología
+  'Tesorería':                '#A67C3D', // dorado/ocre — finanzas
+  'Facultad de Ingeniería':   '#3D4F8C', // índigo — técnico/preciso
+  'Facultad de Humanidades':  '#7A2E3D', // vino — académico clásico
+  'Facultad de Ciencias':     '#3D8B6E', // verde científico — distinto del sage de Mantenimiento y del teal de Biblioteca (antes sin entrada propia, caía en el fallback por hash y le tocaba el mismo azul marino que Registro, #1B2A4A — visible solo en el donut ampliado, que no agrupa "Otros")
+  'Biblioteca Central':       '#35707D', // azul-teal — conocimiento, calma
+  'Recursos Humanos':         '#D18C7C', // rosa cálido — personas/calidez (antes #B98A96 y luego #C38E8A: en ambos el canal verde quedaba casi empatado con el azul, dándole un dejo morado/mauve; aquí el verde se despega claramente del azul en todo el degradado del anillo, sin ambigüedad hacia violeta)
+  'Comunicaciones':           '#5FA3A6', // cian — conectividad
+  'Registro':                 '#1B2A4A', // navy — institucional/oficial
+  'Seguridad':                '#43434A', // carbón — serio/vigilancia
+  'Mantenimiento':            '#6E8B5A', // verde salvia — operativo/industrial
+  'Caja':                     '#B5602E', // terracota — efectivo/metal cálido
+  'Data':                     '#A78BC4', // lavanda — digital, distinto del violeta de Sistemas
+  'Economato':                '#9C5049', // ladrillo — almacén/insumos
+};
+// Fallback para un departamento futuro que no esté en el mapa de arriba —
+// determinístico por nombre (mismo nombre siempre cae en el mismo color),
+// no aleatorio, para que la primera vez que aparezca no "salte" de color en
+// cada re-render.
+const DEPT_COLOR_FALLBACK = ['#1B2A4A','#7A2E3D','#3D4F8C','#A67C3D','#C38E8A','#B5602E','#A78BC4','#C8CFDE','#9C5049','#43434A','#35707D','#5C3D6B','#6E8B5A','#5FA3A6'];
+function colorForDept(name) {
+  if (DEPT_COLORS[name]) return DEPT_COLORS[name];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return DEPT_COLOR_FALLBACK[hash % DEPT_COLOR_FALLBACK.length];
+}
+
+/* Convierte un mapa {nombre: cantidad} en la distribución coloreada que
+   arma la leyenda por departamento — usado por buildActiveNowDist (activos
+   ahora). */
+function distFromCounts(counts, topN, otherLabel) {
+  const full = Object.keys(counts)
+    .map((name) => ({ name, value: counts[name], color: colorForDept(name) }))
+    .sort((a, b) => b.value - a.value);
+  if (!topN || full.length <= topN) return full;
+  const top = full.slice(0, topN);
+  // Siempre se agrega "Otros", incluso en 0 — si el guard fuera `restValue > 0`,
+  // en activos-ahora (donde casi todos los deptos están en 0 fuera de horario)
+  // el bucket desaparecía en vez de mostrarse en 0, y esos departamentos quedaban
+  // fuera de la leyenda por completo en vez de agrupados.
+  const restValue = full.slice(topN).reduce((s, d) => s + d.value, 0);
+  top.push({ name: otherLabel, value: restValue, color: 'var(--ink-200)' });
+  return top;
+}
 
 function todayKey() { return new Date().toLocaleDateString('en-CA').slice(0, 7); }
 function todayISO()  { return new Date().toLocaleDateString('en-CA'); }
+
+/* Distribución de "activos ahora" por departamento — empleados con marcaje
+   de ENTRADA hoy que todavía no tienen marcaje de SALIDA (siguen en el
+   recinto). Los que no tienen a nadie adentro ahora mismo no aparecen (no
+   tiene sentido listar un departamento vacío en "quién está presente").
+   `topN` agrupa la cola en un bucket "Otros" — se usa en la tarjeta
+   compacta (donde no cabe cada departamento) pero no en el modal ampliado,
+   que desglosa todos los reales sin agrupar. */
+function buildActiveNowDist(emps, attRecords, topN, otherLabel) {
+  const counts = {};
+  const today = todayISO();
+  attRecords.forEach(a => {
+    if (a.date !== today || a.timeOut) return;
+    const emp = emps.find(e => e.id === a.empId);
+    if (emp) counts[emp.dept] = (counts[emp.dept] || 0) + 1;
+  });
+  return distFromCounts(counts, topN, otherLabel);
+}
 
 function loadAttendance() {
   try { return JSON.parse(localStorage.getItem('uasd_daily_attendance') || '{}'); } catch { return {}; }
@@ -51,26 +121,6 @@ function countWeekdays(year, month0, throughDay) {
   return n;
 }
 
-function buildDeptDist(emps) {
-  const palette = ['#1A1F3A','#2C3E66','#4a6fa5','#5a6a90','#2f7a5a','#8a6c2c','#8b2942','#6b5b9e','#2d7d9a','#c1793c','#9e4d6b','#5a8a2c','#8b97b3'];
-  const counts = {};
-  emps.forEach(e => { counts[e.dept] = (counts[e.dept] || 0) + 1; });
-  return Object.keys(counts)
-    .map((name, i) => ({ name, value: counts[name], color: palette[i % palette.length] }))
-    .sort((a, b) => b.value - a.value);
-}
-
-/* Agrupa la distribución completa en los `topN` departamentos más grandes +
-   un bucket "Otros" — evita una leyenda de 12 filas casi todas con valor 1. */
-function buildDeptDistGrouped(emps, topN, otherLabel) {
-  const full = buildDeptDist(emps);
-  if (full.length <= topN) return full;
-  const top = full.slice(0, topN);
-  const restValue = full.slice(topN).reduce((s, d) => s + d.value, 0);
-  if (restValue > 0) top.push({ name: otherLabel, value: restValue, color: 'var(--ink-200)' });
-  return top;
-}
-
 /* Curva suave (cardinal simplificado) + área rellena, mapeando valores reales
    a un viewBox fijo — usado por AreaChart. */
 function buildAreaPath(values, w, h, padX, padTop, padBottom) {
@@ -83,12 +133,11 @@ function buildAreaPath(values, w, h, padX, padTop, padBottom) {
     x: padX + (n > 1 ? i * (plotW / (n - 1)) : plotW / 2),
     y: padTop + (1 - v / maxV) * plotH,
   }));
+  // Línea recta punto a punto (sin curva bezier) — cada día se conecta al
+  // siguiente con un segmento recto, con un punto marcado en cada dato
+  // (referencia: gráfico de líneas con puntos conectados).
   let line = `M${pts[0].x},${pts[0].y}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i], p1 = pts[i + 1];
-    const midX = (p0.x + p1.x) / 2;
-    line += ` C${midX},${p0.y} ${midX},${p1.y} ${p1.x},${p1.y}`;
-  }
+  for (let i = 1; i < pts.length; i++) line += ` L${pts[i].x},${pts[i].y}`;
   const area = `${line} L${pts[n - 1].x},${baseY} L${pts[0].x},${baseY} Z`;
   return { line, area, pts, baseY };
 }
@@ -98,15 +147,44 @@ function buildAreaPath(values, w, h, padX, padTop, padBottom) {
 /* clamp: la línea guía y el punto quedan en la posición real del dato, pero
    el globo de texto se mueve un poco hacia adentro cerca de los bordes para
    que nunca se salga del contenedor (eso era lo que rompía el layout en
-   móvil — un tooltip desbordado empuja TODA la página a scroll horizontal). */
-const clampPct = (pct) => Math.min(90, Math.max(10, pct));
+   móvil — un tooltip desbordado empuja TODA la página a scroll horizontal).
+   Margen angosto (6/94) porque el tooltip ahora es una sola palabra corta —
+   con el margen viejo (10/90), pensado para el texto de dos líneas de antes,
+   el punto de HOY (el más a la derecha, el que se ve por defecto) quedaba
+   notoriamente desalineado del círculo. */
+const clampPct = (pct) => Math.min(94, Math.max(6, pct));
+
+/* Colorea cada TRAMO de la línea según si sube o baja respecto al día
+   anterior (verde/rojo, como un gráfico bursátil) — en vez de partir el
+   trazo en N <path> separados (perdería el dibujo/glow/sobrecarga que ya
+   corren sobre un solo path), se arma un linearGradient con paradas dobles
+   en la posición x de cada punto: mismo offset con dos colores = corte
+   duro, sin degradado, justo en el vértice de cada subida/bajada. */
+function buildTrendStops(values, pts, w) {
+  const segColor = (i) => {
+    const diff = values[i] - values[i - 1];
+    if (diff > 0) return 'var(--success)';
+    if (diff < 0) return 'var(--danger)';
+    return null; // sin cambio — usa el color neutro de por sí
+  };
+  const n = pts.length;
+  if (n < 2) return null;
+  const stops = [{ offset: 0, color: segColor(1) }];
+  for (let i = 1; i < n - 1; i++) {
+    const off = (pts[i].x / w) * 100;
+    stops.push({ offset: off, color: segColor(i) });
+    stops.push({ offset: off, color: segColor(i + 1) });
+  }
+  stops.push({ offset: 100, color: segColor(n - 1) });
+  return stops;
+}
 
 /* Contador "escáner" — como el scouter de Vegeta cuando mide el ki de
    alguien: al cambiar de valor, los dígitos escanean números al azar por un
    instante y frenan en el número real. Muestra el marcaje del día
    seleccionado en Asistencia diaria (arranca en null así el primer valor
    real también dispara el escaneo). */
-function ScouterCounter({ value }) {
+function ScouterCounter({ value, inline, large, color }) {
   const [display, setDisplay] = React.useState(value);
   const [scanning, setScanning] = React.useState(false);
   const prevValue = React.useRef(null);
@@ -131,14 +209,34 @@ function ScouterCounter({ value }) {
     return () => clearInterval(id);
   }, [value]);
 
-  return <div className={`rep-scouter ${scanning ? 'rep-scouter--scanning' : ''}`}>{display}</div>;
+  return (
+    <div className={`rep-scouter ${scanning ? 'rep-scouter--scanning' : ''} ${inline ? 'rep-scouter--inline' : ''} ${large ? 'rep-scouter--lg' : ''}`}
+      style={color ? { color, '--scouter-accent': color } : undefined}>
+      {display}
+    </div>
+  );
 }
 
-function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue, emptyLabel, slowDraw, counter }) {
-  const W = 400, H = 170, PAD_X = 26, PAD_TOP = counter ? 32 : 18, PAD_BOTTOM = 20;
+function AreaChart({ values, labels, color, gradId, formatValue, emptyLabel, slowDraw, counter, trend, onActiveChange, expanded }) {
+  // Modal expandido: viewBox más alto (proporción 400:230 en vez de 400:170)
+  // para llenar más del espacio real disponible ahí — pero manteniendo un
+  // solo factor de escala uniforme (width:100%; height:auto en CSS), sin
+  // forzar height:100% con stretch no-uniforme, que distorsionaba la línea
+  // y los puntos (se veían "estirados").
+  const W = 400, H = expanded ? 230 : 170, PAD_X = 26, PAD_TOP = counter ? 32 : 18, PAD_BOTTOM = 20;
   const hasData = values.some(v => v > 0);
-  const { line, area, pts } = buildAreaPath(values, W, H, PAD_X, PAD_TOP, PAD_BOTTOM);
+  // Memoizado: arrastrar sobre el gráfico (onPointerMove) re-renderiza este
+  // componente en cada pixel de movimiento vía el estado local selectedIdx,
+  // pero el path en sí no depende de qué punto está seleccionado — sin esto
+  // se reconstruía el string del path completo en cada uno de esos renders.
+  const { line, area, pts } = React.useMemo(
+    () => buildAreaPath(values, W, H, PAD_X, PAD_TOP, PAD_BOTTOM),
+    [values, W, H, PAD_X, PAD_TOP, PAD_BOTTOM]
+  );
   const gridYs = [PAD_TOP, PAD_TOP + (H - PAD_TOP - PAD_BOTTOM) / 2, H - PAD_BOTTOM];
+  const trendStops = trend && hasData ? buildTrendStops(values, pts, W) : null;
+  const trendGradId = `${gradId}-trend`;
+  const lineStroke = trendStops ? `url(#${trendGradId})` : color;
 
   // `last7` (de donde salen `values`/`labels`) siempre son los últimos 7 días
   // terminando HOY — el último índice es siempre hoy y nunca hay un día
@@ -154,6 +252,15 @@ function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue,
   const [selectedIdx, setSelectedIdx] = React.useState(todayIdx);
   const activeIdx = hasData ? Math.min(selectedIdx, todayIdx) : -1;
   const active = hasData && activeIdx >= 0 ? pts[activeIdx] : null;
+  const activeValue = hasData ? values[activeIdx] : 0;
+
+  // El contador puede vivir fuera del gráfico (p. ej. junto al botón de
+  // expandir, en el header de la tarjeta) — cuando el padre pasa
+  // onActiveChange, este avisa el valor del día seleccionado hacia arriba
+  // en vez de (o además de) dibujarlo internamente.
+  React.useEffect(() => {
+    if (onActiveChange) onActiveChange(activeValue);
+  }, [activeValue, onActiveChange]);
 
   const selectFromClientX = (clientX) => {
     const svg = svgRef.current;
@@ -179,7 +286,7 @@ function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue,
   return (
     <>
       <div className="rep-area-chart">
-        {counter && <ScouterCounter value={hasData ? values[activeIdx] : 0}/>}
+        {counter && <ScouterCounter value={activeValue} large={expanded} color={color}/>}
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
           className={hasData ? 'rep-area-chart__svg--live' : ''}
           onPointerDown={onPointerDown}
@@ -192,58 +299,47 @@ function AreaChart({ values, labels, color, gradId, tooltipCaption, formatValue,
               <stop offset="0%" stopColor={color} stopOpacity="0.30"/>
               <stop offset="100%" stopColor={color} stopOpacity="0"/>
             </linearGradient>
+            {trendStops && (
+              <linearGradient id={trendGradId} x1="0%" y1="0" x2="100%" y2="0">
+                {trendStops.map((s, i) => <stop key={i} offset={`${s.offset}%`} stopColor={s.color || color}/>)}
+              </linearGradient>
+            )}
           </defs>
           {hasData && <path key={`fill-${values.join(',')}`} className={`rep-area-fill-draw ${slowDraw ? 'rep-area-fill-draw--slow' : ''}`} d={area} fill={`url(#${gradId})`}/>}
-          {hasData && <path key={`line-${values.join(',')}`} className={`rep-area-draw ${slowDraw ? 'rep-area-draw--slow' : ''}`} pathLength="1" d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>}
+          {hasData && <path key={`line-${values.join(',')}`} className={`rep-area-draw ${slowDraw ? 'rep-area-draw--slow' : ''}`} pathLength="1" d={line} fill="none" stroke={lineStroke} strokeWidth={expanded ? 3.5 : 2.5} strokeLinecap="round"/>}
           {/* "Sobrecarga" — un trazo blanco corto que recorre la línea en loop
               por encima del color base, como un pulso de energía viajando por
               el cable. Mismo `d` que la línea real, pathLength=1 normaliza el
               largo real para que el dash-offset funcione igual sin importar
               la forma de la curva. */}
           {hasData && <path d={line} fill="none" pathLength="1" className="rep-area-overload"
-            stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="0.09 0.91"/>}
+            stroke="#fff" strokeWidth={expanded ? 3.5 : 2.5} strokeLinecap="round" strokeDasharray="0.09 0.91"/>}
+          {/* Punto marcado en cada dato — no solo en el activo (referencia:
+              gráfico de líneas con puntos conectados). */}
+          {hasData && pts.map((p, i) => i !== activeIdx && (
+            <circle key={i} cx={p.x} cy={p.y} r={expanded ? 5 : 3.5} fill="var(--paper)" stroke={color} strokeWidth={expanded ? 2.5 : 2}/>
+          ))}
           {active && <>
             <line x1={active.x} y1={active.y} x2={active.x} y2={H - PAD_BOTTOM} stroke="var(--ink-300)" strokeWidth="1" strokeDasharray="3,4"/>
-            <circle cx={active.x} cy={active.y} r="5" fill="var(--paper)" stroke={color} strokeWidth="2.5"/>
+            <circle cx={active.x} cy={active.y} r={expanded ? 7 : 5} fill="var(--paper)" stroke={color} strokeWidth={expanded ? 3 : 2.5}/>
           </>}
         </svg>
         {!hasData && <div className="rep-area-empty">{emptyLabel}</div>}
         {active && (
-          <div className="rep-area-tooltip" style={{ left: `${clampPct((active.x / W) * 100)}%`, top: `${(active.y / H) * 100}%`, marginTop: -10 }}>
-            {tooltipCaption}<b>{formatValue(activeIdx)}</b>
+          <div className={`rep-area-tooltip ${expanded ? 'rep-area-tooltip--lg' : ''}`} style={{ left: `${clampPct((active.x / W) * 100)}%`, top: `${(active.y / H) * 100}%`, marginTop: -10 }}>
+            <b>{formatValue(activeIdx)}</b>
           </div>
         )}
       </div>
-      <div className="rep-area-xlabels">
+      <div className={`rep-area-xlabels ${expanded ? 'rep-area-xlabels--lg' : ''}`}>
         {labels.map((l, i) => (
-          <span key={i} style={i === activeIdx ? { color: 'var(--ink-800)', fontWeight: 800 } : undefined}>{l}</span>
+          <span key={i} style={{
+            left: `${(pts[i].x / W) * 100}%`,
+            ...(i === activeIdx ? { color: 'var(--ink-800)', fontWeight: 800 } : null),
+          }}>{l}</span>
         ))}
       </div>
     </>
-  );
-}
-
-/* ── Icono de reloj en vivo — agujas apuntando a la hora real, para el KPI
-   de Tardanzas (mismo lenguaje visual que el DashClock de Empleados, pero
-   como reloj analógico en vez de dígitos). ── */
-function LiveClockIcon({ size = 26 }) {
-  const [now, setNow] = React.useState(new Date());
-  React.useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const h = now.getHours() % 12;
-  const m = now.getMinutes();
-  const s = now.getSeconds();
-  const hourDeg = (h + m / 60) * 30;
-  const minDeg  = (m + s / 60) * 6;
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" />
-      <line x1="12" y1="12" x2="12" y2="7.5" style={{ transformOrigin: '12px 12px', transform: `rotate(${hourDeg}deg)`, transition: 'transform .3s cubic-bezier(.4,0,.2,1)' }}/>
-      <line x1="12" y1="12" x2="12" y2="6" style={{ transformOrigin: '12px 12px', transform: `rotate(${minDeg}deg)`, transition: 'transform .3s cubic-bezier(.4,0,.2,1)' }}/>
-    </svg>
   );
 }
 
@@ -254,15 +350,55 @@ function ReportsView({ t, lang, setRoute }) {
 
   const isES = lang === 'es';
 
-  // Expansión a pantalla completa de "Asistencia diaria" (doble clic o botón
-  // de esquina) — Escape cierra igual que el resto de overlays del sistema.
-  const [attExpanded, setAttExpanded] = React.useState(false);
+  // Expansión a pantalla completa de "Asistencia diaria" / "Tendencia de
+  // tardanzas" (doble clic o botón de esquina) — un solo modal compartido en
+  // vez de dos separados, con flechas prev/next en el header para pasar de
+  // un gráfico al otro sin cerrar el overlay. Escape cierra igual que el
+  // resto de overlays del sistema.
+  const [expandedChart, setExpandedChart] = React.useState(null); // null | 'att' | 'late' | 'dept'
   React.useEffect(() => {
-    if (!attExpanded) return;
-    const onKey = (e) => { if (e.key === 'Escape') setAttExpanded(false); };
+    if (!expandedChart) return;
+    const onKey = (e) => { if (e.key === 'Escape') setExpandedChart(null); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [attExpanded]);
+  }, [expandedChart]);
+  const CHART_CYCLE = ['att', 'late', 'abs', 'dept'];
+  const otherChart = (c) => CHART_CYCLE[(CHART_CYCLE.indexOf(c) + 1) % CHART_CYCLE.length];
+
+  // Cambiar de gráfico (flechas prev/next) — se desvanece el actual primero
+  // (chart-swap-out, corto) y solo después entra el nuevo (chart-swap-in),
+  // en vez de cortar el contenido de golpe y solo animar la entrada, que se
+  // sentía brusco.
+  const [chartSwapping, setChartSwapping] = React.useState(false);
+  const goToOtherChart = () => {
+    setChartSwapping(true);
+    setTimeout(() => {
+      setExpandedChart(otherChart(displayedChart));
+      setChartSwapping(false);
+    }, 140);
+  };
+
+  // Desmonte con delay — mismo patrón que el selector de mes (repPickerOpen/
+  // repPickerClose): al cerrar, primero se reproduce la animación de salida
+  // (accPopOut/accFadeOut) y solo después se quita del DOM, si no se
+  // desmontaría de golpe y no se alcanzaría a ver el cierre. `displayedChart`
+  // no se limpia al cerrar — así el modal sigue mostrando el último gráfico
+  // mientras se desvanece, en vez de quedar en blanco a mitad de la salida.
+  const [expandedMounted, setExpandedMounted] = React.useState(false);
+  const [expandedClosing, setExpandedClosing] = React.useState(false);
+  const [displayedChart, setDisplayedChart] = React.useState(null);
+  React.useEffect(() => {
+    if (expandedChart) {
+      setDisplayedChart(expandedChart);
+      setExpandedMounted(true);
+      setExpandedClosing(false);
+      return;
+    }
+    if (!expandedMounted) return;
+    setExpandedClosing(true);
+    const id = setTimeout(() => { setExpandedMounted(false); setExpandedClosing(false); }, 240);
+    return () => clearTimeout(id);
+  }, [expandedChart]);
 
   const [filterMonth, setFilterMonth] = React.useState(todayKey);
   const [fy, fm]    = filterMonth.split('-');
@@ -339,11 +475,43 @@ function ReportsView({ t, lang, setRoute }) {
     setMonthPickerOpen(false);
   };
 
-  /* ── Datos reales — se sincronizan entre pestañas y con el kiosco ── */
+  /* ── Datos reales — se sincronizan entre pestañas y con el kiosco.
+     Con backend activo, allAtt se llena desde /api/attendance (donde graba
+     el kiosco real) en vez de localStorage — mismo patrón dual-path que ya
+     usa dashboard.jsx. El shape en memoria ({"empId:date": record}) es el
+     mismo en ambos casos, así que el resto de Reportes (attRecords =
+     Object.values(allAtt)) no cambia. ── */
+  const attByKey = (rows) => {
+    const map = {};
+    rows.forEach(r => { map[`${r.empId}:${r.date}`] = r; });
+    return map;
+  };
+  // Mismo shape que loadAbsences() en localStorage: {empId: [registro, ...]}.
+  const absByEmp = (rows) => {
+    const map = {};
+    rows.forEach(r => { (map[r.empId] = map[r.empId] || []).push(r); });
+    return map;
+  };
   const [allAtt, setAllAtt] = React.useState(loadAttendance);
   const [absMap, setAbsMap] = React.useState(loadAbsences);
   React.useEffect(() => {
-    const sync = () => { setAllAtt(loadAttendance()); setAbsMap(loadAbsences()); };
+    const sync = () => {
+      const backendOn = typeof isBackendActive === 'function' && isBackendActive();
+      if (backendOn && typeof apiGetAttendance === 'function') {
+        apiGetAttendance({}).then(rows => setAllAtt(attByKey(rows))).catch(() => {});
+      } else {
+        setAllAtt(loadAttendance());
+      }
+      // Antes esto siempre leía localStorage, incluso con sesión de backend
+      // activa — Ausencias (KPI, Tendencia de ausencias, Aspectos destacados)
+      // quedaba desincronizado del resto de Reportes, que ya usa la API real.
+      if (backendOn && typeof apiGetAbsences === 'function') {
+        apiGetAbsences({}).then(rows => setAbsMap(absByEmp(rows))).catch(() => {});
+      } else {
+        setAbsMap(loadAbsences());
+      }
+    };
+    sync();
     window.addEventListener('storage', sync);
     const id = setInterval(sync, 2500);
     return () => { window.removeEventListener('storage', sync); clearInterval(id); };
@@ -394,7 +562,14 @@ function ReportsView({ t, lang, setRoute }) {
   const curMonthAbsences  = React.useMemo(() => countAbsences(curMonthKey),  [countAbsences, curMonthKey]);
   const prevMonthAbsences = React.useMemo(() => countAbsences(prevMonthKey), [countAbsences, prevMonthKey]);
 
-  const workdaysCur  = React.useMemo(() => countWeekdays(+cy, +cm - 1, new Date().getDate()), [cy, cm]);
+  // El tope "hasta hoy" (throughDay) solo aplica cuando el mes filtrado ES el
+  // mes en curso (mes parcial) — en cualquier otro mes (ya cerrado) hay que
+  // contar todos sus días hábiles, si no el % de Ausencias queda calculado
+  // sobre "el día" (día-del-mes de hoy) en vez de sobre el mes completo.
+  const workdaysCur  = React.useMemo(
+    () => countWeekdays(+cy, +cm - 1, curMonthKey === todayKey() ? new Date().getDate() : undefined),
+    [cy, cm, curMonthKey]
+  );
   const workdaysPrev = React.useMemo(() => { const [py,pm] = prevMonthKey.split('-'); return countWeekdays(+py, +pm - 1); }, [prevMonthKey]);
 
   const pct = (n, d) => d > 0 ? (n / d) * 100 : 0;
@@ -428,6 +603,25 @@ function ReportsView({ t, lang, setRoute }) {
     );
   };
 
+  // Valor del "scouter" de Asistencia diaria, ahora en el header junto al
+  // botón de expandir en vez de flotar sobre el gráfico — AreaChart lo
+  // reporta vía onActiveChange cada vez que cambia el día seleccionado.
+  const [attCounterValue, setAttCounterValue] = React.useState(0);
+  const [lateCounterValue, setLateCounterValue] = React.useState(0);
+  const [absCounterValue, setAbsCounterValue] = React.useState(0);
+
+  // Cuenta ausencias (no justificadas ni justificadas, igual que countAbsences
+  // por mes) de un día puntual — mismo criterio que el KPI de Ausencias, solo
+  // que por día en vez de por mes, para que Asistencia/Tardanzas/Ausencias
+  // usen exactamente la misma ventana de "últimos 7 días".
+  const countAbsencesDay = React.useCallback((iso) => {
+    let total = 0;
+    Object.values(absMap).forEach(list => {
+      (list || []).forEach(a => { if (a.date === iso && !isHoliday(a.date)) total++; });
+    });
+    return total;
+  }, [absMap]);
+
   /* ── Últimos 7 días — pulso reciente de asistencia (datos reales) ── */
   const last7 = React.useMemo(() => {
     const out  = [];
@@ -438,15 +632,49 @@ function ReportsView({ t, lang, setRoute }) {
       const iso  = d.toLocaleDateString('en-CA');
       const recs = attRecords.filter(a => a.date === iso);
       const late = recs.filter(a => a.late).length;
-      out.push({ iso, day: DAYS_ES[d.getDay()], total: recs.length, late, valid: recs.length - late });
+      out.push({ iso, day: DAYS_ES[d.getDay()], total: recs.length, late, valid: recs.length - late, abs: countAbsencesDay(iso) });
     }
     return out;
-  }, [attRecords]);
+  }, [attRecords, countAbsencesDay]);
 
-  const fullDayName = (i) => (isES ? FULL_DAYS_ES : FULL_DAYS_EN)[new Date(last7[i].iso + 'T00:00:00').getDay()];
+  /* ── Tendencia de tardanzas / ausencias — últimos 7 días (misma base de last7) ── */
+  const lateTotals = last7.map(d => d.late);
+  const absTotals  = last7.map(d => d.abs);
 
-  /* ── Tendencia de tardanzas — últimos 7 días (misma base de last7) ── */
-  const lateTotals  = last7.map(d => d.late);
+  // Semana previa (días -13 a -7) — para el badge de tendencia de Asistencia
+  // diaria / Tendencia de tardanzas / Tendencia de ausencias, comparando la
+  // semana visible contra la inmediatamente anterior (no el mes, que ya usan
+  // los KPI de arriba).
+  const prevWeek = React.useMemo(() => {
+    const base = new Date();
+    let total = 0, late = 0, abs = 0, hasData = false;
+    for (let i = 13; i >= 7; i--) {
+      const d = new Date(base);
+      d.setDate(base.getDate() - i);
+      const iso  = d.toLocaleDateString('en-CA');
+      const recs = attRecords.filter(a => a.date === iso);
+      total += recs.length;
+      late  += recs.filter(a => a.late).length;
+      abs   += countAbsencesDay(iso);
+      if (recs.length > 0) hasData = true;
+    }
+    return { total, late, abs, hasData };
+  }, [attRecords, countAbsencesDay]);
+  const weekTotal = last7.reduce((s, d) => s + d.total, 0);
+  const weekLate  = last7.reduce((s, d) => s + d.late, 0);
+  const weekAbs   = last7.reduce((s, d) => s + d.abs, 0);
+
+  const weekTrendPill = (curr, prev, goodWhenLower) => {
+    if (!prevWeek.hasData) return null;
+    const d = curr - prev;
+    const isGood = goodWhenLower ? d <= 0 : d >= 0;
+    const arrow  = d === 0 ? '•' : (d > 0 ? '▲' : '▼');
+    return (
+      <span className={`kpi__pill rep-trend-pill-in ${isGood ? 'kpi__pill--up' : 'kpi__pill--danger'}`}>
+        {arrow} {Math.abs(d)} <span style={{opacity:0.6, fontWeight:500}}>{isES ? 'vs. semana anterior' : 'vs. last week'}</span>
+      </span>
+    );
+  };
 
   /* ── Llegadas por hora — mes actual (para el insight de hora pico) ── */
   const hourHours  = React.useMemo(() => Array.from({length:13}, (_,i) => i + 6), []);
@@ -519,18 +747,12 @@ function ReportsView({ t, lang, setRoute }) {
   };
 
   /* ── Aspectos destacados — insights calculados de datos reales, no inventados.
-     Cada uno se omite si no hay suficiente data para sostenerlo. ── */
+     Cada uno se omite si no hay suficiente data para sostenerlo. El de
+     puntualidad (mes vs. mes anterior) se quitó de acá porque duplicaba
+     exactamente el pill de tendencia del primer KPI, arriba en la misma
+     pestaña. ── */
   const insights = React.useMemo(() => {
     const out = [];
-
-    if (hasPrevAtt) {
-      const d = +(onTimePct - prevOnTimePct).toFixed(1);
-      out.push({
-        status: d >= 0 ? 'ok' : 'warn',
-        text: `La puntualidad ${d >= 0 ? 'subió' : 'bajó'} ${Math.abs(d).toFixed(1)}% respecto a ${prevMonthLabelShort}`,
-        cat: 'puntualidad', catLabel: isES ? 'Puntualidad' : 'Punctuality',
-      });
-    }
 
     const byDept = {};
     curMonthRecords.forEach(a => {
@@ -545,23 +767,83 @@ function ReportsView({ t, lang, setRoute }) {
       .map(d => ({ dept: d, rate: byDept[d].onTime / byDept[d].total }))
       .sort((a, b) => b.rate - a.rate);
     if (deptRates.length) {
+      const pct = Math.round(deptRates[0].rate * 100);
       out.push({
         status: 'ok',
-        text: `${deptRates[0].dept} es el departamento con mejor asistencia (${Math.round(deptRates[0].rate * 100)}%)`,
+        text: isES
+          ? `${deptRates[0].dept} es el departamento con mejor asistencia (${pct}%)`
+          : `${deptRates[0].dept} has the best attendance (${pct}%)`,
         cat: 'depto', catLabel: isES ? 'Departamento' : 'Department',
       });
     }
 
+    // Opuesto al anterior — solo si hay más de un departamento con muestra
+    // suficiente, si no "peor" y "mejor" serían el mismo y se repetiría el dato.
+    if (deptRates.length > 1) {
+      const worstDept = deptRates[deptRates.length - 1];
+      const pct = Math.round(worstDept.rate * 100);
+      out.push({
+        status: 'warn',
+        text: isES
+          ? `${worstDept.dept} es el departamento con más tardanzas (${100 - pct}% de llegadas tarde)`
+          : `${worstDept.dept} has the most late arrivals (${100 - pct}% arrive late)`,
+        cat: 'depto', catLabel: isES ? 'Departamento' : 'Department',
+      });
+    }
+
+    // Señala a un empleado por nombre — exige al menos 2 ausencias sin
+    // justificar en el mes, no 1, para no "acusar" a alguien por un
+    // incidente aislado (una sola falta puede ser cualquier cosa).
     let worstAbs = null;
     emps.forEach(emp => {
       const list = (absMap[emp.id] || []).filter(a => a.date?.slice(0,7) === curMonthKey && !a.justified && !isHoliday(a.date));
       if (list.length && (!worstAbs || list.length > worstAbs.count)) worstAbs = { emp, count: list.length };
     });
-    if (worstAbs) {
+    if (worstAbs && worstAbs.count >= 2) {
       out.push({
         status: 'warn',
-        text: `${worstAbs.emp.name} acumula ${worstAbs.count} ausencia${worstAbs.count !== 1 ? 's' : ''} sin justificar este mes`,
+        text: isES
+          ? `${worstAbs.emp.name} acumula ${worstAbs.count} ausencias sin justificar este mes`
+          : `${worstAbs.emp.name} has ${worstAbs.count} unjustified absences this month`,
         cat: 'ausencias', catLabel: isES ? 'Ausencias' : 'Absences',
+      });
+    }
+
+    // Mismo criterio que ausentismo (mínimo 2, no señalar por un caso
+    // aislado) pero contando llegadas tarde por persona en vez de ausencias.
+    let worstLate = null;
+    emps.forEach(emp => {
+      const count = curMonthRecords.filter(a => a.empId === emp.id && a.late).length;
+      if (count && (!worstLate || count > worstLate.count)) worstLate = { emp, count };
+    });
+    if (worstLate && worstLate.count >= 2) {
+      out.push({
+        status: 'warn',
+        text: isES
+          ? `${worstLate.emp.name} llegó tarde ${worstLate.count} veces este mes`
+          : `${worstLate.emp.name} arrived late ${worstLate.count} times this month`,
+        cat: 'puntualidad', catLabel: isES ? 'Puntualidad' : 'Punctuality',
+      });
+    }
+
+    // Cola de eventualidades sin aprobar/rechazar este mes — si se acumulan
+    // varias, vale la pena avisar antes de que la lista crezca más.
+    let pendingEv = 0;
+    Object.values(evMap).forEach(list => {
+      (list || []).forEach(ev => {
+        if (ev.date?.slice(0,7) === curMonthKey && (ev.estado || 'pendiente') === 'pendiente') pendingEv++;
+      });
+    });
+    if (pendingEv >= 3) {
+      out.push({
+        status: 'warn',
+        text: isES
+          ? `Hay ${pendingEv} eventualidades pendientes de aprobar este mes`
+          : `There are ${pendingEv} eventualities pending approval this month`,
+        rec: isES
+          ? 'Recomendación: revisar la cola de eventualidades en Detalle antes de que se acumule más.'
+          : 'Recommendation: review the eventualities queue in Detail before it piles up further.',
+        cat: 'tendencia', catLabel: isES ? 'Tendencia' : 'Trend',
       });
     }
 
@@ -575,8 +857,8 @@ function ReportsView({ t, lang, setRoute }) {
       });
     }
 
-    return out.slice(0, 4);
-  }, [hasPrevAtt, onTimePct, prevOnTimePct, curMonthRecords, emps, absMap, curMonthKey, peakHourIdx, hourHours, isES, prevMonthLabelShort]);
+    return out;
+  }, [curMonthRecords, emps, absMap, evMap, curMonthKey, peakHourIdx, hourHours, isES]);
 
   /* ── Lista unificada de Detalle — Tardanzas + Ausencias + Eventualidades del
      mes filtrado, en un solo feed ordenable por chips (evita 3 cajas separadas). ── */
@@ -765,15 +1047,6 @@ function ReportsView({ t, lang, setRoute }) {
     { id: 'calendario', label: t.rep_view_calendar, icon: 'calendar' },
   ];
 
-  // KPIs cliqueables: los KPI de Resumen reflejan siempre el mes actual, así
-  // que al saltar a Detalle hay que fijar ese mismo mes ahí — si no, el
-  // usuario tocaría "Tardanzas" y vería el filtro de mes que tenía antes,
-  // que podría ser uno completamente distinto.
-  const goToDetalle = (filterId) => {
-    setFilterMonth(curMonthKey);
-    setDetailFilter(filterId);
-    setView('detalle');
-  };
   const viewRef = React.useRef(null);
   const viewItemRefs = React.useRef({});
   const [viewPill, setViewPill] = React.useState({ opacity: 0 });
@@ -944,9 +1217,7 @@ function ReportsView({ t, lang, setRoute }) {
            icono + tendencia arriba, label + valor abajo (mismo patrón
            .kpi__top/.kpi__icon/.kpi__foot que Empleados). ── */}
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
-        <div className="kpi kpi--clickable" role="button" tabIndex={0}
-          onClick={() => goToDetalle('todos')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
+        <div className="kpi">
           <div className="kpi__top">
             <div className="kpi__icon"><Icon name="userCheck" size={26}/></div>
             {trendPill(onTimePct, prevOnTimePct, hasPrevAtt, false)}
@@ -956,11 +1227,9 @@ function ReportsView({ t, lang, setRoute }) {
             <div className="kpi__value">{Math.round(onTimePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
           </div>
         </div>
-        <div className="kpi kpi--clickable" role="button" tabIndex={0}
-          onClick={() => goToDetalle('tardanza')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('tardanza'); } }}>
+        <div className="kpi">
           <div className="kpi__top">
-            <div className="kpi__icon"><LiveClockIcon size={26}/></div>
+            <div className="kpi__icon"><Icon name="clock" size={26}/></div>
             {trendPill(latePct, prevLatePct, hasPrevAtt, true)}
           </div>
           <div className="kpi__foot">
@@ -968,28 +1237,23 @@ function ReportsView({ t, lang, setRoute }) {
             <div className="kpi__value">{Math.round(latePct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
           </div>
         </div>
-        <div className="kpi kpi--clickable" role="button" tabIndex={0}
-          onClick={() => goToDetalle('ausencia')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('ausencia'); } }}>
+        <div className="kpi">
           <div className="kpi__top">
             <div className="kpi__icon"><Icon name="userX" size={26}/></div>
-            {trendPill(absentPct, prevAbsentPct, true, true)}
           </div>
           <div className="kpi__foot">
             <div className="kpi__label">{t.rep_punctual_absent}</div>
             <div className="kpi__value">{Math.round(absentPct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></div>
           </div>
         </div>
-        <div className="kpi kpi--clickable" role="button" tabIndex={0}
-          onClick={() => goToDetalle('todos')}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToDetalle('todos'); } }}>
+        <div className="kpi">
           <div className="kpi__top">
             <div className="kpi__icon"><Icon name="fingerprint" size={26}/></div>
             {trendPill(curMonthRecords.length, prevMonthRecords.length, prevMonthRecords.length > 0, false, '')}
           </div>
           <div className="kpi__foot">
             <div className="kpi__label">{isES ? 'Marcajes del mes' : 'Check-ins this month'}</div>
-            <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>{isES ? 'Total' : 'Total'}</span></div>
+            <div className="kpi__value">{curMonthRecords.length.toLocaleString(isES ? 'es-DO' : 'en-US')}</div>
           </div>
         </div>
       </div>
@@ -1009,33 +1273,84 @@ function ReportsView({ t, lang, setRoute }) {
          recortado al tamaño de esa sección en vez de cubrir la pantalla
          completa. Con portal se monta fuera de esa cadena, igual que hace
          DateStatFilter en changelog.jsx con su menú flotante. ── */}
-      {attExpanded && ReactDOM.createPortal(
-        <div className="acc-overlay" onMouseDown={() => setAttExpanded(false)}>
-          <div className="chart-expand-modal" onMouseDown={(e) => e.stopPropagation()}>
+      {expandedMounted && ReactDOM.createPortal(
+        <div className="acc-overlay" onMouseDown={() => setExpandedChart(null)}
+          style={{ animation: expandedClosing ? 'accFadeOut .18s ease both' : 'accFade .18s ease both' }}>
+          <div className="chart-expand-modal" onMouseDown={(e) => e.stopPropagation()}
+            style={{ animation: expandedClosing ? 'accPopOut .2s cubic-bezier(.4,0,1,1) both' : 'accPop .24s cubic-bezier(.16,1,.3,1) both' }}>
             <div className="acc-modal__head">
-              <div className="acc-modal__head-id">
-                <div className="acc-modal__avatar"><Icon name="activity" size={20}/></div>
+              <div key={displayedChart} className={`acc-modal__head-id ${chartSwapping ? 'chart-swap-out-left' : 'chart-swap-in-left'}`}>
+                <div className="acc-modal__avatar">
+                  <Icon name={displayedChart === 'att' ? 'userCheck' : displayedChart === 'late' ? 'clock' : displayedChart === 'abs' ? 'userX' : 'usersActive'} size={24}/>
+                </div>
                 <div>
-                  <div className="acc-modal__title">{t.rep_attend}</div>
-                  <div className="acc-modal__sub">{t.rep_attend_sub} · {isES ? 'últimos 7 días' : 'last 7 days'}</div>
+                  <div className="acc-modal__title">
+                    {displayedChart === 'att' ? t.rep_attend
+                      : displayedChart === 'late' ? (isES ? 'Tendencia de tardanzas' : 'Late arrival trend')
+                      : displayedChart === 'abs' ? (isES ? 'Tendencia de ausencias' : 'Absence trend')
+                      : t.rep_active_now}
+                  </div>
+                  <div className="acc-modal__sub">
+                    {displayedChart === 'dept' ? t.rep_active_now_sub : (isES ? 'Últimos 7 días' : 'Last 7 days')}
+                  </div>
                 </div>
               </div>
-              <button className="acc-modal__close acc-modal__close--x" onClick={() => setAttExpanded(false)} aria-label="Cerrar">
+              <button className="acc-modal__close acc-modal__close--x" onClick={() => setExpandedChart(null)} aria-label="Cerrar">
                 <Icon name="x" size={18}/>
               </button>
             </div>
             <div className="chart-expand-modal__body">
-              <AreaChart
-                slowDraw
-                counter
-                values={last7.map(d => d.total)}
-                labels={last7.map(d => d.day)}
-                color="var(--ink-700)"
-                gradId="repGradAsistenciaXL"
-                tooltipCaption={isES ? 'Marcajes' : 'Check-ins'}
-                formatValue={(i) => `${last7[i].total} · ${fullDayName(i)}`}
-                emptyLabel={isES ? 'Sin marcajes esta semana' : 'No check-ins this week'}
-              />
+              <button type="button" className="rep-month-arrow chart-expand-modal__side chart-expand-modal__side--left"
+                onClick={goToOtherChart}
+                title={isES ? 'Gráfico anterior' : 'Previous chart'} aria-label={isES ? 'Gráfico anterior' : 'Previous chart'}>
+                ‹
+              </button>
+              <button type="button" className="rep-month-arrow chart-expand-modal__side chart-expand-modal__side--right"
+                onClick={goToOtherChart}
+                title={isES ? 'Siguiente gráfico' : 'Next chart'} aria-label={isES ? 'Siguiente gráfico' : 'Next chart'}>
+                ›
+              </button>
+              <div key={displayedChart} className={chartSwapping ? 'chart-swap-out' : 'chart-swap-in'}>
+                {displayedChart === 'att' ? (
+                  <AreaChart
+                    slowDraw
+                    counter
+                    expanded
+                    values={last7.map(d => d.total)}
+                    labels={last7.map(d => d.day)}
+                    color="var(--ink-700)"
+                    gradId="repGradAsistenciaXL"
+                    formatValue={(i) => `${last7[i].total} ${isES ? 'marcajes' : 'check-ins'}`}
+                    emptyLabel={isES ? 'Sin marcajes esta semana' : 'No check-ins this week'}
+                  />
+                ) : displayedChart === 'late' ? (
+                  <AreaChart
+                    slowDraw
+                    counter
+                    expanded
+                    values={lateTotals}
+                    labels={last7.map(d => d.day)}
+                    color="var(--gold-600)"
+                    gradId="repGradTardanzasXL"
+                    formatValue={(i) => `${lateTotals[i]} ${isES ? 'tardanzas' : 'late arrivals'}`}
+                    emptyLabel={isES ? 'Sin tardanzas esta semana' : 'No late arrivals this week'}
+                  />
+                ) : displayedChart === 'abs' ? (
+                  <AreaChart
+                    slowDraw
+                    counter
+                    expanded
+                    values={absTotals}
+                    labels={last7.map(d => d.day)}
+                    color="var(--danger)"
+                    gradId="repGradAusenciasXL"
+                    formatValue={(i) => `${absTotals[i]} ${isES ? 'ausencias' : 'absences'}`}
+                    emptyLabel={isES ? 'Sin ausencias esta semana' : 'No absences this week'}
+                  />
+                ) : (
+                  <ActiveNowDonut t={t} isES={isES} attRecords={attRecords} large/>
+                )}
+              </div>
             </div>
           </div>
         </div>,
@@ -1043,60 +1358,112 @@ function ReportsView({ t, lang, setRoute }) {
       )}
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:20, marginBottom:20 }}>
-        <div className="chart-card" onDoubleClick={() => setAttExpanded(true)}>
+        <div className="chart-card" onDoubleClick={() => setExpandedChart('att')}>
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{t.rep_attend}</div>
-              <div className="chart-card__sub">{t.rep_attend_sub} · {isES ? 'últimos 7 días' : 'last 7 days'}</div>
+              <div className="chart-card__sub">{isES ? 'Últimos 7 días' : 'Last 7 days'}</div>
+              <div style={{ marginTop: 6 }}>{weekTrendPill(weekTotal, prevWeek.total, false)}</div>
             </div>
-            <button type="button" className="chart-card__expand-btn"
-              title={isES ? 'Expandir (doble clic)' : 'Expand (double-click)'}
-              onClick={() => setAttExpanded(true)}>
-              <Icon name="expand" size={14}/>
-            </button>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <ScouterCounter value={attCounterValue} inline color="var(--ink-700)"/>
+              <button type="button" className="chart-card__expand-btn chart-card__expand-btn--lg"
+                title={isES ? 'Expandir (doble clic)' : 'Expand (double-click)'}
+                onClick={() => setExpandedChart('att')}>
+                <Icon name="expand" size={16}/>
+              </button>
+            </div>
           </div>
           <AreaChart
             slowDraw
-            counter
+            onActiveChange={setAttCounterValue}
             values={last7.map(d => d.total)}
             labels={last7.map(d => d.day)}
             color="var(--ink-700)"
             gradId="repGradAsistencia"
-            tooltipCaption={isES ? 'Marcajes' : 'Check-ins'}
-            formatValue={(i) => `${last7[i].total} · ${fullDayName(i)}`}
+            formatValue={(i) => `${last7[i].total} ${isES ? 'marcajes' : 'check-ins'}`}
             emptyLabel={isES ? 'Sin marcajes esta semana' : 'No check-ins this week'}
           />
         </div>
 
-        <div className="chart-card">
+        <div className="chart-card" onDoubleClick={() => setExpandedChart('late')}>
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{isES ? 'Tendencia de tardanzas' : 'Late arrival trend'}</div>
-              <div className="chart-card__sub">{isES ? 'Llegadas tarde · últimos 7 días' : 'Late check-ins · last 7 days'}</div>
+              <div className="chart-card__sub">{isES ? 'Últimos 7 días' : 'Last 7 days'}</div>
+              <div style={{ marginTop: 6 }}>{weekTrendPill(weekLate, prevWeek.late, true)}</div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <ScouterCounter value={lateCounterValue} inline color="var(--gold-600)"/>
+              <button type="button" className="chart-card__expand-btn chart-card__expand-btn--lg"
+                title={isES ? 'Expandir (doble clic)' : 'Expand (double-click)'}
+                onClick={() => setExpandedChart('late')}>
+                <Icon name="expand" size={16}/>
+              </button>
             </div>
           </div>
           <AreaChart
+            slowDraw
+            onActiveChange={setLateCounterValue}
             values={lateTotals}
             labels={last7.map(d => d.day)}
             color="var(--gold-600)"
             gradId="repGradTardanzas"
-            tooltipCaption={isES ? 'Tardanzas' : 'Late arrivals'}
-            formatValue={(i) => `${lateTotals[i]} · ${fullDayName(i)}`}
+            formatValue={(i) => `${lateTotals[i]} ${isES ? 'tardanzas' : 'late arrivals'}`}
             emptyLabel={isES ? 'Sin tardanzas esta semana' : 'No late arrivals this week'}
+          />
+        </div>
+
+        <div className="chart-card" onDoubleClick={() => setExpandedChart('abs')}>
+          <div className="chart-card__head">
+            <div>
+              <div className="chart-card__title">{isES ? 'Tendencia de ausencias' : 'Absence trend'}</div>
+              <div className="chart-card__sub">{isES ? 'Últimos 7 días' : 'Last 7 days'}</div>
+              <div style={{ marginTop: 6 }}>{weekTrendPill(weekAbs, prevWeek.abs, true)}</div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <ScouterCounter value={absCounterValue} inline color="var(--danger)"/>
+              <button type="button" className="chart-card__expand-btn chart-card__expand-btn--lg"
+                title={isES ? 'Expandir (doble clic)' : 'Expand (double-click)'}
+                onClick={() => setExpandedChart('abs')}>
+                <Icon name="expand" size={16}/>
+              </button>
+            </div>
+          </div>
+          <AreaChart
+            slowDraw
+            onActiveChange={setAbsCounterValue}
+            values={absTotals}
+            labels={last7.map(d => d.day)}
+            color="var(--danger)"
+            gradId="repGradAusencias"
+            formatValue={(i) => `${absTotals[i]} ${isES ? 'ausencias' : 'absences'}`}
+            emptyLabel={isES ? 'Sin ausencias esta semana' : 'No absences this week'}
           />
         </div>
       </div>
 
-      {/* ── Distribución por departamento + Aspectos destacados ── */}
+      {/* ── Activos ahora por departamento + Aspectos destacados ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20 }}>
-        <div className="chart-card">
+        <div className="chart-card" onDoubleClick={() => setExpandedChart('dept')}>
           <div className="chart-card__head">
             <div>
-              <div className="chart-card__title">{t.rep_dept}</div>
-              <div className="chart-card__sub">{t.rep_dept_sub}</div>
+              <div className="chart-card__title">{t.rep_active_now}</div>
+              <div className="chart-card__sub">{t.rep_active_now_sub}</div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span className="badge badge--ok">
+                <span className="badge__dot rep-live-dot"/>
+                {t.rep_live}
+              </span>
+              <button type="button" className="chart-card__expand-btn chart-card__expand-btn--lg"
+                title={isES ? 'Expandir (doble clic)' : 'Expand (double-click)'}
+                onClick={() => setExpandedChart('dept')}>
+                <Icon name="expand" size={16}/>
+              </button>
             </div>
           </div>
-          <DepartmentDonut t={t} isES={isES}/>
+          <ActiveNowDonut t={t} isES={isES} attRecords={attRecords}/>
         </div>
 
         <div className="chart-card">
@@ -1104,10 +1471,6 @@ function ReportsView({ t, lang, setRoute }) {
             <div>
               <div className="chart-card__title">{isES ? 'Aspectos destacados' : 'Highlights'}</div>
             </div>
-            <span className="badge badge--ok">
-              <span className="badge__dot rep-live-dot"/>
-              {t.rep_live}
-            </span>
           </div>
           {insights.length === 0 ? (
             <div className="audit-empty">
@@ -1118,11 +1481,14 @@ function ReportsView({ t, lang, setRoute }) {
           ) : (
             <div className="rep-insights rep-rows-in">
               {insights.map((ins, i) => (
-                <div className="rep-insight-row" key={i}>
+                <div className={`rep-insight-row ${ins.rec ? 'rep-insight-row--rec' : ''}`} key={i}>
                   <span className={`rep-insight-status rep-insight-status--${ins.status}`}>
                     <Icon name={ins.status === 'ok' ? 'check' : 'alertTriangle'} size={13} stroke={2.6}/>
                   </span>
-                  <span className="rep-insight-text">{ins.text}</span>
+                  <div className="rep-insight-text">
+                    {ins.text}
+                    {ins.rec && <div className="rep-insight-rec">{ins.rec}</div>}
+                  </div>
                   <span className={`rep-insight-cat rep-insight-cat--${ins.cat}`}>{ins.catLabel}</span>
                 </div>
               ))}
@@ -1324,55 +1690,158 @@ function ReportsView({ t, lang, setRoute }) {
   );
 }
 
-/* ── DepartmentDonut ── */
-function DepartmentDonut({ t, isES }) {
-  const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
-  const dist = React.useMemo(
-    () => buildDeptDistGrouped(emps, 4, isES ? 'Otros departamentos' : 'Other departments'),
-    [emps, isES]
-  );
+const DONUT_SEG_GAP = 8; // separación visual entre segmentos, en px de circunferencia
 
+/* Donut con degradado "glossy" por segmento (claro→base→oscuro, vía
+   shadeHex) — sin la "pared" 3D duplicada de la versión vieja, solo el aro
+   real con el gradiente. Cada segmento entra con un fade+scale escalonado
+   por índice (mismo repFadeIn que usa el resto de la app), y el aro
+   completo gira lento sin parar.
+   Mientras se toca/pasa el mouse sobre el aro, los segmentos se dispersan
+   hacia afuera, cada uno en su propia dirección radial (dx/dy = ángulo medio
+   del segmento) — al soltar/quitar el mouse vuelven a juntarse solos, no es
+   un toggle que quede pegado. Hover cruzado: pasar el mouse sobre una fila de la
+   leyenda resalta su segmento en el aro (más grueso, el resto se atenúa) y
+   viceversa — conecta las dos listas en vez de dejarlas sueltas. */
+const LEGEND_CAP = 6; // cuántos departamentos reales se muestran en la tarjeta compacta antes de agrupar el resto en "Otros".
+
+/* Aclara/oscurece un color HEX un `percent` (negativo = más oscuro) — arma el
+   degradado "glossy" de cada segmento del donut. Colores que no son hex (p. ej.
+   var(--ink-200) del bucket "Otros") se devuelven tal cual, sin degradado. */
+function shadeHex(hex, percent) {
+  if (typeof hex !== 'string' || hex[0] !== '#') return hex;
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+  const target = percent < 0 ? 0 : 255;
+  const p = Math.abs(percent) / 100;
+  r = Math.round((target - r) * p) + r;
+  g = Math.round((target - g) * p) + g;
+  b = Math.round((target - b) * p) + b;
+  return `rgb(${r},${g},${b})`;
+}
+
+function DeptDonutViz({ dist, centerLabel, large }) {
+  const uid      = React.useId().replace(/:/g, '');
+  const [exploded, setExploded] = React.useState(false);
+  const [hoverIdx, setHoverIdx] = React.useState(null);
   const total    = dist.reduce((s, d) => s + d.value, 0);
   const r        = 52;
   const circ     = 2 * Math.PI * r;
   let   offset   = 0;
+  let   cum      = 0;
+  // En reposo el aro queda unido (sin gap, un solo anillo continuo); el corte
+  // entre departamentos solo aparece mientras se toca/pasa el mouse, junto
+  // con el empuje hacia afuera (exploded).
+  const gapNow   = exploded ? DONUT_SEG_GAP : 0;
   const segments = dist.map(d => {
-    const frac   = total > 0 ? d.value / total : 0;
-    const length = circ * frac;
-    const seg    = { ...d, length, gap: circ - length, offset, frac };
-    offset      -= length;
+    const frac     = total > 0 ? d.value / total : 0;
+    const length   = circ * frac;
+    const visLength = Math.max(0, length - gapNow);
+    const midAngle  = ((cum + length / 2) / circ) * 2 * Math.PI;
+    const seg      = {
+      ...d, length: visLength, gap: circ - visLength, offset: offset - gapNow / 2, frac,
+      dx: Math.cos(midAngle), dy: Math.sin(midAngle),
+    };
+    offset -= length; // avanza con la longitud real, no la achicada por el gap
+    cum    += length;
     return seg;
   });
+  const EXPLODE_PX = 10;
 
   return (
-    <div className="donut-wrap">
-      <div className="donut">
-        <svg viewBox="0 0 140 140" style={{ transform:'rotate(-90deg)' }}>
-          {segments.map((s, i) => (
-            <circle key={i} cx="70" cy="70" r={r}
-              fill="none" stroke={s.color} strokeWidth="16"
-              strokeDasharray={`${s.length} ${s.gap}`}
-              strokeDashoffset={s.offset}/>
-          ))}
+    <div className={`donut-wrap ${large ? 'donut-wrap--lg' : ''}`}>
+      <div className="donut"
+        onMouseEnter={() => setExploded(true)}
+        onMouseLeave={() => setExploded(false)}
+        onTouchStart={() => setExploded(true)}
+        onTouchEnd={() => setExploded(false)}>
+        <svg viewBox="0 0 140 140" className="donut__spin" aria-label="Separar segmentos">
+          <defs>
+            {segments.map((s, i) => s.color[0] === '#' && (
+              <linearGradient key={i} id={`${uid}-g${i}`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%"   stopColor={shadeHex(s.color, 32)}/>
+                <stop offset="55%"  stopColor={s.color}/>
+                <stop offset="100%" stopColor={shadeHex(s.color, -26)}/>
+              </linearGradient>
+            ))}
+          </defs>
+          <g className="donut__ring">
+            {/* strokeWidth fijo en 16 — antes el segmento con hover se ponía a 20
+                para "resaltarlo", pero como cada segmento es su propio <circle>
+                independiente, eso lo hacía 2px más ancho que sus vecinos hacia
+                adentro y hacia afuera, dejando un escalón rectangular visible
+                justo en el borde compartido (el "rabito"/"pestañita" morado que
+                aparecía entre Sistemas y RRHH). El hover ya se distingue solo con
+                la opacidad de los demás segmentos (línea de abajo), no hace falta
+                también cambiar el grosor. */}
+            <g transform="rotate(-90 70 70)">
+              {segments.map((s, i) => s.length > 0 && (
+                <circle key={i} cx="70" cy="70" r={r} fill="none"
+                  stroke={s.color[0] === '#' ? `url(#${uid}-g${i})` : s.color}
+                  strokeWidth={16} strokeLinecap="butt"
+                  strokeDasharray={`${s.length} ${s.gap}`} strokeDashoffset={s.offset}
+                  className="donut__seg"
+                  onMouseEnter={() => setHoverIdx(i)}
+                  onMouseLeave={() => setHoverIdx(null)}
+                  style={{
+                    animationDelay: `${i * 0.08}s`,
+                    opacity: hoverIdx === null || hoverIdx === i ? 1 : 0.35,
+                    transform: exploded ? `translate(${s.dx * EXPLODE_PX}px, ${s.dy * EXPLODE_PX}px)` : 'none',
+                    pointerEvents: 'visibleStroke',
+                  }}/>
+              ))}
+            </g>
+          </g>
         </svg>
         <div className="donut__center">
           <div>
             <div className="donut__num">{total}</div>
-            <div className="donut__lab">{t.rep_donut_emp}</div>
+            <div className="donut__lab">{centerLabel}</div>
           </div>
         </div>
       </div>
       <div className="donut__legend">
         {dist.map((d, i) => (
-          <div className="donut__legend-row" key={i}>
+          <div key={i} className={`donut__legend-row ${hoverIdx === i ? 'donut__legend-row--active' : ''} ${i === 0 ? 'donut__legend-row--top' : ''}`}
+            onMouseEnter={() => setHoverIdx(i)}
+            onMouseLeave={() => setHoverIdx(null)}>
             <span className="donut__legend-swatch" style={{ background:d.color }}/>
             <span className="donut__legend-name">{d.name}</span>
-            <span className="donut__legend-val">{d.value} · {total > 0 ? Math.round((d.value / total) * 100) : 0}%</span>
+            <span className="donut__legend-val"><ScouterCounter value={d.value} inline color="var(--ink-700)"/></span>
+            <span className="donut__legend-pct">{total > 0 ? Math.round((d.value / total) * 100) : 0}%</span>
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+/* El polling de asistencia (cada 2.5s) fuerza un re-render de ReportsView
+   aunque nadie haya entrado/salido — y como `buildActiveNowDist` arma un
+   array NUEVO en cada llamada, React ve props "distintas" en cada segmento
+   del donut y retriggerea la transición CSS de stroke-dasharray/dashoffset
+   (styles.css .donut__seg) sin que haya nada real que animar. Cada segmento
+   transiciona por separado, así que a mitad de esa animación de sobra los
+   bordes entre segmentos quedan desalineados por una fracción de segundo —
+   un triángulo del vecino (o de la sombra de abajo) asomando en el borde.
+   `useStableList` corta eso: sigue recalculando en cada render (mismo motivo
+   de siempre — EMPLOYEES se muta en sitio, un useMemo con `emps` en deps no
+   vería el cambio), pero solo devuelve una referencia NUEVA cuando el
+   contenido (nombre+valor de cada depto) realmente cambió. */
+function useStableList(list, keyOf) {
+  const key = list.map(keyOf).join('|');
+  const ref = React.useRef({ key, list });
+  if (ref.current.key !== key) ref.current = { key, list };
+  return ref.current.list;
+}
+
+function ActiveNowDonut({ t, isES, attRecords, large }) {
+  const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES : [];
+  // Compacta: top 6 + "Otros" agrupado (no cabe cada departamento en la
+  // tarjeta). Ampliada: todos los departamentos reales, sin agrupar.
+  const rawDist = buildActiveNowDist(emps, attRecords, large ? null : LEGEND_CAP, isES ? 'Otros' : 'Others');
+  const dist = useStableList(rawDist, d => `${d.name}:${d.value}`);
+  return <DeptDonutViz dist={dist} centerLabel={t.rep_donut_active} large={large}/>;
 }
 
 /* ── FaltasSemanalReport ── */

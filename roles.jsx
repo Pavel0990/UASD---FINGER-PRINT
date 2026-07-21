@@ -366,9 +366,17 @@ function RolesView({ t, setRoute }) {
   const canManageAssignments = !isReadOnly;
   const canCreateRole = !isReadOnly;
   const currentUserId = getCurrentUserId();
+  // Mismo techo de permisos que el backend (credentials.service.js
+  // assertPermCeiling): no podés resetear la contraseña de alguien cuyo rol
+  // tenga un permiso que vos mismo no tengas — resetearla equivale a poder
+  // iniciar sesión como esa persona. Antes solo bloqueaba admin↔admin y
+  // hr↔hr (no self), dejando pasar hr editando a un admin real. Ver
+  // auditoría de seguridad.
   const canEditCred = (assignee) => {
-    if (currentUserRoleId === 'role_admin' && assignee.roleId === 'role_admin' && assignee.empId !== currentUserId) return false;
-    if (currentUserRoleId === 'role_hr'    && assignee.roleId === 'role_hr'    && assignee.empId !== currentUserId) return false;
+    if (assignee.empId === currentUserId) return canManageAssignments;
+    const targetRole = roles.find(r => r.id === assignee.roleId);
+    const targetPerms = targetRole?.perms || [];
+    if (targetPerms.some(p => !currentUserPerms.includes(p))) return false;
     return canManageAssignments;
   };
 

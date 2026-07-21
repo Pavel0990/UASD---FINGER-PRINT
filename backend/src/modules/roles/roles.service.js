@@ -1,25 +1,7 @@
 const prisma = require('../../db/prisma');
+const { PermCeilingError, assertPermCeiling } = require('../../utils/permCeiling');
 
 const roleInclude = { permissions: true };
-
-// Techo de permisos: un actor nunca puede otorgar (a un rol o al asignar un
-// rol a alguien) un permiso que él mismo no tiene. Antes esto solo se
-// validaba en roles.jsx (grantablePerms), del lado del navegador — cualquiera
-// podía saltárselo llamando la API directo. Ver auditoría: escalamiento
-// role_viewer → role_admin en 2 llamadas HTTP.
-class PermCeilingError extends Error {
-  constructor(missing) {
-    super('perm_ceiling_exceeded');
-    this.status = 403;
-    this.publicMessage = 'perm_ceiling_exceeded';
-    this.missing = missing;
-  }
-}
-
-function assertPermCeiling(actorPerms, targetPerms) {
-  const missing = (targetPerms || []).filter((p) => !actorPerms.includes(p));
-  if (missing.length) throw new PermCeilingError(missing);
-}
 
 async function listRoles() {
   return prisma.role.findMany({ include: roleInclude, orderBy: { name: 'asc' } });
@@ -40,7 +22,18 @@ async function createRole(actorPerms, { id, name, description, color, perms = []
   });
 }
 
+// Un rol protegido (role_admin/role_hr, isProtected=true en el seed) no se
+// edita vía API — ni nombre ni permisos — para NADIE, igual que deleteRole ya
+// lo bloquea para borrar. Antes solo se validaba el TECHO al agregar permisos
+// (assertPermCeiling), pero no había nada que impidiera QUITAR permisos de un
+// rol protegido: un actor con 'roles'+'manage' pero sin 'audit'/'kiosk_admin'
+// podía mandar PATCH .../role_admin { perms: [] } y vaciarlo por completo sin
+// haber tenido esos permisos él mismo. Ver auditoría de seguridad.
 async function updateRole(actorPerms, id, { name, description, color, perms }) {
+  const existing = await prisma.role.findUnique({ where: { id } });
+  if (existing?.isProtected) {
+    throw Object.assign(new Error('protected_role'), { status: 403, publicMessage: 'protected_role' });
+  }
   if (perms !== undefined) assertPermCeiling(actorPerms, perms);
   return prisma.$transaction(async (tx) => {
     const data = {};

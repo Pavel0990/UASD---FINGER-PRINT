@@ -40,26 +40,19 @@ function App() {
 
   // Intenta restaurar la sesión de backend desde la cookie de refresh (httpOnly,
   // dura 7 días y se renueva en cada visita) al montar. Si había una sesión
-  // válida, salta directo a 'dashboard' — así solo hace falta loguearse la
-  // primera vez, no en cada recarga mientras se trabaja. Sin cookie válida o
-  // con el backend caído, se queda en 'kiosk' como siempre (sin gate roto:
-  // 'dashboard' sigue exigiendo sesión real vía go()).
+  // válida, salta directo a 'reports'  — así solo hace falta loguearse la
+  // primera vez, no en cada recarga. Sin cookie válida o con el backend caído,
+  // se queda en 'login' para autenticarse a mano (sin gate roto: 'dashboard'
+  // sigue exigiendo sesión real vía go()).
+  //
+  // Antes había acá un auto-login TEMP con credenciales reales de admin
+  // (ggomez@uasd.edu.do) hardcodeadas en texto plano en este archivo — quedaban
+  // expuestas en el bundle JS servido al navegador. Se sacó por auditoría de
+  // seguridad: cualquiera con acceso al código fuente (o al repo, si se hace
+  // público) tenía login de Administrador sin necesidad de contraseña real.
   React.useEffect(() => {
     if (typeof restoreSession !== 'function') return;
-    restoreSession().then(async (ok) => {
-      if (ok) { go('reports'); return; }
-      // TEMP: sin sesión, auto-login con credenciales reales de desarrollo para
-      // no perder tiempo tecleando login mientras iteramos en Reportes. Sigue
-      // siendo una sesión real vía backend (no bypassea userHasPermission) —
-      // quitar este bloque junto con los demás marcados TEMP al terminar.
-      if (typeof loginRequest === 'function') {
-        try {
-          await loginRequest('ggomez@uasd.edu.do', '123456789');
-          if (typeof bootstrapStore === 'function') await bootstrapStore();
-          go('reports');
-        } catch (err) { /* backend caído u otro error: se queda en login */ }
-      }
-    }).catch(() => {});
+    restoreSession().then((ok) => { if (ok) go('reports'); }).catch(() => {});
   }, []);
 
   const t = I18N[lang];
