@@ -3161,6 +3161,14 @@ tr.table__row--selected .table__actions {
   padding: 22px 24px;
 }
 
+/* Presentes por departamento (tarjeta compacta, no el modal ampliado, que ya
+   centra todo vía .chart-expand-modal__body) — columna flex para que el aro
+   pueda centrarse verticalmente en el espacio libre solo cuando no hay
+   departamentos que listar (.donut-wrap--center), sin afectar el resto de
+   .chart-card que sigue en flujo normal. */
+.chart-card--dept { display: flex; flex-direction: column; justify-content: flex-start; }
+.chart-card--dept:has(.donut-wrap--center) { justify-content: center; }
+
 .chart-card__expand-btn {
   flex-shrink: 0;
   width: 28px; height: 28px;
@@ -3275,7 +3283,12 @@ tr.table__row--selected .table__actions {
   justify-content: center;
   gap: 32px;
   padding: 16px 0;
+  transition: gap .5s cubic-bezier(.16,1,.3,1);
 }
+/* 0 activos — sin departamentos que listar, el gap fijo hacia la leyenda
+   colapsada (min-width 0, ver .donut__legend--collapsed) ya no debe contar
+   para centrar el aro. */
+.donut-wrap--center { gap: 0; }
 
 .donut {
   width: 220px;
@@ -3334,6 +3347,20 @@ tr.table__row--selected .table__actions {
   flex: 1 1 auto;
   min-width: 180px;
   max-width: 340px;
+  opacity: 1;
+  transition: min-width .5s cubic-bezier(.16,1,.3,1), max-width .5s cubic-bezier(.16,1,.3,1),
+    opacity .35s ease, flex-basis .5s cubic-bezier(.16,1,.3,1);
+}
+/* 0 activos — la leyenda se encoge a 0 (nunca se desmonta) para que el aro
+   se deslice ("barrido") hasta el centro en vez de saltar de golpe; al
+   volver datos, crece de nuevo y el aro se desliza de vuelta a su lugar. */
+.donut__legend--collapsed {
+  min-width: 0;
+  max-width: 0;
+  flex: 0 0 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 /* Fila en grid (no flex) para que conteo y % queden en columnas fijas y
@@ -3350,6 +3377,7 @@ tr.table__row--selected .table__actions {
   border-radius: 6px;
   cursor: pointer;
   transition: background .15s ease;
+  animation: repFadeIn .3s ease both;
 }
 .donut__legend-row--active {
   background: var(--cream-50);
@@ -3417,9 +3445,22 @@ tr.table__row--selected .table__actions {
 .donut__spin { animation: donutSpin 16s linear infinite; }
 @keyframes donutSpin { to { transform: rotate(360deg); } }
 
+/* 0 activos — arco blanco tipo spinner de carga (mismo lenguaje que
+   .login__spinner), girando sobre su propio eje independiente de la
+   rotación lenta de .donut__spin. 1.7s = mismo tiempo que el pulso blanco
+   de Asistencia diaria (.rep-area-overload / repOverloadSweep), para que
+   las dos animaciones "en vivo" del reporte se sientan al mismo ritmo. */
+.donut__empty-spin {
+  transform-origin: 70px 70px;
+  filter: drop-shadow(0 0 4px rgba(255,255,255,.8));
+  animation: donutEmptySpin 1.7s linear infinite;
+}
+@keyframes donutEmptySpin { to { transform: rotate(360deg); } }
+
 @media (prefers-reduced-motion: reduce) {
-  .donut__seg  { animation: none; }
-  .donut__spin { animation: none; }
+  .donut__seg        { animation: none; }
+  .donut__spin       { animation: none; }
+  .donut__empty-spin { animation: none; }
 }
 
 /* ── Report row hover (Tardanzas / Ausencias / Eventualidades) ── */
@@ -3491,11 +3532,13 @@ tr.table__row--selected .table__actions {
 .rep-scouter--scanning { color: var(--gold-600); }
 .rep-scouter--scanning::before, .rep-scouter--scanning::after { border-color: var(--scouter-accent, var(--gold-500)); }
 /* Variante grande — dentro del gráfico expandido (modal), donde hay más
-   espacio para que el HUD se lea bien de lejos. */
+   espacio para que el HUD se lea bien de lejos. top en positivo (antes -6px,
+   pegado al padding del header) para que respire más lejos de la banda
+   oscura del modal. */
 .rep-scouter--lg {
   min-width: 64px; height: 38px; padding: 0 14px;
   font-size: 22px;
-  top: -6px;
+  top: 14px;
 }
 .rep-scouter--lg::before, .rep-scouter--lg::after { width: 11px; }
 /* Variante inline — junto al botón de expandir en chart-card__head, en vez
@@ -3516,8 +3559,8 @@ tr.table__row--selected .table__actions {
    lenguaje de movimiento). */
 .rep-panel-in { animation: sectionIn .32s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; }
 
-/* Entrada fila-por-fila para insights y la lista de Detalle — mismo patrón
-   escalonado que .tbody--in (tabla de empleados). */
+/* Entrada fila-por-fila para la lista de Detalle — mismo patrón escalonado
+   que .tbody--in (tabla de empleados). */
 .rep-rows-in > * { animation: rowIn 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94) both; }
 .rep-rows-in > *:nth-child(1) { animation-delay:   0ms; }
 .rep-rows-in > *:nth-child(2) { animation-delay:  35ms; }
@@ -3583,6 +3626,10 @@ tr.table__row--selected .table__actions {
 }
 .rep-area-tooltip--lg { padding: 10px 15px; font-size: 14px; border-radius: 11px; }
 .rep-area-tooltip--lg b { font-size: 17px; margin-top: 2px; }
+/* Punto de hoy cuando además es el más alto de la semana — el tooltip nace
+   abajo del punto en vez de arriba, para no taparse con el contador
+   .rep-scouter (esquina superior derecha). Ver AreaChart en reports.jsx. */
+.rep-area-tooltip--below { transform: translate(-50%, 0); }
 .rep-area-empty {
   display: flex; align-items: center; justify-content: center;
   height: 130px;
@@ -3691,9 +3738,172 @@ tr.table__row--selected .table__actions {
 }
 .rep-list-who .rep-list-name { font-family: var(--font-sans); font-size: 13.5px; font-weight: 700; color: var(--ink-800); }
 .rep-list-who .rep-list-dept { font-family: var(--font-sans); font-size: 11.5px; color: var(--ink-400); margin-top: 1px; }
-@media (max-width: 900px) {
-  .rep-list-row { grid-template-columns: 32px 1.6fr 1fr; }
-  .rep-list-row > :nth-child(4), .rep-list-row > :nth-child(5), .rep-list-row > :nth-child(6) { display: none; }
+
+/* Mobile (≤760px): antes esto ocultaba Fecha/Detalle/Estado directamente
+   (display:none en las columnas 4-6) — en un celular no se podía ver la
+   fecha de una tardanza, si estaba justificada, ni el botón para
+   aprobar/rechazar una eventualidad. Ahora se reacomoda a tarjeta apilada
+   vía grid-area (mismo DOM, mismos 6 hijos — solo cambia dónde cae cada
+   uno) para no perder ningún dato ni la acción interactiva. El header con
+   etiquetas de columna se oculta porque cada campo ya se auto-describe con
+   su badge/formato en la tarjeta. */
+@media (max-width: 760px) {
+  .rep-list-row--head { display: none; }
+  .rep-list-row:not(.rep-list-row--head) {
+    grid-template-columns: 36px 1fr 1fr;
+    grid-template-rows: auto auto auto auto;
+    row-gap: 6px;
+    column-gap: 10px;
+    padding: 14px 16px;
+  }
+  .rep-list-row:not(.rep-list-row--head) > :nth-child(1) { grid-column: 1; grid-row: 1 / 3; align-self: start; }
+  .rep-list-row:not(.rep-list-row--head) > :nth-child(2) { grid-column: 2 / 4; grid-row: 1; }
+  .rep-list-row:not(.rep-list-row--head) > :nth-child(3) { grid-column: 2; grid-row: 2; justify-self: start; }
+  .rep-list-row:not(.rep-list-row--head) > :nth-child(4) { grid-column: 3; grid-row: 2; justify-self: end; text-align: right; }
+  .rep-list-row:not(.rep-list-row--head) > :nth-child(5) { grid-column: 2 / 4; grid-row: 3; }
+  .rep-list-row:not(.rep-list-row--head) > :nth-child(6) { grid-column: 2 / 4; grid-row: 4; justify-self: start; }
+}
+
+/* ── Barra de búsqueda + orden de la lista unificada ── */
+.rep-detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.rep-detail-search { position: relative; width: 260px; max-width: 100%; flex-shrink: 0; }
+.rep-detail-search input {
+  width: 100%;
+  padding: 9px 34px 9px 34px;
+  border: 1px solid var(--ink-100);
+  border-radius: 999px;
+  background: var(--cream-50);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  transition: all .15s ease;
+}
+.rep-detail-search input::placeholder { color: var(--ink-300); }
+.rep-detail-search input:focus {
+  outline: none;
+  border-color: var(--ink-600);
+  background: var(--paper);
+  box-shadow: 0 0 0 3px rgba(44,62,102,0.08);
+}
+.rep-detail-search-icon {
+  position: absolute; top: 50%; left: 12px; transform: translateY(-50%);
+  color: var(--ink-400); pointer-events: none; display: flex;
+}
+.rep-detail-search:focus-within .rep-detail-search-icon { color: var(--ink-700); }
+.rep-detail-search-clear {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: var(--ink-400); background: var(--ink-100);
+  transition: background .12s ease, color .12s ease;
+}
+.rep-detail-search-clear:hover { background: var(--ink-200); color: var(--ink-700); }
+
+/* Encabezados ordenables (Empleado/Tipo/Fecha/Estado en la lista, y cada
+   columna numérica de Horas trabajadas) — mismo botón reseteado en ambos
+   usos, la mayúscula/tracking los hereda de .rep-list-row--head o
+   .data-table th según dónde viva. */
+.rep-sort-th {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+  cursor: pointer;
+}
+.rep-sort-th:hover { color: var(--ink-600); }
+.rep-sort-th__icon {
+  display: inline-flex; opacity: 0; transform: rotate(0deg);
+  transition: opacity .12s ease, transform .12s ease;
+}
+.rep-sort-th:hover .rep-sort-th__icon { opacity: .5; }
+.rep-sort-th--active { color: var(--ink-700); }
+.rep-sort-th--active .rep-sort-th__icon { opacity: 1; }
+.rep-sort-th--active.rep-sort-th--asc .rep-sort-th__icon { transform: rotate(180deg); }
+
+/* ── Tabla de datos unificada (Horas trabajadas / Faltas por semana) — mismo
+   lenguaje visual que .rep-list-row (header uppercase ink-300 sobre
+   cream-50, misma tipografía/padding, mismo hover), en vez de reconstruir
+   los mismos estilos como bloques inline repetidos celda por celda. ── */
+.data-table-wrap { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-300);
+  background: var(--cream-50);
+  border-bottom: 1px solid var(--ink-100);
+  white-space: nowrap;
+}
+.data-table th.is-center { text-align: center; }
+.data-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--ink-100);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ink-700);
+}
+.data-table td.is-center { text-align: center; }
+.data-table td.is-mono { font-family: var(--font-mono); }
+.data-table tbody tr { transition: background .12s ease; }
+.data-table tbody tr:hover { background: var(--cream-50); }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table__name { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--ink-800); }
+.data-table__dept { font-family: var(--font-sans); font-size: 11px; color: var(--ink-400); margin-top: 1px; }
+
+/* Celda-nodo circular de la grilla semanal de faltas — círculo coloreado +
+   Icon, reemplaza los emoji (✓ ✕ 📅) que quedaban visualmente sueltos
+   frente al resto del sistema de íconos. Colores por tokens en vez de hex
+   sueltos, para quedar dentro de la paleta real (éxito/peligro/dorado/info)
+   y no una paleta paralela. */
+.data-table__mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+}
+.data-table__mark--ok       { background: rgba(79,157,122,0.14);  color: var(--success); }
+.data-table__mark--bad      { background: rgba(193,85,77,0.14);  color: var(--danger); }
+.data-table__mark--justified{ background: rgba(201,169,97,0.20); color: var(--gold-600); }
+.data-table__mark--holiday  { background: rgba(59,130,246,0.12); color: #2563eb; }
+
+/* ── Secciones secundarias de Detalle (Horas trabajadas / Faltas por semana)
+   — la lista unificada de arriba es el contenido real de la pestaña; estas
+   dos son de consulta ocasional/exportable y antes se apilaban siempre a
+   full altura, alargando la pestaña con el mismo peso visual que lo
+   principal. Ahora son .chart-card con un header cliqueable que colapsa —
+   mismo look de tarjeta, header clickeable en vez de estático. ── */
+.rep-accordion__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.rep-accordion__meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.rep-accordion__chev {
+  display: inline-flex; color: var(--ink-400);
+  transition: transform .2s cubic-bezier(0.25,0.46,0.45,0.94), color .15s ease;
+}
+.rep-accordion__chev--open { transform: rotate(180deg); }
+.rep-accordion__head:hover .rep-accordion__chev { color: var(--ink-700); }
+.rep-accordion__body { margin-top: 16px; }
+/* Faltas por semana se mantiene siempre montada (nunca desmontada del DOM)
+   para que Ctrl+P del navegador funcione sin haber expandido el acordeón
+   antes — se oculta en pantalla por CSS y esa regla se anula abajo en
+   @media print. */
+.rep-accordion__body--collapsed { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rep-accordion__chev { transition: none; }
 }
 
 /* ============================================
@@ -5029,7 +5239,13 @@ tr.table__row--selected .table__actions {
 /* ── Print: Reporte de Faltas por Semanas ── */
 @media print {
   .topbar                    { display: none !important; }
-  .page > *:not(.faltas-semanales-report) { display: none !important; }
+  /* :has() en vez de solo :not(.faltas-semanales-report) — el reporte ahora
+     vive anidado dentro del panel de Detalle (rep-panel-in), no como hijo
+     directo de .page, así que había que preservar también al ANCESTRO que
+     lo contiene (si no, display:none en ese ancestro se lo llevaba puesto
+     a él también). Sus hermanos dentro de Detalle (buscador/chips, lista
+     unificada, Horas trabajadas) llevan su propia clase .print-hide. */
+  .page > *:not(.faltas-semanales-report):not(:has(.faltas-semanales-report)) { display: none !important; }
 
   .print-hide                { display: none !important; }
   .print-report-header       { display: block !important; }

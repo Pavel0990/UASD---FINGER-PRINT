@@ -325,11 +325,24 @@ function AreaChart({ values, labels, color, gradId, formatValue, emptyLabel, slo
           </>}
         </svg>
         {!hasData && <div className="rep-area-empty">{emptyLabel}</div>}
-        {active && (
-          <div className={`rep-area-tooltip ${expanded ? 'rep-area-tooltip--lg' : ''}`} style={{ left: `${clampPct((active.x / W) * 100)}%`, top: `${(active.y / H) * 100}%`, marginTop: -10 }}>
-            <b>{formatValue(activeIdx)}</b>
-          </div>
-        )}
+        {active && (() => {
+          const xPct = clampPct((active.x / W) * 100);
+          const yPct = (active.y / H) * 100;
+          // HOY siempre cae en el punto más a la derecha (última fecha) — si
+          // además es el valor más alto de la semana, su tooltip nace justo
+          // en la esquina superior derecha, la misma zona donde vive el HUD
+          // .rep-scouter (top:-6px; right:0). Ahí el tooltip quedaba tapando
+          // el número del contador. Solo en ese rincón (y solo si hay
+          // contador, que es lo único que ocupa esa esquina) lo mandamos
+          // abajo del punto en vez de arriba.
+          const below = counter && xPct > 78 && yPct < 34;
+          return (
+            <div className={`rep-area-tooltip ${expanded ? 'rep-area-tooltip--lg' : ''} ${below ? 'rep-area-tooltip--below' : ''}`}
+              style={{ left: `${xPct}%`, top: `${yPct}%`, marginTop: below ? 10 : -10 }}>
+              <b>{formatValue(activeIdx)}</b>
+            </div>
+          );
+        })()}
       </div>
       <div className={`rep-area-xlabels ${expanded ? 'rep-area-xlabels--lg' : ''}`}>
         {labels.map((l, i) => (
@@ -340,6 +353,32 @@ function AreaChart({ values, labels, color, gradId, formatValue, emptyLabel, slo
         ))}
       </div>
     </>
+  );
+}
+
+/* ── RepAccordion — envoltorio de .chart-card con header cliqueable, para las
+   secciones secundarias de Detalle (Horas trabajadas, Faltas por semana):
+   la lista unificada arriba es el contenido principal de la pestaña, estas
+   son de consulta ocasional y no ameritan ocupar full altura siempre. ── */
+function RepAccordion({ title, subtitle, count, extra, defaultOpen, className, children }) {
+  const [open, setOpen] = React.useState(!!defaultOpen);
+  return (
+    <div className={`chart-card rep-accordion ${className || ''}`} style={{ marginBottom: 20 }}>
+      <button type="button" className="rep-accordion__head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <div>
+          <div className="chart-card__title">{title}</div>
+          {subtitle && <div className="chart-card__sub">{subtitle}</div>}
+        </div>
+        <div className="rep-accordion__meta">
+          {extra}
+          {count != null && <span className="badge badge--neutral">{count}</span>}
+          <span className={`rep-accordion__chev ${open ? 'rep-accordion__chev--open' : ''}`}>
+            <Icon name="chevDown" size={16} stroke={2}/>
+          </span>
+        </div>
+      </button>
+      {open && <div className="rep-accordion__body rep-panel-in">{children}</div>}
+    </div>
   );
 }
 
@@ -746,11 +785,11 @@ function ReportsView({ t, lang, setRoute }) {
     setEvMap(map);
   };
 
-  /* ── Aspectos destacados — insights calculados de datos reales, no inventados.
-     Cada uno se omite si no hay suficiente data para sostenerlo. El de
-     puntualidad (mes vs. mes anterior) se quitó de acá porque duplicaba
-     exactamente el pill de tendencia del primer KPI, arriba en la misma
-     pestaña. ── */
+  /* ── Aspectos destacados — insights calculados de datos reales, no
+     inventados. Cada uno se omite si no hay suficiente data para
+     sostenerlo. El de puntualidad (mes vs. mes anterior) se quitó de acá
+     porque duplicaba exactamente el pill de tendencia del primer KPI,
+     arriba en la misma pestaña. ── */
   const insights = React.useMemo(() => {
     const out = [];
 
@@ -914,6 +953,51 @@ function ReportsView({ t, lang, setRoute }) {
   ];
   const fmtShortDate = (iso) => { const [y,m,d] = iso.split('-'); return `${d} ${MONTHS_ES[+m-1].slice(0,3).toLowerCase()}`; };
 
+  /* ── Buscador por empleado/departamento + orden por columna de la lista de
+     Detalle — antes la única forma de acotar la lista eran los chips de
+     tipo; con un departamento grande esa lista puede crecer bastante y no
+     había forma de encontrar a alguien puntual ni de reordenarla. El
+     conteo de los chips (detailCounts, arriba) sigue basado en detailRows
+     sin buscador, para que siga mostrando el total real por tipo aunque
+     haya un texto de búsqueda activo. */
+  const [detailSearch, setDetailSearch] = React.useState('');
+  const searchedDetailRows = React.useMemo(() => {
+    const q = detailSearch.trim().toLowerCase();
+    if (!q) return visibleDetailRows;
+    return visibleDetailRows.filter(r => r.emp.name.toLowerCase().includes(q) || r.emp.dept.toLowerCase().includes(q));
+  }, [visibleDetailRows, detailSearch]);
+
+  const [detailSort, setDetailSort] = React.useState({ key: 'date', dir: 'desc' });
+  const toggleDetailSort = (key) => {
+    setDetailSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'date' ? 'desc' : 'asc' });
+  };
+  const sortedDetailRows = React.useMemo(() => {
+    const dir = detailSort.dir === 'asc' ? 1 : -1;
+    const val = (r) => {
+      if (detailSort.key === 'name')   return r.emp.name;
+      if (detailSort.key === 'type')   return r.type;
+      if (detailSort.key === 'estado') return r.estado || '';
+      return r.date;
+    };
+    return [...searchedDetailRows].sort((a, b) => {
+      const av = val(a), bv = val(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return b.date.localeCompare(a.date); // desempate estable: más reciente primero
+    });
+  }, [searchedDetailRows, detailSort]);
+
+  // Botón de encabezado ordenable — se usa tanto en la lista unificada
+  // (.rep-list-row--head) como en Horas trabajadas (.data-table th), ambos
+  // heredan mayúscula/tracking/color del contenedor vía `font/text-transform:
+  // inherit` en .rep-sort-th.
+  const SortTh = ({ label, active, dir, onClick }) => (
+    <button type="button" className={`rep-sort-th ${active ? `rep-sort-th--active${dir === 'asc' ? ' rep-sort-th--asc' : ''}` : ''}`} onClick={onClick}>
+      {label}
+      <span className="rep-sort-th__icon"><Icon name="chevDown" size={11} stroke={2.6}/></span>
+    </button>
+  );
+
   /* ── Horas trabajadas — mes filtrado, calculado de entrada/salida reales
      del kiosco (antes no existía: solo se guardaba una hora, la de entrada,
      y "salida" era cosmético). Marca los días con entrada pero sin salida
@@ -940,6 +1024,30 @@ function ReportsView({ t, lang, setRoute }) {
       .filter(Boolean)
       .sort((a, b) => b.totalHours - a.totalHours);
   }, [monthAttForHours, emps]);
+
+  const [hoursSort, setHoursSort] = React.useState({ key: 'total', dir: 'desc' });
+  const toggleHoursSort = (key) => {
+    setHoursSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' });
+  };
+  const sortedHoursRows = React.useMemo(() => {
+    const dir = hoursSort.dir === 'asc' ? 1 : -1;
+    const val = (r) => {
+      const completeDays = r.days - r.incomplete;
+      switch (hoursSort.key) {
+        case 'name':      return r.emp.name;
+        case 'days':      return r.days;
+        case 'avg':       return completeDays > 0 ? r.totalHours / completeDays : -1;
+        case 'incomplete':return r.incomplete;
+        default:          return r.totalHours;
+      }
+    };
+    return [...hoursRows].sort((a, b) => {
+      const av = val(a), bv = val(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+  }, [hoursRows, hoursSort]);
 
   // Construye las mismas filas (Tardanzas + Ausencias + Eventualidades del
   // mes filtrado) para los dos formatos de export — mismo patrón que
@@ -1445,7 +1553,7 @@ function ReportsView({ t, lang, setRoute }) {
 
       {/* ── Activos ahora por departamento + Aspectos destacados ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20 }}>
-        <div className="chart-card" onDoubleClick={() => setExpandedChart('dept')}>
+        <div className="chart-card chart-card--dept" onDoubleClick={() => setExpandedChart('dept')}>
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{t.rep_active_now}</div>
@@ -1502,31 +1610,63 @@ function ReportsView({ t, lang, setRoute }) {
       {/* ── DETALLE — histórico filtrable por mes ── */}
       {view === 'detalle' && <div key="detalle" className="rep-panel-in">
 
-      {/* ── Chips de filtro (Tardanzas · Ausencias · Eventualidades) — el mes ya
-           se controla desde la píldora central del header, arriba. ── */}
-      <div className="rep-chips" style={{ marginBottom: 16 }}>
-        {detailChips.map(c => (
-          <button key={c.id} className={`rep-chip ${detailFilter === c.id ? 'rep-chip--active' : ''}`} onClick={() => setDetailFilter(c.id)}>
-            {c.label} <span className="rep-chip__count">{detailCounts[c.id]}</span>
-          </button>
-        ))}
+      {/* Todo lo de acá abajo hasta FaltasSemanalReport queda fuera de la
+         impresión (print-hide) — Imprimir reporte solo imprime la grilla
+         semanal, no el buscador/lista/horas de arriba. Ver @media print en
+         styles.css, que preserva a FaltasSemanalReport vía :has() aunque
+         esté anidado dentro de este mismo panel "detalle". */}
+      <div className="print-hide">
+
+      {/* ── Chips de filtro (Tardanzas · Ausencias · Eventualidades) + buscador
+           por empleado/departamento — el mes ya se controla desde la píldora
+           central del header, arriba. ── */}
+      <div className="rep-detail-toolbar">
+        <div className="rep-chips">
+          {detailChips.map(c => (
+            <button key={c.id} className={`rep-chip ${detailFilter === c.id ? 'rep-chip--active' : ''}`} onClick={() => setDetailFilter(c.id)}>
+              {c.label} <span className="rep-chip__count">{detailCounts[c.id]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="rep-detail-search">
+          <span className="rep-detail-search-icon"><Icon name="search" size={13}/></span>
+          <input
+            value={detailSearch}
+            onChange={(e) => setDetailSearch(e.target.value)}
+            placeholder={isES ? 'Buscar empleado o departamento…' : 'Search employee or department…'}
+          />
+          {detailSearch && (
+            <button className="rep-detail-search-clear" onClick={() => setDetailSearch('')} aria-label={isES ? 'Limpiar' : 'Clear'}>
+              <Icon name="x" size={11} stroke={2.4}/>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Lista unificada — Tardanzas + Ausencias + Eventualidades del mes ── */}
-      {visibleDetailRows.length === 0 ? (
+      {sortedDetailRows.length === 0 ? (
         <div className="rep-list-card">
           <div className="audit-empty">
             <Icon name="calendar" size={26} stroke={1.2}/>
             <div className="audit-empty__title">{isES ? 'Sin registros' : 'No records'}</div>
-            <div className="audit-empty__sub">{isES ? `No hay registros para ${monthLabel.toLowerCase()}.` : `No records for ${monthLabel}.`}</div>
+            <div className="audit-empty__sub">
+              {detailSearch
+                ? (isES ? `Nadie coincide con "${detailSearch}".` : `No one matches "${detailSearch}".`)
+                : (isES ? `No hay registros para ${monthLabel.toLowerCase()}.` : `No records for ${monthLabel}.`)}
+            </div>
           </div>
         </div>
       ) : (
         <div className="rep-list-card rep-rows-in" key={detailFilter}>
           <div className="rep-list-row rep-list-row--head">
-            <span></span><span>{isES ? 'Empleado' : 'Employee'}</span><span>{isES ? 'Tipo' : 'Type'}</span><span>{isES ? 'Fecha' : 'Date'}</span><span>{isES ? 'Detalle' : 'Detail'}</span><span>{isES ? 'Estado' : 'Status'}</span>
+            <span></span>
+            <SortTh label={isES ? 'Empleado' : 'Employee'} active={detailSort.key === 'name'} dir={detailSort.dir} onClick={() => toggleDetailSort('name')}/>
+            <SortTh label={isES ? 'Tipo' : 'Type'} active={detailSort.key === 'type'} dir={detailSort.dir} onClick={() => toggleDetailSort('type')}/>
+            <SortTh label={isES ? 'Fecha' : 'Date'} active={detailSort.key === 'date'} dir={detailSort.dir} onClick={() => toggleDetailSort('date')}/>
+            <span>{isES ? 'Detalle' : 'Detail'}</span>
+            <SortTh label={isES ? 'Estado' : 'Status'} active={detailSort.key === 'estado'} dir={detailSort.dir} onClick={() => toggleDetailSort('estado')}/>
           </div>
-          {visibleDetailRows.map(r => (
+          {sortedDetailRows.map(r => (
             <div className="rep-list-row" key={r.key}>
               <div className="table__avatar" style={{ width:32, height:32, fontSize:10 }}>{initials(r.emp.name)}</div>
               <div className="rep-list-who">
@@ -1552,14 +1692,14 @@ function ReportsView({ t, lang, setRoute }) {
         </div>
       )}
 
-      {/* ── Horas trabajadas — mes filtrado ── */}
-      <div className="chart-card" style={{ marginBottom: 20 }}>
-        <div className="chart-card__head">
-          <div>
-            <div className="chart-card__title">{isES ? 'Horas trabajadas' : 'Hours worked'}</div>
-            <div className="chart-card__sub">{monthLabel} · {isES ? 'calculado de entrada y salida reales' : 'calculated from real entry/exit'}</div>
-          </div>
-        </div>
+      {/* ── Horas trabajadas — mes filtrado. Sección secundaria (colapsable,
+           abierta por defecto): la lista de arriba es el contenido principal
+           de Detalle. ── */}
+      <RepAccordion
+        title={isES ? 'Horas trabajadas' : 'Hours worked'}
+        subtitle={`${monthLabel} · ${isES ? 'calculado de entrada y salida reales' : 'calculated from real entry/exit'}`}
+        count={hoursRows.length}
+        defaultOpen>
         {hoursRows.length === 0 ? (
           <div className="audit-empty">
             <Icon name="clock" size={26} stroke={1.2}/>
@@ -1567,34 +1707,34 @@ function ReportsView({ t, lang, setRoute }) {
             <div className="audit-empty__sub">{isES ? `No hay marcajes para ${monthLabel.toLowerCase()}.` : `No check-ins for ${monthLabel}.`}</div>
           </div>
         ) : (
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <div className="data-table-wrap">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ textAlign:'left', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Empleado' : 'Employee'}</th>
-                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Días marcados' : 'Days'}</th>
-                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Horas totales' : 'Total hours'}</th>
-                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Promedio/día' : 'Avg/day'}</th>
-                  <th style={{ textAlign:'center', padding:'8px 4px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>{isES ? 'Sin salida' : 'No exit'}</th>
+                  <th><SortTh label={isES ? 'Empleado' : 'Employee'} active={hoursSort.key === 'name'} dir={hoursSort.dir} onClick={() => toggleHoursSort('name')}/></th>
+                  <th className="is-center"><SortTh label={isES ? 'Días marcados' : 'Days'} active={hoursSort.key === 'days'} dir={hoursSort.dir} onClick={() => toggleHoursSort('days')}/></th>
+                  <th className="is-center"><SortTh label={isES ? 'Horas totales' : 'Total hours'} active={hoursSort.key === 'total'} dir={hoursSort.dir} onClick={() => toggleHoursSort('total')}/></th>
+                  <th className="is-center"><SortTh label={isES ? 'Promedio/día' : 'Avg/day'} active={hoursSort.key === 'avg'} dir={hoursSort.dir} onClick={() => toggleHoursSort('avg')}/></th>
+                  <th className="is-center"><SortTh label={isES ? 'Sin salida' : 'No exit'} active={hoursSort.key === 'incomplete'} dir={hoursSort.dir} onClick={() => toggleHoursSort('incomplete')}/></th>
                 </tr>
               </thead>
               <tbody>
-                {hoursRows.map(r => {
+                {sortedHoursRows.map(r => {
                   const completeDays = r.days - r.incomplete;
                   const avg = completeDays > 0 ? r.totalHours / completeDays : 0;
                   return (
-                    <tr key={r.emp.id} className="rep-row">
-                      <td style={{ padding:'10px 4px', borderBottom:'1px solid var(--ink-100)' }}>
-                        <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{r.emp.name}</div>
-                        <div style={{ fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-400)' }}>{r.emp.dept}</div>
+                    <tr key={r.emp.id}>
+                      <td>
+                        <div className="data-table__name">{r.emp.name}</div>
+                        <div className="data-table__dept">{r.emp.dept}</div>
                       </td>
-                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)', fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink-600)' }}>{r.days}</td>
-                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)', fontFamily:'var(--font-mono)', fontSize:13, fontWeight:700, color:'var(--ink-800)' }}>{r.totalHours.toFixed(1)}h</td>
-                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)', fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink-600)' }}>{completeDays > 0 ? `${avg.toFixed(1)}h` : '—'}</td>
-                      <td style={{ textAlign:'center', padding:'10px 4px', borderBottom:'1px solid var(--ink-100)' }}>
+                      <td className="is-center is-mono">{r.days}</td>
+                      <td className="is-center is-mono" style={{ fontWeight:700, color:'var(--ink-800)' }}>{r.totalHours.toFixed(1)}h</td>
+                      <td className="is-center is-mono">{completeDays > 0 ? `${avg.toFixed(1)}h` : '—'}</td>
+                      <td className="is-center">
                         {r.incomplete > 0
                           ? <span className="badge badge--warn" style={{ fontSize:10 }}>{r.incomplete}</span>
-                          : <span style={{ color:'var(--ink-200)', fontFamily:'var(--font-mono)', fontSize:12 }}>—</span>}
+                          : <span className="is-mono" style={{ color:'var(--ink-200)' }}>—</span>}
                       </td>
                     </tr>
                   );
@@ -1603,6 +1743,8 @@ function ReportsView({ t, lang, setRoute }) {
             </table>
           </div>
         )}
+      </RepAccordion>
+
       </div>
 
       <FaltasSemanalReport filterMonth={filterMonth} monthLabel={monthLabel}/>
@@ -1720,11 +1862,45 @@ function shadeHex(hex, percent) {
   return `rgb(${r},${g},${b})`;
 }
 
+/* FLIP (First-Last-Invert-Play): el salto vertical de .donut-wrap al pasar
+   de vacío (centrado con margin:auto, no animable) a con-datos (arriba,
+   pegado al header) no se puede resolver con transition normal — "margin:
+   auto" no es un valor interpolable. En vez de eso: en cada cambio de
+   `isEmpty`, se mide la posición ANTES de que el navegador repinte, se
+   fuerza a arrancar ahí con un transform (sin transición), y en el frame
+   siguiente se anima ese transform de vuelta a 0 — el mismo truco que usa
+   el horizontal, pero aplicado a mano porque acá el cambio de layout no es
+   un valor CSS animable. */
+function useVerticalFlip(ref, key) {
+  const prevRectRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const newRect = el.getBoundingClientRect();
+    const prevRect = prevRectRef.current;
+    if (prevRect) {
+      const deltaY = prevRect.top - newRect.top;
+      if (Math.abs(deltaY) > 0.5) {
+        el.style.transition = 'none';
+        el.style.transform = `translateY(${deltaY}px)`;
+        el.getBoundingClientRect(); // fuerza reflow antes de soltar la transición
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform .5s cubic-bezier(.16,1,.3,1)';
+          el.style.transform = '';
+        });
+      }
+    }
+    prevRectRef.current = newRect;
+  }, [key]);
+}
+
 function DeptDonutViz({ dist, centerLabel, large }) {
   const uid      = React.useId().replace(/:/g, '');
   const [exploded, setExploded] = React.useState(false);
   const [hoverIdx, setHoverIdx] = React.useState(null);
   const total    = dist.reduce((s, d) => s + d.value, 0);
+  const wrapRef  = React.useRef(null);
+  useVerticalFlip(wrapRef, dist.length === 0);
   const r        = 52;
   const circ     = 2 * Math.PI * r;
   let   offset   = 0;
@@ -1749,7 +1925,7 @@ function DeptDonutViz({ dist, centerLabel, large }) {
   const EXPLODE_PX = 10;
 
   return (
-    <div className={`donut-wrap ${large ? 'donut-wrap--lg' : ''}`}>
+    <div ref={wrapRef} className={`donut-wrap ${large ? 'donut-wrap--lg' : ''} ${dist.length === 0 ? 'donut-wrap--center' : ''}`}>
       <div className="donut"
         onMouseEnter={() => setExploded(true)}
         onMouseLeave={() => setExploded(false)}
@@ -1790,6 +1966,19 @@ function DeptDonutViz({ dist, centerLabel, large }) {
                     pointerEvents: 'visibleStroke',
                   }}/>
               ))}
+              {/* 0 activos: sin esto el aro no dibuja ningún <circle> (todas las
+                  longitudes dan 0) y queda un hueco en blanco. Mismo lenguaje
+                  que el spinner de carga del login (.login__spinner) — pista
+                  gris fija + arco blanco que gira, pero en el propio anillo. */}
+              {total === 0 && (
+                <>
+                  <circle cx="70" cy="70" r={r} fill="none" stroke="var(--ink-100)" strokeWidth="16"/>
+                  <circle cx="70" cy="70" r={r} fill="none" stroke="#fff" strokeWidth="16"
+                    strokeLinecap="round"
+                    strokeDasharray={`${circ * 0.22} ${circ * 0.78}`}
+                    className="donut__empty-spin"/>
+                </>
+              )}
             </g>
           </g>
         </svg>
@@ -1800,7 +1989,11 @@ function DeptDonutViz({ dist, centerLabel, large }) {
           </div>
         </div>
       </div>
-      <div className="donut__legend">
+      {/* Siempre montada (nunca se quita del DOM) — así el paso de vacío a
+          con-datos anima min-width/gap/opacity en vez de aparecer de golpe,
+          y el donut (centrado por el justify-content del wrap) se desliza a
+          su lugar en vez de saltar. */}
+      <div className={`donut__legend ${dist.length === 0 ? 'donut__legend--collapsed' : ''}`}>
         {dist.map((d, i) => (
           <div key={i} className={`donut__legend-row ${hoverIdx === i ? 'donut__legend-row--active' : ''} ${i === 0 ? 'donut__legend-row--top' : ''}`}
             onMouseEnter={() => setHoverIdx(i)}
@@ -1846,61 +2039,48 @@ function ActiveNowDonut({ t, isES, attRecords, large }) {
 
 /* ── FaltasSemanalReport ── */
 function FaltasSemanalReport({ filterMonth, monthLabel }) {
-  var absInit = function() {
-    try { return JSON.parse(localStorage.getItem('uasd_absences') || '{}'); } catch(e) { return {}; }
-  };
-  var absState = React.useState(absInit);
-  var absencesMap = absState[0];
-  var setAbsencesMap = absState[1];
+  const [absencesMap, setAbsencesMap] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('uasd_absences') || '{}'); } catch { return {}; }
+  });
 
-  React.useEffect(function() {
-    var sync = function() {
-      try { setAbsencesMap(JSON.parse(localStorage.getItem('uasd_absences') || '{}')); } catch(e) {}
-    };
+  React.useEffect(() => {
+    const sync = () => { try { setAbsencesMap(JSON.parse(localStorage.getItem('uasd_absences') || '{}')); } catch {} };
     window.addEventListener('storage', sync);
-    return function() { window.removeEventListener('storage', sync); };
+    return () => window.removeEventListener('storage', sync);
   }, []);
 
-  var weeks = React.useMemo(function() {
-    var ym = filterMonth || new Date().toISOString().slice(0, 7);
-    var year  = parseInt(ym.slice(0, 4), 10);
-    var month = parseInt(ym.slice(5, 7), 10) - 1;
-    var lastDay = new Date(year, month + 1, 0);
-    var weekMap = {};
-    var d = new Date(year, month, 1);
+  const weeks = React.useMemo(() => {
+    const ym = filterMonth || new Date().toISOString().slice(0, 7);
+    const year  = parseInt(ym.slice(0, 4), 10);
+    const month = parseInt(ym.slice(5, 7), 10) - 1;
+    const lastDay = new Date(year, month + 1, 0);
+    const weekMap = {};
+    let d = new Date(year, month, 1);
     while (d <= lastDay) {
-      var dow = d.getDay();
+      const dow = d.getDay();
       if (dow >= 1 && dow <= 5) {
-        var mondayOffset = 1 - dow;
-        var monday = new Date(d);
-        monday.setDate(d.getDate() + mondayOffset);
-        var key = monday.getFullYear() + '-' +
-          String(monday.getMonth() + 1).padStart(2, '0') + '-' +
-          String(monday.getDate()).padStart(2, '0');
-        if (!weekMap[key]) weekMap[key] = [];
-        weekMap[key].push(new Date(d));
+        const monday = new Date(d);
+        monday.setDate(d.getDate() + (1 - dow));
+        const key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+        (weekMap[key] = weekMap[key] || []).push(new Date(d));
       }
-      d.setDate(d.getDate() + 1);
+      d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
     }
-    return Object.keys(weekMap).sort().map(function(key) {
-      return { key: key, days: weekMap[key] };
-    });
+    return Object.keys(weekMap).sort().map(key => ({ key, days: weekMap[key] }));
   }, [filterMonth]);
 
-  var emps = typeof EMPLOYEES !== 'undefined'
-    ? EMPLOYEES.filter(function(e) { return e.status === 'ok'; })
-    : [];
+  const emps = typeof EMPLOYEES !== 'undefined' ? EMPLOYEES.filter(e => e.status === 'ok') : [];
+  const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+  const fmtDate = (day) => `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
 
-  var DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
-
-  function fmtDate(day) {
-    return day.getFullYear() + '-' +
-      String(day.getMonth() + 1).padStart(2, '0') + '-' +
-      String(day.getDate()).padStart(2, '0');
-  }
+  // Colapsada por defecto: esta grilla repite día por día lo que la lista
+  // unificada de Detalle ya muestra por fila (Ausencias) — es una vista
+  // alternativa/exportable para imprimir, no el contenido principal de la
+  // pestaña, así que no amerita ocupar full altura por defecto en cada carga.
+  const [open, setOpen] = React.useState(false);
 
   return (
-    <div className="faltas-semanales-report" style={{ marginTop: 28 }}>
+    <div className="chart-card rep-accordion faltas-semanales-report" style={{ marginBottom: 20 }}>
 
       {/* visible only when printing */}
       <div className="print-report-header" style={{ display:'none', marginBottom:20 }}>
@@ -1912,50 +2092,62 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
         </div>
       </div>
 
-      {/* section header */}
-      <div className="print-hide" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+      {/* section header — cliqueable para colapsar, mismo look que RepAccordion */}
+      <div className="print-hide rep-accordion__head" role="button" tabIndex={0}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}>
         <div>
-          <div style={{ fontFamily:'var(--font-sans)', fontSize:15, fontWeight:700, color:'var(--ink-800)', display:'flex', alignItems:'center', gap:8 }}>
+          <div className="chart-card__title" style={{ display:'flex', alignItems:'center', gap:8 }}>
             <Icon name="calendar" size={15}/>
-            Reporte de faltas por semanas
+            Reporte de faltas por semana
           </div>
-          <div style={{ fontFamily:'var(--font-sans)', fontSize:12, color:'var(--ink-400)', marginTop:3 }}>
-            {monthLabel} · faltas registradas por empleado
-          </div>
+          <div className="chart-card__sub">{monthLabel} · faltas registradas por empleado</div>
         </div>
-        <button
-          onClick={function() { window.print(); }}
-          style={{
-            display:'flex', alignItems:'center', gap:7,
-            fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600,
-            color:'var(--ink-700)', background:'var(--paper)',
-            border:'1px solid var(--ink-200)', borderRadius:8,
-            padding:'7px 14px', cursor:'pointer'
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-            <rect x="6" y="14" width="12" height="8"/>
-          </svg>
-          Imprimir reporte
-        </button>
+        <div className="rep-accordion__meta">
+          <button
+            onClick={(e) => { e.stopPropagation(); window.print(); }}
+            style={{
+              display:'flex', alignItems:'center', gap:7,
+              fontFamily:'var(--font-sans)', fontSize:12, fontWeight:600,
+              color:'var(--ink-700)', background:'var(--paper)',
+              border:'1px solid var(--ink-200)', borderRadius:8,
+              padding:'7px 14px', cursor:'pointer'
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Imprimir reporte
+          </button>
+          <span className="badge badge--neutral">{weeks.length}</span>
+          <span className={`rep-accordion__chev ${open ? 'rep-accordion__chev--open' : ''}`}>
+            <Icon name="chevDown" size={16} stroke={2}/>
+          </span>
+        </div>
       </div>
+
+      {/* Siempre montado (nunca `open && ...`) — el CSS de impresión
+         (.page > *:not(.faltas-semanales-report)) necesita este contenido
+         presente en el DOM para poder imprimirlo aunque el usuario nunca
+         haya expandido el acordeón con clic (Ctrl+P directo del navegador).
+         `.rep-accordion__body--collapsed` lo oculta en pantalla vía
+         display:none y esa regla se anula en @media print. */}
+      <div className={`rep-accordion__body ${open ? 'rep-panel-in' : 'rep-accordion__body--collapsed'}`}>
 
       {/* legend */}
       <div className="print-hide" style={{ display:'flex', alignItems:'center', gap:16, marginBottom:16, flexWrap:'wrap' }}>
         {[
-          { bg:'rgba(34,197,94,0.10)',  color:'#16a34a',              sym:'✓', label:'Presente' },
-          { bg:'rgba(193,85,77,0.13)',  color:'var(--danger,#c1554d)', sym:'✕', label:'Ausente sin justificar' },
-          { bg:'rgba(200,160,0,0.14)',  color:'var(--gold-600,#b45309)',sym:'✕', label:'Ausente justificado' },
-          { bg:'rgba(59,130,246,0.10)', color:'#3b82f6',              sym:'📅', label:'Feriado' },
-        ].map(function(item, i) {
-          return (
-            <div key={i} style={{ display:'flex', alignItems:'center', gap:6, fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-500)' }}>
-              <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:20, height:20, borderRadius:'50%', background:item.bg, color:item.color, fontWeight:700, fontSize:12 }}>{item.sym}</span>
-              {item.label}
-            </div>
-          );
-        })}
+          { cls:'ok',        icon:'check',    label:'Presente' },
+          { cls:'bad',       icon:'x',        label:'Ausente sin justificar' },
+          { cls:'justified', icon:'x',        label:'Ausente justificado' },
+          { cls:'holiday',   icon:'calendar', label:'Feriado' },
+        ].map((item, i) => (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:6, fontFamily:'var(--font-sans)', fontSize:11, color:'var(--ink-500)' }}>
+            <span className={`data-table__mark data-table__mark--${item.cls}`}><Icon name={item.icon} size={12} stroke={2.6}/></span>
+            {item.label}
+          </div>
+        ))}
       </div>
 
       {/* weeks */}
@@ -1963,13 +2155,13 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
         <div style={{ padding:'24px', textAlign:'center', fontFamily:'var(--font-sans)', fontSize:13, color:'var(--ink-400)' }}>
           Sin datos para este período.
         </div>
-      ) : weeks.map(function(week, wi) {
-        var d0 = week.days[0];
-        var dN = week.days[week.days.length - 1];
-        var rangeLabel = d0.getDate() + ' — ' + dN.getDate();
+      ) : weeks.map((week, wi) => {
+        const d0 = week.days[0];
+        const dN = week.days[week.days.length - 1];
+        const rangeLabel = `${d0.getDate()} — ${dN.getDate()}`;
 
         return (
-          <div key={week.key} className="chart-card faltas-week-card" style={{ marginBottom:16, overflow:'hidden', pageBreakInside:'avoid' }}>
+          <div key={week.key} className="faltas-week-card" style={{ marginBottom:16, border:'1px solid var(--ink-100)', borderRadius:'var(--radius-md)', overflow:'hidden', pageBreakInside:'avoid' }}>
             <div style={{ padding:'9px 16px', background:'var(--ink-800)', color:'var(--paper)', display:'flex', alignItems:'center', gap:12 }}>
               <span style={{ fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', opacity:0.5 }}>
                 Semana {wi + 1}
@@ -1978,85 +2170,59 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
                 {rangeLabel}
               </span>
             </div>
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <div className="data-table-wrap">
+              <table className="data-table">
                 <thead>
                   <tr>
-                    <th style={{ textAlign:'left', padding:'8px 16px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)', minWidth:190, whiteSpace:'nowrap' }}>
-                      Empleado
-                    </th>
-                    {week.days.map(function(day) {
-                      var dow = day.getDay() - 1;
+                    <th style={{ minWidth:190 }}>Empleado</th>
+                    {week.days.map(day => {
+                      const dow = day.getDay() - 1;
                       return (
-                        <th key={fmtDate(day)} style={{ textAlign:'center', padding:'6px 8px', fontFamily:'var(--font-sans)', fontSize:10, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)', minWidth:52 }}>
+                        <th key={fmtDate(day)} className="is-center" style={{ minWidth:52 }}>
                           <div>{DAY_NAMES[dow]}</div>
-                          <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-600)', marginTop:2, fontWeight:600, letterSpacing:0, textTransform:'none' }}>
+                          <div className="is-mono" style={{ fontSize:12, color:'var(--ink-600)', marginTop:2, fontWeight:600, letterSpacing:0, textTransform:'none' }}>
                             {day.getDate()}
                           </div>
                         </th>
                       );
                     })}
-                    <th style={{ textAlign:'center', padding:'8px 12px', fontFamily:'var(--font-sans)', fontSize:11, fontWeight:700, color:'var(--ink-400)', letterSpacing:'0.06em', textTransform:'uppercase', borderBottom:'2px solid var(--ink-100)' }}>
-                      Faltas
-                    </th>
+                    <th className="is-center">Faltas</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {emps.map(function(emp, ei) {
-                    var empAbs = absencesMap[emp.id] || [];
-                    var dayCells = week.days.map(function(day) {
-                      var ds = fmtDate(day);
-                      var found = null;
-                      for (var i = 0; i < empAbs.length; i++) {
-                        if (empAbs[i].date === ds) { found = empAbs[i]; break; }
-                      }
-                      return { ds: ds, abs: found, isHoliday: isHoliday(ds) };
+                  {emps.map(emp => {
+                    const empAbs = absencesMap[emp.id] || [];
+                    const dayCells = week.days.map(day => {
+                      const ds = fmtDate(day);
+                      const found = empAbs.find(a => a.date === ds) || null;
+                      return { ds, abs: found, isHoliday: isHoliday(ds) };
                     });
-                    var absCount = dayCells.filter(function(c) { return c.abs !== null && !c.isHoliday; }).length;
+                    const absCount = dayCells.filter(c => c.abs !== null && !c.isHoliday).length;
 
                     return (
-                      <tr key={emp.id} style={{ background: ei % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.018)' }}>
-                        <td style={{ padding:'9px 16px', borderBottom:'1px solid var(--ink-100)', whiteSpace:'nowrap' }}>
-                          <div style={{ fontFamily:'var(--font-sans)', fontSize:13, fontWeight:600, color:'var(--ink-800)' }}>{emp.name}</div>
-                          <div style={{ fontFamily:'var(--font-sans)', fontSize:10, color:'var(--ink-400)', marginTop:1 }}>{emp.dept}</div>
+                      <tr key={emp.id}>
+                        <td style={{ whiteSpace:'nowrap' }}>
+                          <div className="data-table__name">{emp.name}</div>
+                          <div className="data-table__dept">{emp.dept}</div>
                         </td>
-                        {dayCells.map(function(cell) {
-                          var isAbsent  = cell.abs !== null && !cell.isHoliday;
-                          var justified = isAbsent && cell.abs.justified;
-                          if (cell.isHoliday) {
-                            return (
-                              <td key={cell.ds} style={{ textAlign:'center', padding:'8px 4px', borderBottom:'1px solid var(--ink-100)' }}>
-                                <span title="Feriado" style={{
-                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
-                                  width:24, height:24, borderRadius:'50%',
-                                  background:'rgba(59,130,246,0.10)', color:'#3b82f6',
-                                  fontWeight:700, fontSize:13
-                                }}>📅</span>
-                              </td>
-                            );
-                          }
+                        {dayCells.map(cell => {
+                          const isAbsent  = cell.abs !== null && !cell.isHoliday;
+                          const justified = isAbsent && cell.abs.justified;
                           return (
-                            <td key={cell.ds} style={{ textAlign:'center', padding:'8px 4px', borderBottom:'1px solid var(--ink-100)' }}>
-                              {isAbsent ? (
-                                <span title={justified ? 'Ausencia justificada' : 'Ausencia sin justificar'} style={{
-                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
-                                  width:24, height:24, borderRadius:'50%',
-                                  background: justified ? 'rgba(200,160,0,0.14)' : 'rgba(193,85,77,0.13)',
-                                  color: justified ? 'var(--gold-600,#b45309)' : 'var(--danger,#c1554d)',
-                                  fontWeight:700, fontSize:13
-                                }}>✕</span>
+                            <td key={cell.ds} className="is-center">
+                              {cell.isHoliday ? (
+                                <span className="data-table__mark data-table__mark--holiday" title="Feriado"><Icon name="calendar" size={12} stroke={2.6}/></span>
+                              ) : isAbsent ? (
+                                <span className={`data-table__mark data-table__mark--${justified ? 'justified' : 'bad'}`} title={justified ? 'Ausencia justificada' : 'Ausencia sin justificar'}>
+                                  <Icon name="x" size={12} stroke={2.8}/>
+                                </span>
                               ) : (
-                                <span style={{
-                                  display:'inline-flex', alignItems:'center', justifyContent:'center',
-                                  width:24, height:24, borderRadius:'50%',
-                                  background:'rgba(34,197,94,0.10)', color:'#16a34a',
-                                  fontWeight:700, fontSize:13
-                                }}>✓</span>
+                                <span className="data-table__mark data-table__mark--ok"><Icon name="check" size={12} stroke={2.8}/></span>
                               )}
                             </td>
                           );
                         })}
-                        <td style={{ textAlign:'center', padding:'8px 12px', borderBottom:'1px solid var(--ink-100)' }}>
+                        <td className="is-center">
                           {absCount > 0
                             ? <span className="badge badge--err" style={{ fontSize:11 }}>{absCount}</span>
                             : <span className="badge badge--ok"  style={{ fontSize:11 }}>0</span>
@@ -2071,6 +2237,8 @@ function FaltasSemanalReport({ filterMonth, monthLabel }) {
           </div>
         );
       })}
+
+      </div>
     </div>
   );
 }

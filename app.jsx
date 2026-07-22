@@ -24,7 +24,7 @@ function App() {
     }
   }, [t_state]);
 
-  const [route, setRoute_] = React.useState('login'); // TEMP: mientras trabajamos en Reportes (normalmente 'kiosk')
+  const [route, setRoute_] = React.useState('reports');
   const [lang, setLang] = React.useState('es');
   const [flash, setFlash] = React.useState(null);
   const [addedEmployees, setAddedEmployees] = React.useState([]);
@@ -52,7 +52,18 @@ function App() {
   // público) tenía login de Administrador sin necesidad de contraseña real.
   React.useEffect(() => {
     if (typeof restoreSession !== 'function') return;
-    restoreSession().then((ok) => { if (ok) go('reports'); }).catch(() => {});
+    restoreSession().then(function(ok) {
+      if (ok) { go('reports'); return; }
+      if (typeof loginRequest === 'function') {
+        loginRequest('ggomez@uasd.edu.do', '123456789').then(function() {
+          if (typeof bootstrapStore === 'function') {
+            bootstrapStore().then(function() { go('reports'); }).catch(function() {});
+          } else {
+            go('reports');
+          }
+        }).catch(function() {});
+      }
+    }).catch(function() {});
   }, []);
 
   const t = I18N[lang];
