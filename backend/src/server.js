@@ -14,6 +14,7 @@ const holidaysRoutes = require('./modules/holidays/holidays.routes');
 const rosterRoutes = require('./modules/roster/roster.routes');
 const eventualitiesRoutes = require('./modules/eventualities/eventualities.routes');
 const collectiveVacationsRoutes = require('./modules/collective-vacations/collective-vacations.routes');
+const settingsRoutes = require('./modules/settings/settings.routes');
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api', holidaysRoutes);
 app.use('/api', rosterRoutes);
 app.use('/api', eventualitiesRoutes);
 app.use('/api', collectiveVacationsRoutes);
+app.use('/api', settingsRoutes);
 
 // Nunca sirvas la carpeta backend/ (contiene .env, credenciales de DB) ni .git como estático
 app.use((req, res, next) => {

@@ -1,4 +1,5 @@
 const prisma = require('../../db/prisma');
+const { getSettings } = require('../settings/settings.service');
 
 function dateOnlyUTC(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -24,9 +25,11 @@ function combineDateTime(dateStr, timeStr) {
   return new Date(y, mo - 1, da, h, parseInt(m[2], 10), 0, 0);
 }
 
-// Replica shared.jsx:1320-1335 (getLateMinutes) del lado servidor — misma regex, mismo umbral de
-// 15 minutos. Es intencional que quede "congelado" al momento del marcaje (histórico/auditable).
-function isLate(schedule, when) {
+// Replica shared.jsx:1320-1335 (getLateMinutes) del lado servidor — misma regex. El umbral
+// (antes 15 fijo) ahora viene de SystemConfig (ver settings.service.js) y se aplica al momento
+// del marcaje — es intencional que el resultado quede "congelado" en el registro histórico:
+// cambiar el umbral después no recalcula marcajes pasados.
+function isLate(schedule, when, thresholdMinutes = 15) {
   if (!schedule) return false;
   const m = /(\d+):(\d+)\s*(AM|PM)/i.exec(schedule);
   if (!m) return false;
@@ -34,7 +37,7 @@ function isLate(schedule, when) {
   if (m[3].toUpperCase() === 'PM') startH += 12;
   const startMin = startH * 60 + parseInt(m[2], 10);
   const actualMin = when.getHours() * 60 + when.getMinutes();
-  return (actualMin - startMin) > 15;
+  return (actualMin - startMin) > thresholdMinutes;
 }
 
 // Entrada/salida atómica: el INSERT inicial es la entrada; si dos marcajes casi simultáneos
@@ -45,7 +48,8 @@ function isLate(schedule, when) {
 async function recordAttendance(employeeId, schedule, source = 'kiosk') {
   const now = new Date();
   const date = dateOnlyUTC(now);
-  const late = isLate(schedule, now);
+  const { lateThresholdMinutes } = await getSettings();
+  const late = isLate(schedule, now, lateThresholdMinutes);
 
   try {
     const created = await prisma.attendanceEvent.create({

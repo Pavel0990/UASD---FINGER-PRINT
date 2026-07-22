@@ -30,6 +30,29 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
     return () => clearInterval(id);
   }, []);
 
+  // Umbral de tardanza — antes 15 fijo acá mismo; ahora configurable (ver
+  // reports.jsx, popover "Ajustes" y backend SystemConfig). Solo se usa para
+  // la etiqueta "llegada tarde" en la tarjeta de reconocimiento del kiosco —
+  // el `late` real que queda en la base de datos lo decide el backend
+  // (attendance.service.js), este valor es puramente cosmético acá.
+  const [lateThreshold, setLateThreshold] = React.useState(15);
+  React.useEffect(() => {
+    const load = () => {
+      if (typeof isBackendActive === 'function' && isBackendActive() && typeof apiGetSettings === 'function') {
+        apiGetSettings().then(s => setLateThreshold(s.lateThresholdMinutes)).catch(() => {});
+      } else {
+        try {
+          const s = JSON.parse(localStorage.getItem('uasd_settings') || '{}');
+          setLateThreshold(Number.isInteger(s.lateThresholdMinutes) ? s.lateThresholdMinutes : 15);
+        } catch { setLateThreshold(15); }
+      }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    window.addEventListener('storage', load);
+    return () => { clearInterval(id); window.removeEventListener('storage', load); };
+  }, []);
+
   // Camino real: el backend ya verificó la firma WebAuthn contra la public key
   // guardada, confirmó que el empleado sigue status==='ok' en la fila real de
   // Postgres (no en un array cacheado en el navegador), y grabó el marcaje de
@@ -49,7 +72,7 @@ function KioskView({ t, lang, setLang, setRoute, theme }) {
 
     const bank = kind === 'in' ? t.kiosk_welcome_bank : t.kiosk_farewell_bank;
     const greeting = bank[Math.floor(Math.random() * bank.length)];
-    const late = kind === 'in' && emp.schedule ? getLateMinutes(emp.schedule, time) > 15 : false;
+    const late = kind === 'in' && emp.schedule ? getLateMinutes(emp.schedule, time) > lateThreshold : false;
     setRecognized({ ...emp, kind, greeting, time, late, isDemo: false });
     setState('success');
     timerRef.current = setTimeout(() => { setState('idle'); setRecognized(null); }, 4500);

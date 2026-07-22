@@ -3636,46 +3636,125 @@ tr.table__row--selected .table__actions {
   font-family: var(--font-sans); font-size: 12px; color: var(--ink-300);
 }
 
-/* ── Aspectos destacados (insights) ── */
-.rep-insights { display: flex; flex-direction: column; margin-top: 6px; }
-.rep-insight-row {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--ink-100);
+/* ── Aspectos destacados — el rayo ──
+   Tarjeta clara de siempre. La chispa nace pegada al margen de la esquina
+   inferior derecha y el trazo sube ramificándose hacia la izquierda: una
+   textura decorativa (recursiva, determinística) más una ráfaga de impacto
+   que radia hacia todos lados desde la chispa — ahí es donde el rayo "pega"
+   contra el suelo. Encima, una rama más gruesa por cada hallazgo real,
+   coloreada por severidad de punta a punta, terminando en un punto sólido
+   y opaco — clic/tecla abre el popover con la información. */
+.insight-bolt { position: relative; aspect-ratio: 480 / 250; margin-top: 4px; }
+.insight-bolt__svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+.insight-bolt__texture line {
+  stroke: var(--ink-300);
+  stroke-linecap: round;
+  opacity: 0.55;
 }
-.rep-insight-row:last-child { border-bottom: none; padding-bottom: 0; }
-.rep-insight-row:first-child { padding-top: 0; }
-/* Filas con recomendación (texto en 2 líneas) — alinear arriba en vez de
-   centrar verticalmente, si no el ícono/badge quedan descentrados respecto
-   al bloque de 2 líneas. */
-.rep-insight-row--rec { align-items: flex-start; }
-.rep-insight-row--rec .rep-insight-status,
-.rep-insight-row--rec .rep-insight-cat { margin-top: 1px; }
-.rep-insight-status {
-  width: 26px; height: 26px;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  flex-shrink: 0;
+.insight-bolt__spark {
+  fill: var(--ink-300);
+  animation: pulse 2.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
 }
-.rep-insight-status--ok { background: rgba(79,157,122,0.14); color: #2f7a5a; }
-.rep-insight-status--warn { background: var(--gold-100); color: var(--gold-600); }
-.rep-insight-text { flex: 1; font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--ink-800); line-height: 1.4; }
-.rep-insight-rec { margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--ink-500); }
-.rep-insight-cat {
-  font-family: var(--font-sans);
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 999px;
-  flex-shrink: 0;
-  white-space: nowrap;
+
+.insight-bolt__branch {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 0.75;
+  animation-duration: .4s;
 }
-.rep-insight-cat--puntualidad { background: rgba(79,157,122,0.14); color: #2f7a5a; }
-.rep-insight-cat--ausencias   { background: rgba(193,85,77,0.12); color: var(--danger); }
-.rep-insight-cat--depto       { background: rgba(58,110,165,0.12); color: #3a6ea5; }
-.rep-insight-cat--tendencia   { background: var(--gold-100); color: var(--gold-600); }
+.insight-bolt__branch--ok       { stroke: #2f7a5a; }
+.insight-bolt__branch--info     { stroke: var(--ink-400); }
+.insight-bolt__branch--warn     { stroke: var(--gold-600); }
+.insight-bolt__branch--critical { stroke: var(--danger); }
+.insight-bolt__branch-g--0 .insight-bolt__branch { animation-delay: .10s; }
+.insight-bolt__branch-g--1 .insight-bolt__branch { animation-delay: .16s; }
+.insight-bolt__branch-g--2 .insight-bolt__branch { animation-delay: .22s; }
+.insight-bolt__branch-g--3 .insight-bolt__branch { animation-delay: .28s; }
+.insight-bolt__branch-g--4 .insight-bolt__branch { animation-delay: .34s; }
+.insight-bolt__branch-g--5 .insight-bolt__branch { animation-delay: .40s; }
+.insight-bolt__branch-g--6 .insight-bolt__branch { animation-delay: .46s; }
+.insight-bolt__branch-g--7 .insight-bolt__branch { animation-delay: .52s; }
+
+/* Nodos sólidos y saturados — crecen al pasar el mouse o enfocarlos con
+   teclado, la señal de "esto es cliqueable" tiene que sentirse antes del
+   clic, no solo después. */
+.insight-bolt__node-g {
+  cursor: pointer;
+  outline: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform .15s ease;
+}
+.insight-bolt__node-g:hover,
+.insight-bolt__node-g:focus-visible { transform: scale(1.22); }
+.insight-bolt__node {
+  stroke: var(--paper);
+  stroke-width: 2;
+  transition: stroke-width .15s ease;
+}
+.insight-bolt__node--ok       { fill: var(--success); }
+.insight-bolt__node--info     { fill: var(--ink-600); }
+.insight-bolt__node--warn     { fill: var(--gold-600); }
+.insight-bolt__node--critical { fill: var(--danger); }
+.insight-bolt__node-g.is-selected .insight-bolt__node,
+.insight-bolt__node-g:focus-visible .insight-bolt__node { stroke-width: 3; }
+.insight-bolt__node-g.is-selected .insight-bolt__node--ok       { filter: drop-shadow(0 0 6px rgba(79,157,122,0.65)); }
+.insight-bolt__node-g.is-selected .insight-bolt__node--info     { filter: drop-shadow(0 0 6px rgba(48,60,102,0.55)); }
+.insight-bolt__node-g.is-selected .insight-bolt__node--warn     { filter: drop-shadow(0 0 6px rgba(176,142,68,0.65)); }
+.insight-bolt__node-g.is-selected .insight-bolt__node--critical { filter: drop-shadow(0 0 6px rgba(193,85,77,0.65)); }
+
+/* Popover del punto seleccionado — contenido rico (ícono + categoría +
+   texto + acción) posicionado por % sobre el punto. --arrow-x (inline,
+   calculado en reports.jsx) corrige la flechita para que apunte al punto
+   real aunque el cuadro se haya recentrado por estar cerca de un borde. */
+.insight-bolt__popover {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 16px));
+  width: 220px;
+  background: var(--paper);
+  border: 1px solid var(--ink-100);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 13px 15px;
+  z-index: 3;
+}
+.insight-bolt__popover-in { animation: repFadeIn .15s ease both; }
+.insight-bolt__popover--below { transform: translate(-50%, 16px); }
+.insight-bolt__popover::after {
+  content: '';
+  position: absolute;
+  left: calc(50% + var(--arrow-x, 0px));
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+}
+.insight-bolt__popover:not(.insight-bolt__popover--below)::after { top: 100%; border-top-color: var(--paper); }
+.insight-bolt__popover--below::after { bottom: 100%; border-bottom-color: var(--paper); }
+
+.insight-bolt__popover-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.insight-bolt__popover-icon { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
+.insight-bolt__popover-icon--ok       { background: rgba(79,157,122,0.14); color: #2f7a5a; }
+.insight-bolt__popover-icon--info     { background: var(--ink-100);        color: var(--ink-500); }
+.insight-bolt__popover-icon--warn     { background: var(--gold-100);       color: var(--gold-600); }
+.insight-bolt__popover-icon--critical { background: rgba(193,85,77,0.14);  color: var(--danger); }
+.insight-bolt__popover-cat {
+  font-family: var(--font-sans); font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-400);
+}
+.insight-bolt__popover-text { font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--ink-800); line-height: 1.45; }
+.insight-bolt__popover-rec { margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--ink-500); line-height: 1.4; }
+.insight-bolt__popover-goto {
+  margin-top: 10px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-sans); font-size: 12px; font-weight: 700; color: var(--ink-700);
+  background: var(--cream-100); border: none; border-radius: 999px; padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.insight-bolt__popover-goto:hover { background: var(--ink-900); color: var(--cream-100); }
 
 /* ── Filtro de chips (Detalle) ── */
 .rep-chips { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -3713,6 +3792,24 @@ tr.table__row--selected .table__actions {
   border-radius: var(--radius-lg);
   overflow: hidden;
   margin-bottom: 20px;
+}
+
+/* ── Ficha de empleado (tab "Por empleado") — mismo tono oscuro que
+   edit-modal__head (dashboard.jsx), pero como banda superior de una tarjeta
+   inline en vez de cabecera de modal. */
+.rep-emp-card {
+  background: var(--paper);
+  border: 1px solid var(--ink-100);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.rep-emp-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px;
+  background: var(--ink-900);
 }
 .rep-list-row {
   display: grid;

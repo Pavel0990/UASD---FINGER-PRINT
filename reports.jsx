@@ -356,6 +356,153 @@ function AreaChart({ values, labels, color, gradId, formatValue, emptyLabel, slo
   );
 }
 
+/* ── InsightBolt — "Aspectos destacados" como un rayo: la chispa nace
+   pegada al margen de la esquina inferior derecha de la tarjeta y el trazo
+   sube ramificándose hacia la izquierda. Dos capas: una textura decorativa
+   (recursiva, determinística — mismo seed → mismo dibujo siempre) que da
+   la sensación de ramificación fina de un rayo real, con una ráfaga de
+   impacto (líneas radiando hacia todos lados) en la chispa — ahí es donde
+   "pega" contra el suelo. Encima, tantas RAMAS DE DATOS como hallazgos,
+   coloreadas por severidad, terminando en el punto seleccionable de cada
+   una — clic o teclado abre el popover con la información, con la flechita
+   corregida para apuntar exacto al punto real (no al centro del popover,
+   que se recentra cerca de los bordes). ── */
+function InsightBolt({ insights, isES, onGoto }) {
+  const n = insights.length;
+  const W = 480, H = 250;
+  const [selected, setSelected] = React.useState(0);
+  const wrapRef = React.useRef(null);
+  const [wrapWidth, setWrapWidth] = React.useState(0);
+
+  React.useEffect(() => { if (selected >= n) setSelected(0); }, [n, selected]);
+
+  React.useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => setWrapWidth(el.getBoundingClientRect().width);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const ROOT = { x: W - 3, y: H - 3 };
+  const TIP = { x: 30, y: 26 };
+
+  const texture = React.useMemo(() => {
+    const segs = [];
+    const hash = (s) => { const v = Math.sin(s * 12.9898) * 43758.5453; return v - Math.floor(v); };
+    const dx = TIP.x - ROOT.x, dy = TIP.y - ROOT.y;
+    const baseAngle = Math.atan2(dy, dx);
+    const walk = (x, y, angle, len, depth, seed) => {
+      if (depth <= 0 || len < 5) return;
+      const wig = (hash(seed) - 0.5) * 0.6;
+      const a = angle + wig;
+      const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+      segs.push({ x1: x, y1: y, x2, y2, w: Math.max(0.6, depth * 0.19) });
+      walk(x2, y2, a, len * 0.86, depth - 1, seed * 1.37 + 1);
+      if (depth > 2) walk(x2, y2, a + 0.55, len * 0.42, depth - 2, seed * 2.19 + 3);
+      if (depth > 2 && depth % 2 === 0) walk(x2, y2, a - 0.5, len * 0.38, depth - 2, seed * 3.71 + 7);
+      if (depth > 4 && depth % 3 === 0) walk(x2, y2, a + 0.3, len * 0.3, depth - 3, seed * 5.03 + 11);
+    };
+    walk(ROOT.x, ROOT.y, baseAngle, 96, 14, 5);
+
+    for (let k = 0; k < 7; k++) {
+      const ia = baseAngle + (hash(k * 3.31 + 41) - 0.5) * 3.0;
+      const ilen = 16 + hash(k * 5.77 + 53) * 26;
+      segs.push({
+        x1: ROOT.x, y1: ROOT.y,
+        x2: ROOT.x + Math.cos(ia) * ilen, y2: ROOT.y + Math.sin(ia) * ilen,
+        w: 1 + hash(k * 2.13 + 7) * 1.1,
+      });
+    }
+    return segs;
+  }, []);
+
+  const branches = React.useMemo(() => {
+    if (n === 0) return [];
+    const dx = TIP.x - ROOT.x, dy = TIP.y - ROOT.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    return Array.from({ length: n }, (_, i) => {
+      const t = (n - i - 0.3) / (n + 0.4);
+      const ox = ROOT.x + dx * t, oy = ROOT.y + dy * t;
+      const side = i % 2 === 0 ? 1 : -1;
+      const deg = (30 + (i * 7) % 14) * side;
+      const rad = (deg * Math.PI) / 180;
+      const fx = ux * Math.cos(rad) - uy * Math.sin(rad);
+      const fy = ux * Math.sin(rad) + uy * Math.cos(rad);
+      const blen = 34 + ((i * 5) % 12);
+      const tipX = ox + fx * blen, tipY = oy + fy * blen;
+      return { origin: { x: ox, y: oy }, tip: { x: tipX, y: tipY } };
+    });
+  }, [n]);
+
+  const sel = insights[selected];
+  const selTip = branches[selected]?.tip;
+
+  return (
+    <div className="insight-bolt" ref={wrapRef}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="insight-bolt__svg">
+        <g className="insight-bolt__texture">
+          {texture.map((s, i) => (
+            <line key={i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} strokeWidth={s.w}/>
+          ))}
+        </g>
+        <circle className="insight-bolt__spark" cx={ROOT.x} cy={ROOT.y} r="4"/>
+
+        {branches.map((b, i) => {
+          const ins = insights[i];
+          const isSel = i === selected;
+          const d = `M${b.origin.x.toFixed(1)},${b.origin.y.toFixed(1)} L${b.tip.x.toFixed(1)},${b.tip.y.toFixed(1)}`;
+          return (
+            <g key={i} className={`insight-bolt__branch-g insight-bolt__branch-g--${i % 8}`}>
+              <path d={d} pathLength="1" className={`insight-bolt__branch rep-area-draw insight-bolt__branch--${ins.status}`}/>
+              <g
+                className={`insight-bolt__node-g ${isSel ? 'is-selected' : ''}`}
+                role="button" tabIndex={0}
+                aria-label={ins.catLabel}
+                onClick={() => setSelected(i)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(i); } }}>
+                <circle cx={b.tip.x} cy={b.tip.y} r="15" fill="transparent"/>
+                <circle cx={b.tip.x} cy={b.tip.y} r={isSel ? 7 : 5} className={`insight-bolt__node insight-bolt__node--${ins.status}`}/>
+              </g>
+            </g>
+          );
+        })}
+      </svg>
+
+      {sel && selTip && (() => {
+        const rawX = (selTip.x / W) * 100, rawY = (selTip.y / H) * 100;
+        const xPct = Math.min(80, Math.max(20, rawX));
+        const below = rawY < 40;
+        const arrowPx = wrapWidth
+          ? Math.max(-96, Math.min(96, ((rawX - xPct) / 100) * wrapWidth))
+          : 0;
+        return (
+          <div key={selected} className={`insight-bolt__popover insight-bolt__popover--${sel.status} ${below ? 'insight-bolt__popover--below' : ''} insight-bolt__popover-in`}
+            style={{ left: `${xPct}%`, top: `${rawY}%`, '--arrow-x': `${arrowPx}px` }}>
+            <div className="insight-bolt__popover-head">
+              <span className={`insight-bolt__popover-icon insight-bolt__popover-icon--${sel.status}`}>
+                <Icon name={sel.icon || 'activity'} size={13} stroke={2.4}/>
+              </span>
+              <span className="insight-bolt__popover-cat">{sel.catLabel}</span>
+            </div>
+            <div className="insight-bolt__popover-text">{sel.text}</div>
+            {sel.rec && <div className="insight-bolt__popover-rec">{sel.rec}</div>}
+            {sel.action && (
+              <button type="button" className="insight-bolt__popover-goto" onClick={() => onGoto(sel.action)}>
+                {isES ? 'Ver en Detalle' : 'View in Detail'}
+                <Icon name="arrowRight" size={12} stroke={2.4}/>
+              </button>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 /* ── RepAccordion — envoltorio de .chart-card con header cliqueable, para las
    secciones secundarias de Detalle (Horas trabajadas, Faltas por semana):
    la lista unificada arriba es el contenido principal de la pestaña, estas
@@ -789,30 +936,56 @@ function ReportsView({ t, lang, setRoute }) {
      inventados. Cada uno se omite si no hay suficiente data para
      sostenerlo. El de puntualidad (mes vs. mes anterior) se quitó de acá
      porque duplicaba exactamente el pill de tendencia del primer KPI,
-     arriba en la misma pestaña. ── */
-  const insights = React.useMemo(() => {
-    const out = [];
+     arriba en la misma pestaña.
 
+     Cada insight lleva:
+       - status: severidad real (ok|info|warn|critical) — separa lo
+         puramente informativo (hora pico) de lo que sí amerita atención, y
+         escala warn→critical cuando el número ya es grave.
+       - icon: ícono propio del tipo de hallazgo, para el popover del rayo.
+       - action: { view, filter } opcional — si existe, el punto salta
+         directo a Detalle con el filtro correspondiente ya aplicado. ── */
+  /* ── Estadísticas por departamento — mes actual y anterior. Extraído de
+     "Aspectos destacados" (antes vivía inline solo ahí) para que la tab
+     Departamentos reuse exactamente el mismo cálculo en vez de duplicarlo. ── */
+  const deptStatsFor = React.useCallback((records, ym) => {
     const byDept = {};
-    curMonthRecords.forEach(a => {
+    records.forEach(a => {
       const emp = emps.find(e => e.id === a.empId);
       if (!emp) return;
-      byDept[emp.dept] = byDept[emp.dept] || { total: 0, onTime: 0 };
+      byDept[emp.dept] = byDept[emp.dept] || { total: 0, onTime: 0, absences: 0 };
       byDept[emp.dept].total++;
       if (!a.late) byDept[emp.dept].onTime++;
     });
-    const deptRates = Object.keys(byDept)
-      .filter(d => byDept[d].total >= 2)
-      .map(d => ({ dept: d, rate: byDept[d].onTime / byDept[d].total }))
-      .sort((a, b) => b.rate - a.rate);
+    emps.forEach(emp => {
+      (absMap[emp.id] || []).forEach(ab => {
+        if (ab.date?.slice(0,7) !== ym || isHoliday(ab.date)) return;
+        byDept[emp.dept] = byDept[emp.dept] || { total: 0, onTime: 0, absences: 0 };
+        byDept[emp.dept].absences++;
+      });
+    });
+    return byDept;
+  }, [emps, absMap]);
+
+  const deptStatsCur  = React.useMemo(() => deptStatsFor(curMonthRecords,  curMonthKey),  [deptStatsFor, curMonthRecords,  curMonthKey]);
+  const deptStatsPrev = React.useMemo(() => deptStatsFor(prevMonthRecords, prevMonthKey), [deptStatsFor, prevMonthRecords, prevMonthKey]);
+
+  const deptRates = React.useMemo(() => Object.keys(deptStatsCur)
+    .filter(d => deptStatsCur[d].total >= 2)
+    .map(d => ({ dept: d, rate: deptStatsCur[d].onTime / deptStatsCur[d].total }))
+    .sort((a, b) => b.rate - a.rate), [deptStatsCur]);
+
+  const insights = React.useMemo(() => {
+    const out = [];
+
     if (deptRates.length) {
       const pct = Math.round(deptRates[0].rate * 100);
       out.push({
-        status: 'ok',
+        status: 'ok', icon: 'award',
         text: isES
           ? `${deptRates[0].dept} es el departamento con mejor asistencia (${pct}%)`
           : `${deptRates[0].dept} has the best attendance (${pct}%)`,
-        cat: 'depto', catLabel: isES ? 'Departamento' : 'Department',
+        catLabel: isES ? 'Departamento' : 'Department',
       });
     }
 
@@ -822,17 +995,19 @@ function ReportsView({ t, lang, setRoute }) {
       const worstDept = deptRates[deptRates.length - 1];
       const pct = Math.round(worstDept.rate * 100);
       out.push({
-        status: 'warn',
+        status: 'warn', icon: 'users',
         text: isES
           ? `${worstDept.dept} es el departamento con más tardanzas (${100 - pct}% de llegadas tarde)`
           : `${worstDept.dept} has the most late arrivals (${100 - pct}% arrive late)`,
-        cat: 'depto', catLabel: isES ? 'Departamento' : 'Department',
+        catLabel: isES ? 'Departamento' : 'Department',
+        action: { view: 'detalle', filter: 'tardanza' },
       });
     }
 
     // Señala a un empleado por nombre — exige al menos 2 ausencias sin
     // justificar en el mes, no 1, para no "acusar" a alguien por un
-    // incidente aislado (una sola falta puede ser cualquier cosa).
+    // incidente aislado (una sola falta puede ser cualquier cosa). A partir
+    // de 4 ya no es "puede ser cualquier cosa" — pasa a crítico.
     let worstAbs = null;
     emps.forEach(emp => {
       const list = (absMap[emp.id] || []).filter(a => a.date?.slice(0,7) === curMonthKey && !a.justified && !isHoliday(a.date));
@@ -840,16 +1015,18 @@ function ReportsView({ t, lang, setRoute }) {
     });
     if (worstAbs && worstAbs.count >= 2) {
       out.push({
-        status: 'warn',
+        status: worstAbs.count >= 4 ? 'critical' : 'warn', icon: 'userX',
         text: isES
           ? `${worstAbs.emp.name} acumula ${worstAbs.count} ausencias sin justificar este mes`
           : `${worstAbs.emp.name} has ${worstAbs.count} unjustified absences this month`,
-        cat: 'ausencias', catLabel: isES ? 'Ausencias' : 'Absences',
+        catLabel: isES ? 'Ausencias' : 'Absences',
+        action: { view: 'detalle', filter: 'ausencia' },
       });
     }
 
     // Mismo criterio que ausentismo (mínimo 2, no señalar por un caso
-    // aislado) pero contando llegadas tarde por persona en vez de ausencias.
+    // aislado; 5+ pasa a crítico) pero contando llegadas tarde por persona
+    // en vez de ausencias.
     let worstLate = null;
     emps.forEach(emp => {
       const count = curMonthRecords.filter(a => a.empId === emp.id && a.late).length;
@@ -857,16 +1034,18 @@ function ReportsView({ t, lang, setRoute }) {
     });
     if (worstLate && worstLate.count >= 2) {
       out.push({
-        status: 'warn',
+        status: worstLate.count >= 5 ? 'critical' : 'warn', icon: 'clock',
         text: isES
           ? `${worstLate.emp.name} llegó tarde ${worstLate.count} veces este mes`
           : `${worstLate.emp.name} arrived late ${worstLate.count} times this month`,
-        cat: 'puntualidad', catLabel: isES ? 'Puntualidad' : 'Punctuality',
+        catLabel: isES ? 'Puntualidad' : 'Punctuality',
+        action: { view: 'detalle', filter: 'tardanza' },
       });
     }
 
     // Cola de eventualidades sin aprobar/rechazar este mes — si se acumulan
-    // varias, vale la pena avisar antes de que la lista crezca más.
+    // varias, vale la pena avisar antes de que la lista crezca más; 6+ ya es
+    // una cola real, no solo "vale la pena revisar cuando puedas".
     let pendingEv = 0;
     Object.values(evMap).forEach(list => {
       (list || []).forEach(ev => {
@@ -875,29 +1054,33 @@ function ReportsView({ t, lang, setRoute }) {
     });
     if (pendingEv >= 3) {
       out.push({
-        status: 'warn',
+        status: pendingEv >= 6 ? 'critical' : 'warn', icon: 'calendar',
         text: isES
           ? `Hay ${pendingEv} eventualidades pendientes de aprobar este mes`
           : `There are ${pendingEv} eventualities pending approval this month`,
         rec: isES
           ? 'Recomendación: revisar la cola de eventualidades en Detalle antes de que se acumule más.'
           : 'Recommendation: review the eventualities queue in Detail before it piles up further.',
-        cat: 'tendencia', catLabel: isES ? 'Tendencia' : 'Trend',
+        catLabel: isES ? 'Tendencia' : 'Trend',
+        action: { view: 'detalle', filter: 'eventualidad' },
       });
     }
 
     if (peakHourIdx >= 0) {
       out.push({
-        status: 'ok',
+        status: 'info', icon: 'activity',
         text: isES
           ? `El pico de marcajes ocurre entre las ${hourHours[peakHourIdx]}:00 y ${hourHours[peakHourIdx] + 1}:00`
           : `Check-ins peak between ${hourHours[peakHourIdx]}:00 and ${hourHours[peakHourIdx] + 1}:00`,
-        cat: 'tendencia', catLabel: isES ? 'Tendencia' : 'Trend',
+        catLabel: isES ? 'Tendencia' : 'Trend',
       });
     }
 
-    return out;
-  }, [curMonthRecords, emps, absMap, evMap, curMonthKey, peakHourIdx, hourHours, isES]);
+    // Prioriza por severidad real, no por el orden en que se calcularon —
+    // lo crítico sube arriba, lo puramente informativo (hora pico) al final.
+    const RANK = { critical: 0, warn: 1, ok: 2, info: 3 };
+    return out.sort((a, b) => RANK[a.status] - RANK[b.status]);
+  }, [curMonthRecords, emps, absMap, evMap, curMonthKey, peakHourIdx, hourHours, isES, deptRates]);
 
   /* ── Lista unificada de Detalle — Tardanzas + Ausencias + Eventualidades del
      mes filtrado, en un solo feed ordenable por chips (evita 3 cajas separadas). ── */
@@ -1052,25 +1235,26 @@ function ReportsView({ t, lang, setRoute }) {
   // Construye las mismas filas (Tardanzas + Ausencias + Eventualidades del
   // mes filtrado) para los dos formatos de export — mismo patrón que
   // dashboard.jsx (dropdown Exportar → PDF / Excel).
-  const buildExportRows = () => {
+  const buildExportRows = (onlyEmpId) => {
     let evMap = {};
     try { evMap = JSON.parse(localStorage.getItem('uasd_eventualidades') || '{}'); } catch {}
 
     const rows = [];
+    const targetEmps = onlyEmpId ? emps.filter(e => e.id === onlyEmpId) : emps;
 
-    emps.forEach(emp => {
+    targetEmps.forEach(emp => {
       Object.values(allAtt)
         .filter(a => a.empId === emp.id && a.late && a.date?.slice(0, 7) === filterMonth)
         .forEach(a => rows.push(['Tardanza', emp.name, emp.dept, a.date, '', a.justified ? 'Justificada' : 'No justificada']));
     });
 
-    emps.forEach(emp => {
+    targetEmps.forEach(emp => {
       (absMap[emp.id] || [])
         .filter(a => a.date?.slice(0, 7) === filterMonth && !isHoliday(a.date))
         .forEach(a => rows.push(['Ausencia', emp.name, emp.dept, a.date, a.auto ? 'Automática' : '', a.justified ? 'Justificada' : 'No justificada']));
     });
 
-    emps.forEach(emp => {
+    targetEmps.forEach(emp => {
       (evMap[emp.id] || [])
         .filter(e => e.date?.slice(0, 7) === filterMonth)
         .forEach(e => rows.push(['Eventualidad', emp.name, emp.dept, e.dateEnd ? `${e.date} - ${e.dateEnd}` : e.date, `${e.type}${e.motivo ? ' - ' + e.motivo : ''}`, EVENT_STATUS_LABEL[e.estado || 'pendiente']]));
@@ -1105,23 +1289,24 @@ function ReportsView({ t, lang, setRoute }) {
     return () => clearTimeout(id);
   }, [exportOpen]);
 
-  const exportExcel = () => {
+  const exportExcel = (onlyEmpId) => {
     setExportOpen(false);
     const esc = (v) => `"${csvSafe(v).replace(/"/g, '""')}"`;
     const header = ['Secci\u00F3n', 'Empleado', 'Departamento', 'Fecha', 'Detalle', 'Estado'];
-    const csv = '\uFEFF' + [header, ...buildExportRows()].map(r => r.map(esc).join(',')).join('\r\n');
+    const csv = '\uFEFF' + [header, ...buildExportRows(onlyEmpId)].map(r => r.map(esc).join(',')).join('\r\n');
     const blob = new Blob([csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `UASD_reportes_${filterMonth}.xls`;
+    const suffix = onlyEmpId ? `_${onlyEmpId}` : '';
+    a.download = `UASD_reportes_${filterMonth}${suffix}.xls`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
 
-  const exportPDF = () => {
+  const exportPDF = (onlyEmpId) => {
     setExportOpen(false);
     const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-    const rowsHtml = buildExportRows().map(r => `<tr>${r.map(c => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('');
+    const rowsHtml = buildExportRows(onlyEmpId).map(r => `<tr>${r.map(c => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('');
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t.rep_title} - UASD</title>
@@ -1145,6 +1330,59 @@ function ReportsView({ t, lang, setRoute }) {
     setTimeout(() => w.print(), 350);
   };
 
+  /* ── Ajustes — umbral de tardanza (antes 15 fijo en shared.jsx/kiosk.jsx y
+     en el backend). Mismo patrón dual-path que el resto: con backend activo,
+     GET/PATCH /api/settings; sin sesión, fallback a localStorage['uasd_settings']
+     (mismo shape en ambos casos: { lateThresholdMinutes }). Solo visible con
+     permiso 'manage' — es una regla de negocio del sistema, no de reportes. ── */
+  const canManageSettings = typeof userHasPermission !== 'function' || userHasPermission('manage');
+  const [lateThresholdMinutes, setLateThresholdMinutes] = React.useState(15);
+  const loadSettings = React.useCallback(() => {
+    if (typeof isBackendActive === 'function' && isBackendActive() && typeof apiGetSettings === 'function') {
+      apiGetSettings().then(s => setLateThresholdMinutes(s.lateThresholdMinutes)).catch(() => {});
+      return;
+    }
+    try {
+      const s = JSON.parse(localStorage.getItem('uasd_settings') || '{}');
+      setLateThresholdMinutes(Number.isInteger(s.lateThresholdMinutes) ? s.lateThresholdMinutes : 15);
+    } catch { setLateThresholdMinutes(15); }
+  }, []);
+  React.useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  const saveLateThreshold = (minutes) => {
+    setLateThresholdMinutes(minutes);
+    if (typeof isBackendActive === 'function' && isBackendActive() && typeof apiPatchSettings === 'function') {
+      apiPatchSettings({ lateThresholdMinutes: minutes }).catch(() => loadSettings());
+      return;
+    }
+    let s = {};
+    try { s = JSON.parse(localStorage.getItem('uasd_settings') || '{}'); } catch {}
+    localStorage.setItem('uasd_settings', JSON.stringify({ ...s, lateThresholdMinutes: minutes }));
+  };
+
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const settingsRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!settingsOpen) return;
+    const onDoc = (e) => { if (settingsRef.current && !settingsRef.current.contains(e.target)) setSettingsOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [settingsOpen]);
+
+  const [settingsMounted, setSettingsMounted] = React.useState(false);
+  const [settingsClosing, setSettingsClosing] = React.useState(false);
+  React.useEffect(() => {
+    if (settingsOpen) {
+      setSettingsMounted(true);
+      setSettingsClosing(false);
+      return;
+    }
+    if (!settingsMounted) return;
+    setSettingsClosing(true);
+    const id = setTimeout(() => { setSettingsMounted(false); setSettingsClosing(false); }, 150);
+    return () => clearTimeout(id);
+  }, [settingsOpen]);
+
   /* ── Resumen (pulso en vivo) vs Detalle (histórico por mes) ──
      Mismo patrón seg-filter que dashboard.jsx (filtro de estado) y
      changelog.jsx (filtro de tipo) — pill animado que se desliza al ítem activo. */
@@ -1152,6 +1390,8 @@ function ReportsView({ t, lang, setRoute }) {
   const viewOptions = [
     { id: 'resumen', label: t.rep_view_summary, icon: 'chartPie' },
     { id: 'detalle', label: t.rep_view_detail, icon: 'barChart' },
+    { id: 'empleado', label: t.rep_view_employee, icon: 'user' },
+    { id: 'departamentos', label: t.rep_view_departments, icon: 'building' },
     { id: 'calendario', label: t.rep_view_calendar, icon: 'calendar' },
   ];
 
@@ -1172,6 +1412,38 @@ function ReportsView({ t, lang, setRoute }) {
       transform: `translateX(${Math.round(er.left - wr.left)}px)`,
     });
   }, [view]);
+
+  /* ── Por Empleado — ficha individual. Reusa detailRows (lista unificada
+     de Detalle) y hoursRows (horas trabajadas) filtrados por un solo
+     empleado en vez de recalcular nada nuevo. ── */
+  const [selectedEmpId, setSelectedEmpId] = React.useState(null);
+  const [empPickerSearch, setEmpPickerSearch] = React.useState('');
+  const selectedEmp = React.useMemo(() => emps.find(e => e.id === selectedEmpId) || null, [emps, selectedEmpId]);
+
+  const empPickerList = React.useMemo(() => {
+    const q = empPickerSearch.trim().toLowerCase();
+    const list = activeEmps.filter(e => !q || e.name.toLowerCase().includes(q) || e.dept.toLowerCase().includes(q));
+    return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeEmps, empPickerSearch]);
+
+  const empRows = React.useMemo(
+    () => selectedEmpId ? detailRows.filter(r => r.emp.id === selectedEmpId) : [],
+    [detailRows, selectedEmpId]
+  );
+  const empHours = React.useMemo(
+    () => selectedEmpId ? (hoursRows.find(r => r.emp.id === selectedEmpId) || null) : null,
+    [hoursRows, selectedEmpId]
+  );
+  const empKpis = React.useMemo(() => {
+    if (!selectedEmpId) return null;
+    const tardanzas = empRows.filter(r => r.type === 'tardanza').length;
+    const ausencias = empRows.filter(r => r.type === 'ausencia').length;
+    const marcados = empHours ? empHours.days : 0;
+    const punctualPct = marcados > 0 ? ((marcados - tardanzas) / marcados) * 100 : null;
+    const completeDays = empHours ? empHours.days - empHours.incomplete : 0;
+    const avgHours = empHours && completeDays > 0 ? empHours.totalHours / completeDays : null;
+    return { tardanzas, ausencias, punctualPct, avgHours };
+  }, [empRows, empHours, selectedEmpId]);
 
   /* ── Calendario — cumpleaños del mes + feriados del período ── */
   const birthdaysThisMonth = React.useMemo(() => {
@@ -1285,19 +1557,7 @@ function ReportsView({ t, lang, setRoute }) {
         )}
         </div>
 
-        <div className="page__actions" style={{ gap: 16, flex: '1 1 0', justifyContent: 'flex-end', minWidth: 0 }}>
-          <div className="seg-filter seg-filter--lg" ref={viewRef}>
-            <span className="seg-filter__pill" style={viewPill} aria-hidden="true"/>
-            {viewOptions.map(o => (
-              <button key={o.id}
-                ref={el => (viewItemRefs.current[o.id] = el)}
-                className={`seg-filter__item ${view === o.id ? 'seg-filter__item--active' : ''}`}
-                onClick={() => setView(o.id)}>
-                <Icon name={o.icon} size={12}/>
-                {o.label}
-              </button>
-            ))}
-          </div>
+        <div className="page__actions" style={{ gap: 10, flex: '1 1 0', justifyContent: 'flex-end', minWidth: 0 }}>
           <div className="export-wrap" ref={exportRef}>
             <button className="btn btn--ghost" onClick={() => setExportOpen(o => !o)}>
               <Icon name="download" size={14}/> {t.dash_export} <Icon name="chevDown" size={12}/>
@@ -1306,15 +1566,70 @@ function ReportsView({ t, lang, setRoute }) {
               <div className="export-menu" style={{ animation: exportClosing
                 ? 'repPickerClose 0.15s cubic-bezier(0.4,0,1,1) both'
                 : 'repPickerOpen 0.15s cubic-bezier(0.16,1,0.3,1) both' }}>
-                <button className="export-menu__item" onClick={exportPDF}>
+                <button className="export-menu__item" onClick={() => exportPDF()}>
                   <span className="export-menu__tag export-menu__tag--pdf">PDF</span> {t.dash_export_pdf}
                 </button>
-                <button className="export-menu__item" onClick={exportExcel}>
+                <button className="export-menu__item" onClick={() => exportExcel()}>
                   <span className="export-menu__tag export-menu__tag--xls">XLS</span> {t.dash_export_excel}
                 </button>
               </div>
             )}
           </div>
+          {canManageSettings && (
+            <div className="export-wrap" ref={settingsRef}>
+              <button className="btn btn--ghost" onClick={() => setSettingsOpen(o => !o)} aria-label={isES ? 'Ajustes' : 'Settings'}>
+                <Icon name="settings" size={14}/>
+              </button>
+              {settingsMounted && (
+                <div className="export-menu" style={{ minWidth: 240, animation: settingsClosing
+                  ? 'repPickerClose 0.15s cubic-bezier(0.4,0,1,1) both'
+                  : 'repPickerOpen 0.15s cubic-bezier(0.16,1,0.3,1) both' }}>
+                  <div style={{ padding: '10px 14px' }}>
+                    <div className="kpi__label" style={{ marginBottom: 8 }}>
+                      {isES ? 'Tolerancia de tardanza' : 'Late tolerance'}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="number" min={0} max={120} value={lateThresholdMinutes}
+                        onChange={(e) => {
+                          const n = Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0));
+                          saveLateThreshold(n);
+                        }}
+                        style={{
+                          width: 64, padding: '6px 8px', borderRadius: 8,
+                          border: '1px solid var(--ink-100)', fontFamily: 'var(--font-mono)', fontSize: 13,
+                        }}
+                      />
+                      <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12.5, color: 'var(--ink-400)' }}>
+                        {isES ? 'minutos' : 'minutes'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Navegación de pestañas — fila propia, centrada. Antes vivía dentro
+           de page__actions junto a Exportar/Ajustes, pero al pasar de 3 a 5
+           pestañas (Por empleado, Departamentos) ya no cabía en el ancho fijo
+           que le tocaba por el truco de centrado título/acciones (ambos
+           flex:1 1 0 a propósito, para que el mes quede centrado real — ver
+           comentario de arriba). Con fila propia no compite por ese espacio. ── */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+        <div className="seg-filter seg-filter--lg" ref={viewRef}>
+          <span className="seg-filter__pill" style={viewPill} aria-hidden="true"/>
+          {viewOptions.map(o => (
+            <button key={o.id}
+              ref={el => (viewItemRefs.current[o.id] = el)}
+              className={`seg-filter__item ${view === o.id ? 'seg-filter__item--active' : ''}`}
+              onClick={() => setView(o.id)}>
+              <Icon name={o.icon} size={12}/>
+              {o.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1551,8 +1866,13 @@ function ReportsView({ t, lang, setRoute }) {
         </div>
       </div>
 
-      {/* ── Activos ahora por departamento + Aspectos destacados ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20 }}>
+      {/* ── Activos ahora por departamento + Aspectos destacados ──
+           alignItems:'start' — sin esto, el grid estira "Presentes por
+           departamento" a la altura de "Aspectos destacados"; con el rayo
+           ancho, esa altura cambia según cuántos hallazgos haya y el donut
+           se veía desproporcionado. Cada tarjeta conserva su propio tamaño
+           natural. ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:20, marginBottom:20, alignItems:'start' }}>
         <div className="chart-card chart-card--dept" onDoubleClick={() => setExpandedChart('dept')}>
           <div className="chart-card__head">
             <div>
@@ -1578,7 +1898,9 @@ function ReportsView({ t, lang, setRoute }) {
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{isES ? 'Aspectos destacados' : 'Highlights'}</div>
+              <div className="chart-card__sub">{isES ? 'Generados automáticamente de los datos del mes' : 'Auto-generated from this month\'s data'}</div>
             </div>
+            {insights.length > 0 && <span className="badge badge--neutral">{insights.length}</span>}
           </div>
           {insights.length === 0 ? (
             <div className="audit-empty">
@@ -1587,20 +1909,12 @@ function ReportsView({ t, lang, setRoute }) {
               <div className="audit-empty__sub">{isES ? 'Los aspectos destacados aparecen cuando hay marcajes registrados.' : 'Highlights appear once check-ins are recorded.'}</div>
             </div>
           ) : (
-            <div className="rep-insights rep-rows-in">
-              {insights.map((ins, i) => (
-                <div className={`rep-insight-row ${ins.rec ? 'rep-insight-row--rec' : ''}`} key={i}>
-                  <span className={`rep-insight-status rep-insight-status--${ins.status}`}>
-                    <Icon name={ins.status === 'ok' ? 'check' : 'alertTriangle'} size={13} stroke={2.6}/>
-                  </span>
-                  <div className="rep-insight-text">
-                    {ins.text}
-                    {ins.rec && <div className="rep-insight-rec">{ins.rec}</div>}
-                  </div>
-                  <span className={`rep-insight-cat rep-insight-cat--${ins.cat}`}>{ins.catLabel}</span>
-                </div>
-              ))}
-            </div>
+            <InsightBolt
+              key={curMonthKey}
+              insights={insights}
+              isES={isES}
+              onGoto={(action) => { setView(action.view); setDetailFilter(action.filter); }}
+            />
           )}
         </div>
       </div>
@@ -1749,6 +2063,206 @@ function ReportsView({ t, lang, setRoute }) {
 
       <FaltasSemanalReport filterMonth={filterMonth} monthLabel={monthLabel}/>
 
+      </div>}
+
+      {/* ── POR EMPLEADO — ficha individual. Mismos datos que Detalle/Horas
+           trabajadas (detailRows/hoursRows), acotados a un solo empleado. ── */}
+      {view === 'empleado' && <div key="empleado" className="rep-panel-in">
+        {!selectedEmp ? (
+          <>
+            <div className="rep-detail-toolbar">
+              <div className="rep-detail-search" style={{ maxWidth: 360 }}>
+                <span className="rep-detail-search-icon"><Icon name="search" size={13}/></span>
+                <input
+                  value={empPickerSearch}
+                  onChange={(e) => setEmpPickerSearch(e.target.value)}
+                  placeholder={isES ? 'Buscar empleado o departamento…' : 'Search employee or department…'}
+                />
+                {empPickerSearch && (
+                  <button className="rep-detail-search-clear" onClick={() => setEmpPickerSearch('')} aria-label={isES ? 'Limpiar' : 'Clear'}>
+                    <Icon name="x" size={11} stroke={2.4}/>
+                  </button>
+                )}
+              </div>
+            </div>
+            {empPickerList.length === 0 ? (
+              <div className="rep-list-card">
+                <div className="audit-empty">
+                  <Icon name="user" size={26} stroke={1.2}/>
+                  <div className="audit-empty__title">{isES ? 'Sin resultados' : 'No results'}</div>
+                  <div className="audit-empty__sub">{isES ? `Nadie coincide con "${empPickerSearch}".` : `No one matches "${empPickerSearch}".`}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="rep-list-card rep-rows-in">
+                {empPickerList.map(emp => (
+                  <div key={emp.id} className="rep-list-row" style={{ gridTemplateColumns: '38px 1fr 1fr', cursor: 'pointer' }} onClick={() => setSelectedEmpId(emp.id)}>
+                    <div className="table__avatar" style={{ width:32, height:32, fontSize:10 }}>{initials(emp.name)}</div>
+                    <div className="rep-list-who">
+                      <div className="rep-list-name">{emp.name}</div>
+                      <div className="rep-list-dept">{emp.dept}</div>
+                    </div>
+                    <span className="mono" style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--ink-400)', justifySelf:'end' }}>{emp.id}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="rep-emp-card">
+              <div className="rep-emp-card__head">
+                <div className="edit-modal__head-id">
+                  <div className="edit-modal__avatar-wrap">
+                    <div className="edit-modal__avatar" style={{ cursor:'default' }}>
+                      {selectedEmp.photo
+                        ? <img src={selectedEmp.photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }}/>
+                        : initials(selectedEmp.name)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="edit-modal__title">{selectedEmp.name}</div>
+                    <div className="edit-modal__sub">{selectedEmp.id} · {formatCedula(selectedEmp.cedula)}</div>
+                  </div>
+                </div>
+                <button className="edit-modal__close" onClick={() => setSelectedEmpId(null)} aria-label={isES ? 'Cambiar empleado' : 'Change employee'}>
+                  <Icon name="x" size={18}/>
+                </button>
+              </div>
+              <div style={{ display:'flex', gap:28, padding:'16px 24px', flexWrap:'wrap' }}>
+                <div>
+                  <div className="kpi__label">{isES ? 'Departamento' : 'Department'}</div>
+                  <div style={{ fontFamily:'var(--font-sans)', fontWeight:600, color:'var(--ink-800)', fontSize:13.5 }}>{selectedEmp.dept}</div>
+                </div>
+                <div>
+                  <div className="kpi__label">{isES ? 'Cargo' : 'Role'}</div>
+                  <div style={{ fontFamily:'var(--font-sans)', fontWeight:600, color:'var(--ink-800)', fontSize:13.5 }}>{selectedEmp.role || '—'}</div>
+                </div>
+                <div>
+                  <div className="kpi__label">{isES ? 'Horario' : 'Schedule'}</div>
+                  <div style={{ fontFamily:'var(--font-mono)', fontWeight:600, color:'var(--ink-800)', fontSize:13 }}>{selectedEmp.schedule || '—'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="kpi-grid" style={{ marginBottom: 20 }}>
+              <div className="kpi">
+                <div className="kpi__top"><div className="kpi__icon"><Icon name="userCheck" size={26}/></div></div>
+                <div className="kpi__foot">
+                  <div className="kpi__label">{t.rep_punctual_on}</div>
+                  <div className="kpi__value">{empKpis.punctualPct === null ? '—' : <>{Math.round(empKpis.punctualPct)}<span style={{fontSize:18,color:'var(--ink-400)',marginLeft:4}}>%</span></>}</div>
+                </div>
+              </div>
+              <div className="kpi">
+                <div className="kpi__top"><div className="kpi__icon"><Icon name="clock" size={26}/></div></div>
+                <div className="kpi__foot">
+                  <div className="kpi__label">{t.rep_punctual_late}</div>
+                  <div className="kpi__value">{empKpis.tardanzas}</div>
+                </div>
+              </div>
+              <div className="kpi">
+                <div className="kpi__top"><div className="kpi__icon"><Icon name="userX" size={26}/></div></div>
+                <div className="kpi__foot">
+                  <div className="kpi__label">{t.rep_punctual_absent}</div>
+                  <div className="kpi__value">{empKpis.ausencias}</div>
+                </div>
+              </div>
+              <div className="kpi">
+                <div className="kpi__top"><div className="kpi__icon"><Icon name="fingerprint" size={26}/></div></div>
+                <div className="kpi__foot">
+                  <div className="kpi__label">{isES ? 'Promedio horas/día' : 'Avg hours/day'}</div>
+                  <div className="kpi__value">{empKpis.avgHours === null ? '—' : `${empKpis.avgHours.toFixed(1)}h`}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display:'flex', justifyContent:'flex-end', marginBottom: 10 }}>
+              <button className="btn btn--ghost" onClick={() => exportPDF(selectedEmp.id)}>
+                <Icon name="download" size={14}/> {isES ? 'Exportar ficha (PDF)' : 'Export sheet (PDF)'}
+              </button>
+            </div>
+
+            {empRows.length === 0 ? (
+              <div className="rep-list-card">
+                <div className="audit-empty">
+                  <Icon name="calendar" size={26} stroke={1.2}/>
+                  <div className="audit-empty__title">{isES ? 'Sin registros' : 'No records'}</div>
+                  <div className="audit-empty__sub">
+                    {isES ? `${selectedEmp.name} no tiene tardanzas, ausencias ni eventualidades en ${monthLabel.toLowerCase()}.` : `No late arrivals, absences or events for ${selectedEmp.name} in ${monthLabel}.`}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rep-list-card rep-rows-in">
+                <div className="rep-list-row rep-list-row--head" style={{ gridTemplateColumns: '38px 0.9fr 0.7fr 1fr 0.9fr' }}>
+                  <span></span>
+                  <span>{isES ? 'Tipo' : 'Type'}</span>
+                  <span>{isES ? 'Fecha' : 'Date'}</span>
+                  <span>{isES ? 'Detalle' : 'Detail'}</span>
+                  <span>{isES ? 'Estado' : 'Status'}</span>
+                </div>
+                {[...empRows].sort((a, b) => b.date.localeCompare(a.date)).map(r => (
+                  <div className="rep-list-row" style={{ gridTemplateColumns: '38px 0.9fr 0.7fr 1fr 0.9fr' }} key={r.key}>
+                    <div className="table__avatar" style={{ width:32, height:32, fontSize:10 }}>{initials(r.emp.name)}</div>
+                    <span className={`badge ${r.type === 'tardanza' ? 'badge--warn' : r.type === 'ausencia' ? 'badge--err' : 'badge--info'}`} style={{ fontSize:10.5, padding:'3px 9px', width:'fit-content' }}>
+                      {r.type === 'tardanza' ? (isES ? 'Tardanza' : 'Late') : r.type === 'ausencia' ? (isES ? 'Ausencia' : 'Absence') : (EVENT_TYPE_LABEL[r.evType] || (isES ? 'Eventualidad' : 'Event'))}
+                    </span>
+                    <span className="mono" style={{ fontFamily:'var(--font-mono)', fontSize:12.5, color:'var(--ink-500)' }}>{fmtShortDate(r.date)}</span>
+                    <span style={{ fontFamily:'var(--font-sans)', fontSize:12.5, color: r.detailOk ? 'var(--success,#2f7a5a)' : 'var(--ink-400)', fontWeight: r.detailOk ? 700 : 400 }}>{r.detail}</span>
+                    {r.type === 'eventualidad'
+                      ? <span className={`badge ${r.estado === 'aceptado' ? 'badge--ok' : r.estado === 'rechazado' ? 'badge--err' : 'badge--warn'}`} style={{ fontSize:10.5, padding:'3px 9px', width:'fit-content' }}>{EVENT_STATUS_LABEL[r.estado] || EVENT_STATUS_LABEL.pendiente}</span>
+                      : <span style={{ color:'var(--ink-200)', fontSize:12 }}>—</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>}
+
+      {/* ── DEPARTAMENTOS — ranking histórico de puntualidad/ausentismo por
+           depto (mismo cálculo que "Aspectos destacados", desglosado). ── */}
+      {view === 'departamentos' && <div key="departamentos" className="rep-panel-in">
+        {deptRates.length === 0 ? (
+          <div className="rep-list-card">
+            <div className="audit-empty">
+              <Icon name="building" size={26} stroke={1.2}/>
+              <div className="audit-empty__title">{isES ? 'Sin datos suficientes' : 'Not enough data'}</div>
+              <div className="audit-empty__sub">{isES ? `No hay suficientes marcajes en ${monthLabel.toLowerCase()} para comparar departamentos.` : `Not enough check-ins in ${monthLabel} to compare departments.`}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="rep-list-card rep-rows-in">
+            <div className="rep-list-row rep-list-row--head" style={{ gridTemplateColumns: '4px 1.4fr 0.9fr 0.7fr 0.7fr' }}>
+              <span></span>
+              <span>{isES ? 'Departamento' : 'Department'}</span>
+              <span>{isES ? 'Puntualidad' : 'Punctuality'}</span>
+              <span>{isES ? 'Tardanzas' : 'Late'}</span>
+              <span>{isES ? 'Ausencias' : 'Absences'}</span>
+            </div>
+            {deptRates.map(({ dept, rate }) => {
+              const cur = deptStatsCur[dept] || { total: 0, onTime: 0, absences: 0 };
+              const prev = deptStatsPrev[dept];
+              const prevRate = prev && prev.total >= 2 ? prev.onTime / prev.total : null;
+              return (
+                <div key={dept} className="rep-list-row" style={{ gridTemplateColumns: '4px 1.4fr 0.9fr 0.7fr 0.7fr', cursor: 'pointer' }}
+                  onClick={() => { setView('detalle'); setDetailFilter('todos'); setDetailSearch(dept); }}>
+                  <span style={{ width:4, height:28, borderRadius:2, background: colorForDept(dept) }}></span>
+                  <div className="rep-list-who">
+                    <div className="rep-list-name">{dept}</div>
+                    <div className="rep-list-dept">{cur.total} {isES ? 'marcajes' : 'check-ins'}</div>
+                  </div>
+                  <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span className="mono" style={{ fontFamily:'var(--font-mono)', fontWeight:700, color:'var(--ink-800)' }}>{Math.round(rate * 100)}%</span>
+                    {prevRate !== null && trendPill(rate * 100, prevRate * 100, true, false)}
+                  </span>
+                  <span className="mono" style={{ fontFamily:'var(--font-mono)', color:'var(--ink-500)' }}>{cur.total - cur.onTime}</span>
+                  <span className="mono" style={{ fontFamily:'var(--font-mono)', color:'var(--ink-500)' }}>{cur.absences}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>}
 
       {/* ── CALENDARIO — cumpleaños del mes + feriados del período ── */}

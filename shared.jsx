@@ -264,6 +264,8 @@ const I18N = {
     rep_sub: 'Análisis de asistencia y actividad biométrica.',
     rep_view_summary: 'Resumen',
     rep_view_detail: 'Detalle',
+    rep_view_employee: 'Por empleado',
+    rep_view_departments: 'Departamentos',
     rep_view_calendar: 'Calendario',
     rep_attend: 'Asistencia diaria',
     rep_punctual: 'Puntualidad',
@@ -602,6 +604,8 @@ const I18N = {
     rep_sub: 'Attendance and biometric activity analysis.',
     rep_view_summary: 'Summary',
     rep_view_detail: 'Detail',
+    rep_view_employee: 'By employee',
+    rep_view_departments: 'Departments',
     rep_view_calendar: 'Calendar',
     rep_attend: 'Daily attendance',
     rep_punctual: 'Punctuality',
@@ -789,6 +793,7 @@ const Icon = ({ name, size = 18, stroke = 1.6 }) => {
     alertTriangle: <><path d="M10.3 3.5 2 19h20L13.7 3.5a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><circle cx="12" cy="16.5" r=".5" fill="currentColor"/></>,
     key: <><circle cx="7.5" cy="15.5" r="3.5"/><path d="M10.9 12.1 20 3"/><path d="M19 4l1 1"/><path d="M17 6l1 1"/></>,
     expand: <><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></>,
+    building: <><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></>,
   };
   return <svg {...props}>{paths[name]}</svg>;
 };

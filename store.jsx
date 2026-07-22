@@ -244,6 +244,14 @@ function apiRemoveAllCollectiveVacationEmployees(year) {
   return apiFetch('/collective-vacations/' + year + '/employees', { method: 'DELETE' });
 }
 
+/* ── Configuración global (umbral de tardanza) ── */
+function apiGetSettings() {
+  return apiFetch('/settings');
+}
+function apiPatchSettings(data) {
+  return apiFetch('/settings', { method: 'PATCH', body: JSON.stringify(data) });
+}
+
 window.DataStore = DataStore;
 window.apiFetch = apiFetch;
 window.loginRequest = loginRequest;
@@ -282,3 +290,5 @@ window.apiSetCollectiveVacationDays = apiSetCollectiveVacationDays;
 window.apiAddCollectiveVacationEmployees = apiAddCollectiveVacationEmployees;
 window.apiRemoveCollectiveVacationEmployee = apiRemoveCollectiveVacationEmployee;
 window.apiRemoveAllCollectiveVacationEmployees = apiRemoveAllCollectiveVacationEmployees;
+window.apiGetSettings = apiGetSettings;
+window.apiPatchSettings = apiPatchSettings;

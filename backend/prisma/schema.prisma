@@ -290,3 +290,16 @@ model AuditLog {
 
   @@map("audit_log")
 }
+
+// ---------- Configuración global ----------
+
+// Fila única (singleton, id fijo = 1) — no hay UI de "Configuración" completa
+// todavía, así que se modela como una sola tabla en vez de un esquema
+// clave/valor genérico. El umbral vive acá en vez de hardcodeado en
+// attendance.service.js/kiosk.jsx para poder ajustarlo sin tocar código.
+model SystemConfig {
+  id                   Int @id @default(1)
+  lateThresholdMinutes Int @default(15) @map("late_threshold_minutes")
+
+  @@map("system_config")
+}
