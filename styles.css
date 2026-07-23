@@ -3647,6 +3647,32 @@ tr.table__row--selected .table__actions {
 .insight-bolt { position: relative; aspect-ratio: 480 / 250; margin-top: 4px; }
 .insight-bolt__svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
+/* Frase decorativa en la esquina inferior izquierda del card — zona que el
+   rayo deja libre (nace en la esquina inferior DERECHA y sube hacia la
+   izquierda, la chispa nunca baja hasta acá). Solo posicionamiento absoluto
+   en esta tarjeta puntual (--insights), no en .chart-card en general. */
+.chart-card--insights { position: relative; }
+.insight-bolt__quote {
+  position: absolute;
+  left: 24px; bottom: 18px;
+  max-width: 200px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-300);
+  pointer-events: none;
+}
+.insight-bolt__quote-author {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: .02em;
+  color: var(--ink-200);
+}
+
 .insight-bolt__texture line {
   stroke: var(--ink-300);
   stroke-linecap: round;

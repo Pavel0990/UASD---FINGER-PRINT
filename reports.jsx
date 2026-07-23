@@ -1894,7 +1894,7 @@ function ReportsView({ t, lang, setRoute }) {
           <ActiveNowDonut t={t} isES={isES} attRecords={attRecords}/>
         </div>
 
-        <div className="chart-card">
+        <div className="chart-card chart-card--insights">
           <div className="chart-card__head">
             <div>
               <div className="chart-card__title">{isES ? 'Aspectos destacados' : 'Highlights'}</div>
@@ -1915,6 +1915,12 @@ function ReportsView({ t, lang, setRoute }) {
               isES={isES}
               onGoto={(action) => { setView(action.view); setDetailFilter(action.filter); }}
             />
+          )}
+          {insights.length > 0 && (
+            <div className="insight-bolt__quote">
+              “El cambio es inevitable. El crecimiento es opcional.”
+              <span className="insight-bolt__quote-author">— John C. Maxwell</span>
+            </div>
           )}
         </div>
       </div>
